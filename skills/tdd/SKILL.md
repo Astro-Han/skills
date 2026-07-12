@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: "Test-driven development for production behavior. Use whenever implementing a feature, fixing a bug, or changing observable production behavior that can be exercised by a fast, reliable automated test through a stable public seam. Also use before refactoring to establish or verify a green safety net. Do not use for docs-only changes, test-only maintenance, generated artifacts, or exploratory prototypes unless the user asks for TDD."
+description: "Test-driven development for production behavior. Use whenever implementing a feature, fixing a bug, or otherwise changing observable production behavior, and before refactoring to establish or verify a green safety net. Do not use for docs-only changes, test-only maintenance, generated artifacts, or exploratory prototypes unless the user asks for TDD."
 ---
 
 # TDD
@@ -9,7 +9,7 @@ Work in vertical slices: one test → one minimal implementation → refactor wh
 
 ## Before RED
 
-Inspect existing tests, public interfaces, project conventions, and relevant ADRs or `CONTEXT.md`. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed, such as a function, API, CLI, UI interaction, or service interface.
+Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed, such as a function, API, CLI, UI interaction, or service interface.
 
 If no fast, reliable test can exercise the behavior through a stable seam, use the nearest trustworthy validation instead and say that the work was not TDD.
 
@@ -34,10 +34,3 @@ Tests specify observable behavior through public interfaces and survive internal
 TDD may use unit, integration, contract, or UI tests. Choose the fastest level that exercises the real contract with acceptable fidelity. Mock only at system boundaries you do not control.
 
 Read [tests.md](tests.md) when designing assertions or diagnosing brittle tests. Read [mocking.md](mocking.md) when a test needs doubles, dependency injection, a database, time, randomness, filesystem access, or an external service.
-
-## Done
-
-- Saw RED fail for the predicted reason.
-- Watched the minimum implementation turn it GREEN.
-- Ran the nearest related tests.
-- Kept the suite green through refactoring.
