@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+![Every token should change behavior.](assets/astro-skills-hero.png)
+
 ## 每一个 token，都得起作用。
 
 这套 skills 不教 Agent 走更长的流程，只在它容易做错决定的地方拉一把：动手之前先问清楚，修 bug 之前先找到证据，收到 review 之后先判断对不对，结束任务之前把该收的尾收干净。

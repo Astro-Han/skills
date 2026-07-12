@@ -2,6 +2,8 @@
 
 [中文](README.zh.md)
 
+![Every token should change behavior.](assets/astro-skills-hero.png)
+
 ## Every token should change behavior.
 
 Small skills that help coding agents make better decisions: clarify before building, prove before fixing, verify before accepting, and close the loop before stopping.
