@@ -1,0 +1,4 @@
+interface:
+  display_name: "Craft Skill"
+  short_description: "Create and improve skills through evidence"
+  default_prompt: "Use $craft-skill to create or improve this skill with the smallest evidence-backed change."

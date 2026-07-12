@@ -1,0 +1,12 @@
+[project]
+name = "astro-skills"
+version = "0.0.0"
+requires-python = ">=3.11"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pyyaml>=6.0.3",
+]
