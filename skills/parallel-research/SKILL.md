@@ -11,7 +11,7 @@ Split a research question only when independent searches are likely to reduce bl
 
 Define the question, the decision it informs, required recency, exclusions, and every material, non-overlapping evidence angle. Ask the user only when the scope is materially ambiguous; otherwise state any consequential assumption and proceed.
 
-Assign one researcher per material, non-overlapping evidence angle. Run as many researchers concurrently as available subagent slots allow. When angles outnumber slots, launch the remainder as slots open until every material angle is covered. Every researcher is a leaf: it must not spawn, delegate, or invoke another research workflow.
+Assign one researcher per angle, running as many concurrently as subagent slots allow and launching the remainder as slots open until every angle is covered. Every researcher is a leaf: it must not spawn, delegate, or invoke another research workflow.
 
 ## Research in parallel
 
@@ -25,6 +25,6 @@ Each researcher should:
 
 ## Validate in the main thread
 
-The main thread coordinates, verifies decision-critical claims, resolves conflicts, and synthesizes the answer; it does not take a research angle. Compare results for agreement, contradiction, and missing coverage. Check numbers, dates, policies, availability, and technical behavior against the strongest primary sources. Downgrade stale, indirect, or single-source claims.
+The main thread does not take a research angle. Compare results for agreement, contradiction, and missing coverage. Check numbers, dates, policies, availability, and technical behavior against the strongest primary sources. Downgrade stale, indirect, or single-source claims.
 
 Synthesize the answer around verified findings, unresolved uncertainty, and the decision they support. Cite the underlying sources, never the agents. Save a durable report only when the user asks for one.
