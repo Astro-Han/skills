@@ -1,8 +1,6 @@
-# Astro Skills
+<h1>Astro Skills <sub><a href="README.md">English</a></sub></h1>
 
 ![Every token should change behavior.](assets/astro-skills-hero.png)
-
-[English](README.md)
 
 ## 每一个 token，都得起作用。
 
