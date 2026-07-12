@@ -118,8 +118,6 @@ def create_blind_pack(left: Path, right: Path, review_dir: Path, key_path: Path)
 def main() -> int:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
-    validate = subparsers.add_parser("validate")
-    validate.add_argument("manifest")
     blind = subparsers.add_parser("blind")
     blind.add_argument("left")
     blind.add_argument("right")
@@ -129,9 +127,7 @@ def main() -> int:
     summarize_parser.add_argument("manifest")
     args = parser.parse_args()
     try:
-        if args.command == "validate":
-            validate_manifest(Path(args.manifest))
-        elif args.command == "blind":
+        if args.command == "blind":
             create_blind_pack(
                 Path(args.left),
                 Path(args.right),

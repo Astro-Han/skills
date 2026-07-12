@@ -1,13 +1,6 @@
 # Evaluate a skill
 
-Evaluation earns its cost only when it can change a named decision. Before running anything, record:
-
-- the decision;
-- the primary success criterion and evaluation unit;
-- the candidate and fair baseline;
-- how a supporting, refuting, insufficient, or invalid result changes the next action.
-
-If these are not actionable, do not evaluate.
+Evaluation earns its cost only when it can change a named decision. Before running anything, record the decision, success criterion and unit, fair baseline, and how each possible result changes the next action. If these are not actionable, do not evaluate.
 
 ## Protect the comparison
 
@@ -37,7 +30,7 @@ Do not force a winner. Classify the result as supporting, refuting, insufficient
 
 `scripts/eval.py` automates only operations an agent should not recreate ad hoc.
 
-An evaluation manifest names one decision, one numeric metric, the baseline and candidate, and paired values:
+For repeated numeric comparisons, a manifest names one decision, metric, baseline, candidate, and paired values:
 
 ```json
 {
@@ -54,8 +47,6 @@ An evaluation manifest names one decision, one numeric metric, the baseline and 
 Run from the skill directory:
 
 ```bash
-python scripts/eval.py validate eval.json
-
 python scripts/eval.py blind baseline-output candidate-output \
   --review-dir review-pack \
   --key private/answer-key.json
@@ -63,4 +54,4 @@ python scripts/eval.py blind baseline-output candidate-output \
 python scripts/eval.py summarize eval.json
 ```
 
-`summarize` reports the variants' means, sample standard deviations when repeated values exist, and direction-adjusted paired improvement. It does not choose metrics, combine unlike cases, claim significance, or select a winner.
+`summarize` validates the manifest, then reports means, sample standard deviations when repeated values exist, and direction-adjusted paired improvement. It does not choose metrics, combine unlike cases, claim significance, or select a winner.

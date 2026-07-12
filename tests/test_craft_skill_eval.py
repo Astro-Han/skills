@@ -32,7 +32,7 @@ class EvalCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "eval.json"
             path.write_text(json.dumps(manifest), encoding="utf-8")
-            result = self.run_cli("validate", str(path))
+            result = self.run_cli("summarize", str(path))
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("decision", result.stderr)
@@ -52,7 +52,7 @@ class EvalCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "eval.json"
             path.write_text(json.dumps(manifest), encoding="utf-8")
-            result = self.run_cli("validate", str(path))
+            result = self.run_cli("summarize", str(path))
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("same variants", result.stderr)
