@@ -32,8 +32,6 @@ Pause if: [external decision, access, ownership, or high-risk gate].
 Final report: [artifacts changed, checks run, risks, and manual next steps].
 ```
 
-For non-Codex products, replace the first line with `Goal:` and add the target surface only when useful.
-
 ## Judgment
 
 - Make the outcome concrete. Reject vague goals such as “improve everything” until completion can be observed.
@@ -61,4 +59,4 @@ Resolve paths relative to this file:
 python3 scripts/lint_goal.py <goal-file.md>
 ```
 
-Use `python3 scripts/lint_goal.py -` for a contract from stdin. Use `--max-chars N` for a stricter product limit. After changing this skill, run `quick_validate.py` and exercise the linter on representative valid and invalid contracts.
+Use `python3 scripts/lint_goal.py -` for a contract from stdin. Use `--max-chars N` for a stricter product limit.
