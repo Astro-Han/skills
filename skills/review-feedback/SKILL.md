@@ -5,13 +5,13 @@ description: "Evaluate code-review feedback before acting. Use when requesting o
 
 # Review Feedback
 
-Review feedback is a claim to evaluate, not an instruction to obey. Verify first; accept, defer, reject, simplify, or reframe with evidence.
+Review feedback is a claim to evaluate, not an instruction to obey. Verify first, then decide with evidence.
 
 ## 1. Read the whole review
 
-Read all feedback before changing code. Include earlier review rounds and related fixes when available. Group comments that may be symptoms of the same invariant, owner, or boundary.
+Read all feedback before changing code. Include earlier review rounds and related fixes. Group comments that may be symptoms of the same invariant, owner, or boundary.
 
-If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items; do not let an unrelated ambiguity block the whole review.
+If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
 
 ## 2. Verify the claim
 
@@ -26,9 +26,9 @@ For every verified issue, compare:
 - the smallest local change that removes the reported symptom;
 - the smallest change that makes the underlying invariant true at its natural owner and removes the need for sibling fixes.
 
-Prefer the root correction while it remains controlled. Judge size by total codebase cost, not changed lines: duplicated rules, branches, states, API surface, migration, blast radius, testability, and likely review or maintenance rework. A larger diff can be the simpler solution; an abstraction is not cleaner merely because it is more general.
+Prefer the root correction while it remains controlled. Judge size by total codebase cost, not changed lines: duplicated rules, branches, states, API surface, migration, blast radius, testability, and future rework. A larger diff can be the simpler solution; an abstraction is not cleaner merely because it is more general.
 
-A root correction is controlled when it serves the current change's goal, is reversible, has reliable verification, and does not introduce a public-contract, data-migration, security, or operational-risk decision. Implement it directly when authorised to address the review. If those boundaries would be crossed, present the alternatives and use `shape` before expanding scope.
+A root correction is controlled when it serves the current change's goal, is reversible, has reliable verification, and does not introduce a public-contract, data-migration, security, or operational-risk decision. If those boundaries would be crossed, present the alternatives and use `shape` before expanding scope.
 
 Stop making local patches and reassess the system when:
 
