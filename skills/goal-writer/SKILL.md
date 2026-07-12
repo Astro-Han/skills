@@ -1,9 +1,9 @@
 ---
-name: agent-goal-writer
+name: goal-writer
 description: Draft or review bounded, testable goals. Use only when the user explicitly asks to create, revise, or review a goal, invokes `/goal`, or asks to use the goal feature.
 ---
 
-# Agent Goal Writer
+# Goal Writer
 
 Turn rough intent into a copy-ready execution contract. Preserve the user's ambition while making progress observable, reversible, and reviewable. Produce the contract; do not activate it unless explicitly asked.
 

@@ -18,7 +18,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 | Skill | Without it | With it |
 | --- | --- | --- |
-| [`agent-goal-writer`](skills/agent-goal-writer/) | A long-running task starts from vague intent and has no reliable finish line. | It becomes a bounded execution contract with concrete evidence, stop conditions, and human gates. |
+| [`goal-writer`](skills/goal-writer/) | A long-running task starts from vague intent and has no reliable finish line. | It becomes a bounded execution contract with concrete evidence, stop conditions, and human gates. |
 | [`shape`](skills/shape/) | The agent starts building while material design decisions remain hidden. | It walks the design tree with you, resolving one consequential branch at a time. |
 | [`debug`](skills/debug/) | The agent patches the first plausible cause. | It establishes a repeatable signal and uses discriminating evidence before claiming a root cause. |
 | [`tdd`](skills/tdd/) | Tests are written after the implementation and prove little. | The agent watches the predicted RED, writes the minimum GREEN, then refactors safely. |
