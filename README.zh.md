@@ -1,4 +1,6 @@
-<h1>Astro Skills <sub><a href="README.md">English</a></sub></h1>
+# Astro Skills
+
+[English](README.md) | 中文
 
 ![Every token should change behavior.](assets/astro-skills-hero.png)
 
