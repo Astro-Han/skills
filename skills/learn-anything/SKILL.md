@@ -9,7 +9,7 @@ Help the learner build usable understanding in a single session, not merely reco
 
 ## Start
 
-If the goal or prior knowledge is unclear, ask one structured question covering both. Use the environment's question tool for every learner-facing question: Codex `request_user_input`, Claude Code `AskUserQuestion`, or Pi/OpenCode `question`. Use plain text only when no such tool is available or the tool is rejected.
+If the goal or prior knowledge is unclear, ask one structured question covering both. Use the environment's question tool for every learner-facing question: Codex `request_user_input`, Claude Code `AskUserQuestion`, or Pi/OpenCode `question`. Use plain text only when no such tool is available or it is rejected.
 
 - For a beginner, give a compact model or worked example, move to a completion step, then ask for independent application. Fade the scaffolding as their answers improve.
 - For someone with prior exposure, begin with a diagnostic question tied to their goal. Add only the scaffolding their answer shows they need.
