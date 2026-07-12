@@ -23,6 +23,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 | [`debug`](skills/debug/) | The agent patches the first plausible cause. | It establishes a repeatable signal and uses discriminating evidence before claiming a root cause. |
 | [`tdd`](skills/tdd/) | Tests are written after the implementation and prove little. | The agent watches the predicted RED, writes the minimum GREEN, then refactors safely. |
 | [`review-feedback`](skills/review-feedback/) | Review comments are treated as instructions. | Each claim is verified, then fixed, deferred, simplified, or rejected at the right owner. |
+| [`parallel-research`](skills/parallel-research/) | Multiple researchers repeat the same search and multiply confidence, not evidence. | They investigate independent angles while the main agent checks conflicts and decision-critical claims. |
 | [`wrap-up`](skills/wrap-up/) | The session ends with a summary but leaves its own loose ends behind. | The agent verifies the outcome, cleans its footprint, and reports the actual final state. |
 | [`learn-anything`](skills/learn-anything/) | A clear explanation creates the feeling of learning. | Retrieval, application, and teach-back build understanding the learner can actually use. |
 

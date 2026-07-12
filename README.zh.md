@@ -25,6 +25,7 @@
 | [`debug`](skills/debug/) | 看到一个像是原因的地方，马上动手修。 | 先稳定复现，再用能排除其他可能的证据确认根因。 |
 | [`tdd`](skills/tdd/) | 代码写完才补测试，测试只能证明代码现在能跑。 | 先看到符合预期的 RED，再写出最小的 GREEN，最后在测试保护下重构。 |
 | [`review-feedback`](skills/review-feedback/) | 把 review 意见当成命令，别人说什么就改什么。 | 先验证意见是否成立，再决定该改、暂缓、删掉，还是应该反驳。 |
+| [`parallel-research`](skills/parallel-research/) | 几个研究者重复搜索同一个方向，增加的只是信心，不是证据。 | 每个人负责一个独立的证据方向，最后由主 Agent 核对冲突和关键结论。 |
 | [`wrap-up`](skills/wrap-up/) | 总结写完了，自己留下的进程、临时文件或未提交改动却没人管。 | 先核对结果和现场，处理完本次会话留下的问题，再报告最终状态。 |
 | [`learn-anything`](skills/learn-anything/) | 把“听懂了”误当成“学会了”。 | 让学习者自己回忆、应用和复述，直到这份理解真的能拿来用。 |
 
