@@ -16,16 +16,16 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 ## The skills
 
-| Skill | Without it | With it |
+| Skill | Use it when | What you get |
 | --- | --- | --- |
-| [`goal-writer`](skills/goal-writer/) | A long-running task starts from vague intent and has no reliable finish line. | It becomes a bounded execution contract with concrete evidence, stop conditions, and human gates. |
-| [`shape`](skills/shape/) | The agent starts building while material design decisions remain hidden. | It walks the design tree with you, resolving one consequential branch at a time. |
-| [`debug`](skills/debug/) | The agent patches the first plausible cause. | It establishes a repeatable signal and uses discriminating evidence before claiming a root cause. |
-| [`tdd`](skills/tdd/) | Tests are written after the implementation and prove little. | The agent watches the predicted RED, writes the minimum GREEN, then refactors safely. |
-| [`review-feedback`](skills/review-feedback/) | Review comments are treated as instructions. | Each claim is verified, then fixed, deferred, simplified, or rejected at the right owner. |
-| [`parallel-research`](skills/parallel-research/) | Multiple researchers repeat the same search and multiply confidence, not evidence. | They investigate independent angles while the main agent checks conflicts and decision-critical claims. |
-| [`wrap-up`](skills/wrap-up/) | The session ends with a summary but leaves its own loose ends behind. | The agent verifies the outcome, cleans its footprint, and reports the actual final state. |
-| [`learn-anything`](skills/learn-anything/) | A clear explanation creates the feeling of learning. | Retrieval, application, and teach-back build understanding the learner can actually use. |
+| [`goal-writer`](skills/goal-writer/) | You have an ambitious or long-running task, but the finish line is still vague. | A copy-ready execution contract with clear scope, proof of completion, stop conditions, and human gates. |
+| [`shape`](skills/shape/) | Important product or design choices are still open, and choosing silently would change the outcome. | A shared plan you have actually agreed on, reached one consequential branch of the design tree at a time. |
+| [`parallel-research`](skills/parallel-research/) | A high-cost question needs broad, current, trustworthy evidence. | A faster, better-supported answer: independent evidence angles run in parallel, then the main agent cross-checks critical claims and conflicts. |
+| [`learn-anything`](skills/learn-anything/) | You want to genuinely learn or practise something, not just receive an explanation. | Adaptive coaching that uses retrieval, application, and teach-back to build understanding you can actually use. |
+| [`tdd`](skills/tdd/) | You are adding or changing production behavior and need fast, trustworthy feedback. | Small, verified increments: one predicted RED, the minimum GREEN, then safe refactoring before the next behavior. |
+| [`debug`](skills/debug/) | A bug or performance regression needs investigation, not a plausible guess. | A reproducible signal, discriminating evidence, and a root cause checked against the original symptom. |
+| [`review-feedback`](skills/review-feedback/) | Code-review feedback may lead to changes and needs to be evaluated before acting. | An evidence-backed decision for every claim—fix, simplify, defer, or reject it at the layer that actually owns the problem. |
+| [`wrap-up`](skills/wrap-up/) | The work is ending and you want the result finished, not merely summarized. | A closed workstream: promised outcomes verified, session-owned loose ends resolved, and the real final state reported. |
 
 `shape` is the clearest example of the design. Its core is a **design tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it renders the alternatives in HTML because seeing them is more useful than describing them.
 
