@@ -1,6 +1,6 @@
 ---
 name: debug
-description: "Diagnose bugs and performance regressions. Use when a problem requires reproduction, failure-layer isolation, root-cause analysis, or performance investigation. Do not use for a simple explanation of a known error when no diagnosis is requested."
+description: "Diagnose and fix bugs, failures, and performance regressions. Read this skill BEFORE touching any code whenever the user reports a bug, broken behavior, a crash, wrong output, or a regression — even when the cause looks obvious and the user only asked for a fix. Do not use for a simple explanation of a known error when no diagnosis is requested."
 ---
 
 # Debug
