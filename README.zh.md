@@ -1,8 +1,8 @@
 # Astro Skills
 
-[English](README.md)
-
 ![Every token should change behavior.](assets/astro-skills-hero.png)
+
+[English](README.md)
 
 ## 每一个 token，都得起作用。
 
