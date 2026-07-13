@@ -1,6 +1,6 @@
 ---
 name: goal-writer
-description: Draft or review bounded, testable goals. Use only when the user explicitly asks to create, revise, or review a goal, invokes `/goal`, or asks to use the goal feature.
+description: Draft or review minimal, testable goals. Use only when the user explicitly asks to write, revise, or review a goal.
 ---
 
 # Goal Writer
@@ -9,44 +9,33 @@ Turn rough intent into the smallest copy-ready execution contract that makes com
 
 ## Draft
 
-1. Choose the target surface. Use `/goal` only for Codex or a product that supports it; otherwise use `Goal:` or the product's native format. Match the user's language.
-2. Read cheap, relevant context first: the request, named sources, repo instructions, current state, and known verification commands. Distinguish facts from assumptions.
-3. Ask only when missing information materially changes scope, risk, ownership, cost, or product direction. State low-risk assumptions and continue.
-4. Preserve the requested ambition. Do not silently reduce a complete product to a demo, invent a quota or time limit, or turn a risky final objective into discovery only.
-5. Write one coherent acceptance decision containing:
-   - the observable result that should exist; and
-   - the criterion for accepting that result as complete.
-6. Add another fact only when deleting it would change the goal's meaning, authorization, or real-world risk. State the specific boundary directly; do not add empty headings or a standard field list.
-7. Run the linter before returning the contract. The linter catches mechanical defects; it does not prove that the result or acceptance criterion is sufficient.
+1. Look up facts in the request, named sources, and available environment instead of asking or inventing them. Ask only for user-owned decisions that materially change the contract; state reversible assumptions.
+2. Preserve the requested outcome. Do not invent limits or substitute a safer intermediate objective.
+3. Write one coherent acceptance decision containing the observable result that should exist and the criterion for accepting it as complete.
+4. Add another fact only when deleting it would change the goal's meaning, authorization, or real-world risk. State the boundary directly instead of creating a field for it.
 
-The acceptance criterion is the rule defined before execution. Tests, screenshots, logs, diffs, artifacts, or external state observed afterward are evidence used to apply that rule. One acceptance decision may require several conditions to hold together; partial progress is not completion.
+Define acceptance before execution. Completion requires evidence that every necessary condition holds; partial progress is not completion.
+
+For open-ended research or long search tasks, read [the CDC prompt case](references/cdc-case.md) to see how a real goal excludes plausible false completions and governs evidence-seeking iteration.
 
 ## Examples
 
-A routine goal can be one line:
+A routine goal can be one sentence:
 
 ```text
-/goal 修复登录超时后的错误跳转；完成以新增回归测试通过且正常登录测试仍通过为准。
+修复登录超时后的错误跳转；完成以新增回归测试通过且正常登录测试仍通过为准。
 ```
 
 A real authorization boundary earns one additional sentence, not a new template:
 
 ```text
-Goal: Prepare the customer-data migration and make its dry run pass against the approved fixture with a reviewed rollback plan. Do not execute the production migration without explicit approval.
+Prepare the customer-data migration and make its dry run pass against the approved fixture with a reviewed rollback plan. Do not execute the production migration without explicit approval.
 ```
 
-These examples demonstrate the required meaning, not a required structure. Context, scope, non-goals, constraints, iteration instructions, pause conditions, and report formats belong in a goal only when the specific task needs them to prevent a different interpretation, an unauthorized action, or a false completion claim. Otherwise omit them. Domain workflows belong to the relevant task skill and repository instructions.
+The examples show required meaning, not required structure. Domain workflows belong to the relevant task skill and repository instructions.
 
-## Output
+## Output and validation
 
-Keep the contract within the target product's limit; use 4000 characters as the default hard ceiling. Return the contract first. Add only short notes explaining a consequential assumption or boundary. If the user asks for just the goal, return only the contract.
+Aim for at most 1000 characters. Return only the contract unless a consequential assumption must be disclosed or the user asks for explanation.
 
-## Validate
-
-Resolve paths relative to this file:
-
-```bash
-python3 scripts/lint_goal.py <goal-file.md>
-```
-
-Use `python3 scripts/lint_goal.py -` for stdin and `--max-chars N` for a stricter product limit.
+Run `python3 scripts/lint_goal.py -` with the contract on stdin, or pass one or more files. The linter rejects empty contracts, explicit placeholder tokens, and text over 4000 characters; it warns above 2000. Use `--max-chars N` when the target has a stricter hard limit.

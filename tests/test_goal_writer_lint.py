@@ -19,9 +19,9 @@ class GoalLintCliTests(unittest.TestCase):
             check=False,
         )
 
-    def test_accepts_a_minimal_goal_without_section_headings(self) -> None:
+    def test_accepts_a_goal_without_transport_syntax(self) -> None:
         result = self.run_stdin(
-            "/goal 修复登录超时后的错误跳转；回归测试证明超时会返回登录页，且正常登录仍通过。"
+            "修复登录超时后的错误跳转；回归测试证明超时会返回登录页，且正常登录仍通过。"
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -33,35 +33,47 @@ class GoalLintCliTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_rejects_an_empty_goal(self) -> None:
-        result = self.run_stdin("/goal")
+    def test_warns_when_a_goal_exceeds_2000_characters(self) -> None:
+        result = self.run_stdin("x" * 2001)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("warning", result.stderr)
+        self.assertIn("2001", result.stderr)
+
+    def test_rejects_a_goal_over_4000_characters(self) -> None:
+        result = self.run_stdin("x" * 4001)
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Goal outcome is empty", result.stderr)
+        self.assertIn("4001", result.stderr)
+        self.assertIn("hard limit", result.stderr)
 
-    def test_rejects_an_unresolved_placeholder(self) -> None:
-        result = self.run_stdin("/goal Fix [one issue] and prove the regression test passes.")
+    def test_rejects_an_empty_goal(self) -> None:
+        result = self.run_stdin("  \n")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Goal contract is empty", result.stderr)
+
+    def test_allows_a_concrete_bracketed_reference(self) -> None:
+        result = self.run_stdin("修复 [issue #123]；对应回归测试通过。")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_rejects_an_explicit_placeholder(self) -> None:
+        result = self.run_stdin("修复 TODO；对应回归测试通过。")
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Unresolved placeholder", result.stderr)
 
-    def test_rejects_an_explicitly_vague_instruction(self) -> None:
-        result = self.run_stdin("/goal Fix everything until the full test suite passes.")
+    def test_does_not_guess_whether_goal_language_is_vague(self) -> None:
+        result = self.run_stdin(
+            "Fix everything reported in issues #1–#3; all three regression tests and the full suite pass."
+        )
 
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("Dangerous vague instruction", result.stderr)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_file_mode_accepts_a_complete_legacy_contract(self) -> None:
-        goal = """/goal Repair the login timeout redirect without changing normal login behavior.
-Context: Read the failing route test and current authentication handler.
-Scope: Correct the redirect at the lowest responsible layer.
-Non-goals: Do not redesign unrelated authentication screens.
-Constraints: Preserve the public session contract and existing route ownership.
-Verification: Run the focused regression test and the full authentication suite.
-Iteration: Use each failing assertion to revisit the current root-cause hypothesis.
-Stop when: The timeout regression and full authentication suite pass.
-Pause if: Production credentials or a destructive data migration becomes necessary.
-Final report: Summarize the changed files and test results.
+    def test_file_mode_accepts_a_multiline_contract(self) -> None:
+        goal = """Repair the login timeout redirect without changing normal login behavior.
+Completion requires the focused regression test and full authentication suite to pass.
 """
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "goal.md"
