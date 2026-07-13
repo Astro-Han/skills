@@ -1,36 +1,50 @@
 ---
 name: review-feedback
-description: "Evaluate code-review feedback before acting. Use when requesting or receiving review feedback that may lead to code changes, including PR comments, review-tool findings, external-model reviews, and delegated-reviewer results. Do not use for a fresh review whose findings will only be reported, ordinary bug reports, or requirement changes."
+description: "Evaluate review feedback before changing code. Use whenever PR comments, review tools, external models such as invoke, or delegated reviewers have returned findings that may be fixed, applied, addressed, or rejected. Do not use to perform a fresh review, diagnose an ordinary bug, or handle a new requirement."
 ---
 
 # Review Feedback
 
-Review feedback is a claim to evaluate, not an instruction to obey. Verify first, then decide with evidence.
+A review is evidence about one system, not a queue of independent patches. Do not edit until you have a system-level repair plan.
 
-## 1. Read the whole review
+## 1. Model the whole change
 
-Read all feedback before changing code. Include earlier review rounds and related fixes. Group comments that may be symptoms of the same invariant, owner, or boundary.
+Read the full review, diff or intended change, earlier rounds, and related fixes. Trace affected callers, state, and boundaries far enough to explain how the system should work.
+
+Group findings by shared invariant, owner, boundary, duplicated rule, invalid state, or missing verification seam. Form one repair hypothesis per group. Treat a finding as isolated only when the traced system shows no shared cause.
 
 If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
 
-## 2. Verify the claim
+Done: every finding belongs to a repair hypothesis or is demonstrably isolated.
 
-Open the cited code and trace the real path. Reproduce the issue or run the closest existing test when possible. Check requirements, project conventions, target versions, history, and current behavior rather than generic best practice.
+## 2. Verify the model
 
-Before expanding scope, search for actual callers, users, and specifications. No demand may mean the right change is deletion, not a more elaborate implementation.
+Trace each claim through real code. Reproduce it or run the closest existing test when possible. Check requirements, conventions, target versions, history, and current behavior rather than generic best practice. Use the evidence to confirm, revise, merge, or reject its repair hypothesis.
 
-## 3. Choose the right layer
+Before expanding scope, search for actual callers, users, and specifications. No demand may make deletion better than a broader implementation.
 
-For every verified issue, compare:
+Classify each finding without inheriting the reviewer's severity or implementation:
+
+- **Fix at the owner** — make the invariant true at its narrowest responsible boundary.
+- **Fix locally** — the symptom is isolated and deeper work adds more system cost than it removes.
+- **Delete or simplify** — the path or abstraction lacks enough demand.
+- **Defer** — true but low priority or outside scope; record why without adding code.
+- **Push back** — false, overstated, speculative, incompatible, or disproportionate.
+
+Done: every claim has decisive evidence or an explicit gap, and the surviving hypotheses explain all coupled findings without contradiction.
+
+## 3. Choose one repair plan
+
+For each verified hypothesis, compare:
 
 - the smallest local change that removes the reported symptom;
 - the smallest change that makes the underlying invariant true at its natural owner and removes the need for sibling fixes.
 
-Prefer the root correction while it remains controlled. Judge size by total codebase cost, not changed lines: duplicated rules, branches, states, API surface, migration, blast radius, testability, and future rework. A larger diff can be the simpler solution; an abstraction is not cleaner merely because it is more general.
+Prefer the root correction while controlled: it serves the current goal, is reversible and reliably verifiable, and adds no public-contract, migration, security, or operational-risk decision. Otherwise present the alternatives and use `shape` before expanding scope.
 
-A root correction is controlled when it serves the current change's goal, is reversible, has reliable verification, and does not introduce a public-contract, data-migration, security, or operational-risk decision. If those boundaries would be crossed, present the alternatives and use `shape` before expanding scope.
+Judge size by total system cost, not changed lines: duplicated rules, branches, states, API surface, blast radius, testability, and future rework. A larger diff can be simpler; an abstraction is not cleaner merely because it is general.
 
-Stop making local patches and reassess the system when:
+Reject the local-patch plan and reassess the owner when:
 
 - the same issue class reaches the same seam a second time;
 - a review-response round leaves the prior issue unresolved or produces an adjacent symptom;
@@ -38,30 +52,16 @@ Stop making local patches and reassess the system when:
 
 Trace where the invariant should live. Consider deleting the unnecessary path, consolidating representations, moving enforcement to the owner, making invalid states unrepresentable, or fixing the test seam. Do not wait for a third patch.
 
-## 4. Decide the outcome
+Done: the plan names the owning layer, dependency order, verification seam, and outcome of every finding. If several local edits enforce the same rule, reassess.
 
-Do not inherit the reviewer's severity, priority, or proposed implementation. Re-evaluate truth, reach, impact, reversibility, and proportion. A rare case can still be critical when it risks security, money, or data.
+## 4. Execute and close
 
-Choose one outcome:
+Lead with the decision and decisive evidence. When local and root solutions differ materially, name the chosen layer and why. Ground pushback in a conflicting test, requirement, usage, version, or cost. Avoid praise, agreement theater, and defensive prose.
 
-- **Fix at the owner** — correct the invariant at the narrowest responsible boundary.
-- **Fix locally** — the symptom is isolated and a deeper change would add more system cost than it removes.
-- **Defer** — true but currently low priority or outside the requested scope; record the reason without adding code.
-- **Push back** — false, overstated, speculative without demand, incompatible with project constraints, or more complex to fix than its impact warrants.
-- **Delete or simplify** — the path or abstraction lacks enough demand to justify its maintenance cost.
+Implement only when the user asked to address, apply, or fix the feedback. Execute the plan in dependency order, one observable behavior at a time. Use `tdd` with a stable test seam; otherwise use the nearest trustworthy verification. Do not implement unverified, deferred, or out-of-scope suggestions.
 
-## 5. Respond with evidence
-
-Lead with the decision and decisive evidence. When local and root solutions materially differ, state which layer you chose and why. For pushback, name the conflicting test, requirement, usage evidence, version, or complexity trade-off. For an ambiguous item, ask only what changes the decision.
-
-Do not praise the reviewer, perform agreement, or write defensive prose. If later evidence overturns your pushback, state the correction in one sentence and proceed.
-
-## 6. Implement and close the loop
-
-Implement when the user asked to address, apply, or fix the feedback. Work in dependency order and one observable behavior at a time. Use `tdd` when the change has a stable test seam; otherwise use the nearest trustworthy verification. Do not implement unverified, deferred, or out-of-scope suggestions.
-
-After a root correction, search sibling paths for the superseded rule and verify the invariant at its owner. Remove obsolete branches or helpers made unnecessary by the fix; do not leave both the old patch path and the new source of truth.
+After a root correction, search sibling paths for the superseded rule, verify the invariant at its owner, and remove obsolete branches or helpers. Do not leave the old patch path beside the new source of truth.
 
 For GitHub inline feedback, reply inside the thread and resolve it once the issue is settled. If the reply asks for clarification or awaits a decision, leave it open.
 
-Done means every item is classified, implemented changes are verified at the chosen layer, repeated symptoms no longer require sibling patches, and deferred, rejected, blocked, or deleted items have a concise evidence-backed reason.
+Done: every item is classified; changes are verified at the chosen layer; repeated symptoms need no sibling patches; and every non-fix has a concise evidence-backed reason.
