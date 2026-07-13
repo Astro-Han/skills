@@ -20,7 +20,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 | Skill | Use it when | What you get |
 | --- | --- | --- |
-| [`goal-writer`](skills/goal-writer/) | You have an ambitious or long-running task, but the finish line is still vague. | A copy-ready execution contract with clear scope, proof of completion, stop conditions, and human gates. |
+| [`goal-writer`](skills/goal-writer/) | You have an ambitious or long-running task, but the finish line is still vague. | A minimal execution contract that states the observable result, its acceptance criterion, and only the boundaries the task truly needs. |
 | [`shape`](skills/shape/) | Important product or design choices are still open, and choosing silently would change the outcome. | A shared plan you have actually agreed on, reached one consequential branch of the design tree at a time. |
 | [`craft-skill`](skills/craft-skill/) | You want to create or improve a reusable agent skill and need to know whether its instructions earn their context. | A platform-valid skill shaped through Call and Steer, with every token, evaluation, and line of code held to Earn. |
 | [`parallel-research`](skills/parallel-research/) | A high-cost question needs broad, current, trustworthy evidence. | A faster, better-supported answer: independent evidence angles run in parallel, then the main agent cross-checks critical claims and conflicts. |

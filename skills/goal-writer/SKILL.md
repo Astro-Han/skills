@@ -5,51 +5,41 @@ description: Draft or review bounded, testable goals. Use only when the user exp
 
 # Goal Writer
 
-Turn rough intent into a copy-ready execution contract. Preserve the user's ambition while making progress observable, reversible, and reviewable. Produce the contract; do not activate it unless explicitly asked.
+Turn rough intent into the smallest copy-ready execution contract that makes completion decidable. Produce the contract; do not activate it unless explicitly asked.
 
 ## Draft
 
 1. Choose the target surface. Use `/goal` only for Codex or a product that supports it; otherwise use `Goal:` or the product's native format. Match the user's language.
-2. Read cheap, relevant context first: the request, named files or links, repo instructions, current state, and known verification commands. Distinguish facts from assumptions.
+2. Read cheap, relevant context first: the request, named sources, repo instructions, current state, and known verification commands. Distinguish facts from assumptions.
 3. Ask only when missing information materially changes scope, risk, ownership, cost, or product direction. State low-risk assumptions and continue.
-4. Keep the requested outcome. Do not silently turn a complete product into a demo, an open production window into an arbitrary quota, or a risky objective into discovery only. Gate risky execution instead.
-5. Draft the smallest contract that changes agent behavior. Run the linter before returning it.
+4. Preserve the requested ambition. Do not silently reduce a complete product to a demo, invent a quota or time limit, or turn a risky final objective into discovery only.
+5. Write one coherent acceptance decision containing:
+   - the observable result that should exist; and
+   - the criterion for accepting that result as complete.
+6. Add another fact only when deleting it would change the goal's meaning, authorization, or real-world risk. State the specific boundary directly; do not add empty headings or a standard field list.
+7. Run the linter before returning the contract. The linter catches mechanical defects; it does not prove that the result or acceptance criterion is sufficient.
 
-## Contract
+The acceptance criterion is the rule defined before execution. Tests, screenshots, logs, diffs, artifacts, or external state observed afterward are evidence used to apply that rule. One acceptance decision may require several conditions to hold together; partial progress is not completion.
 
-Use one compact line per field when possible:
+## Examples
+
+A routine goal can be one line:
 
 ```text
-/goal [one concrete outcome].
-Context: [minimum sources and current state to inspect first].
-Scope: [desired outcome, allowed work, and meaningful boundaries].
-Non-goals: [plausible adjacent work that is intentionally excluded].
-Constraints: [non-obvious contracts, safety rules, or topology limits].
-Verification: [commands and observable evidence that prove completion].
-Iteration: [how to narrow failures and continue using new evidence].
-Stop when: [mechanically checkable completion or exhaustion condition].
-Pause if: [external decision, access, ownership, or high-risk gate].
-Final report: [artifacts changed, checks run, risks, and manual next steps].
+/goal 修复登录超时后的错误跳转；完成以新增回归测试通过且正常登录测试仍通过为准。
 ```
 
-## Judgment
+A real authorization boundary earns one additional sentence, not a new template:
 
-- Make the outcome concrete. Reject vague goals such as “improve everything” until completion can be observed.
-- Keep context minimal. If a command is unknown, require discovery instead of inventing it.
-- Include only non-goals a reasonable agent might otherwise attempt and constraints that alter behavior.
-- Name verification evidence such as tests, screenshots, logs, diffs, artifacts, or external state. Never weaken validators to make the goal pass.
-- Make iteration evidence-seeking, not “keep trying.” Ordinary difficulty and test failures belong here or in `Stop when`, not `Pause if`.
-- Reserve `Pause if` for human choices, credentials, production data, destructive or public actions, paid services, unclear ownership, and comparable external gates.
-- Preserve user-supplied counts or time windows. Do not invent caps. Bound open-ended work by candidate exhaustion, verification, conflicts, ownership, review overhead, or repeated non-narrowing failure.
-- Default PR work to independent, reviewable changes. Do not authorize review, approval, merge, release, force-push, or remote deletion unless explicitly requested and appropriately gated.
+```text
+Goal: Prepare the customer-data migration and make its dry run pass against the approved fixture with a reviewed rollback plan. Do not execute the production migration without explicit approval.
+```
 
-Read only the matching section of [references/patterns.md](references/patterns.md) for PR batches, product/UI builds, bug fixes, high-risk work, or skill creation.
+These examples demonstrate the required meaning, not a required structure. Context, scope, non-goals, constraints, iteration instructions, pause conditions, and report formats belong in a goal only when the specific task needs them to prevent a different interpretation, an unauthorized action, or a false completion claim. Otherwise omit them. Domain workflows belong to the relevant task skill and repository instructions.
 
-## Length and output
+## Output
 
-Keep the pasteable contract within the target product's limit. Treat 4000 characters as the default hard ceiling; aim for six to ten short lines and preserve `Stop when` and `Pause if` when trimming.
-
-Return the contract first. Add only short design notes that explain consequential scope, verification, or gates. If the user asks for just the goal, return only the contract.
+Keep the contract within the target product's limit; use 4000 characters as the default hard ceiling. Return the contract first. Add only short notes explaining a consequential assumption or boundary. If the user asks for just the goal, return only the contract.
 
 ## Validate
 
@@ -59,4 +49,4 @@ Resolve paths relative to this file:
 python3 scripts/lint_goal.py <goal-file.md>
 ```
 
-Use `python3 scripts/lint_goal.py -` for a contract from stdin. Use `--max-chars N` for a stricter product limit.
+Use `python3 scripts/lint_goal.py -` for stdin and `--max-chars N` for a stricter product limit.

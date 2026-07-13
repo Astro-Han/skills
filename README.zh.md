@@ -22,7 +22,7 @@
 
 | Skill | 什么时候用 | 你会得到什么 |
 | --- | --- | --- |
-| [`goal-writer`](skills/goal-writer/) | 你有一个有野心或需要长期推进的任务，但终点还很模糊。 | 一份可以直接使用的执行契约，写清范围、完成证据、停止条件，以及必须由人把关的节点。 |
+| [`goal-writer`](skills/goal-writer/) | 你有一个有野心或需要长期推进的任务，但终点还很模糊。 | 一份最小执行契约，写清可观察结果、接受判据，以及当前任务真正需要的边界。 |
 | [`shape`](skills/shape/) | 产品或设计还有关键选择没定，而 Agent 自己猜会真正改变结果。 | 一份你确实参与决定并同意的方案；沿着 design tree，每次只解决一个影响结果的分支。 |
 | [`craft-skill`](skills/craft-skill/) | 你想创建或改进一个可复用的 Agent skill，也想知道它的指令是否值得占用上下文。 | 一份符合目标平台的 skill：用 Call 找对任务，用 Steer 把行动带到真正完成，再让每个 token、每次评测和每行代码通过 Earn。 |
 | [`parallel-research`](skills/parallel-research/) | 一个重要问题需要广泛、最新且可信的证据。 | 更快得到覆盖充分、证据更扎实的答案：并行调查不同证据方向，再由主 Agent 交叉核验关键结论与冲突。 |
