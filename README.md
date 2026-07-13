@@ -34,6 +34,24 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 ## Install
 
+### GitHub CLI
+
+With [GitHub CLI](https://cli.github.com/manual/gh_skill) v2.90.0 or later, install all skills for Codex:
+
+```bash
+gh skill install Astro-Han/skills --all --agent codex --scope user
+```
+
+Or install one:
+
+```bash
+gh skill install Astro-Han/skills shape --agent codex --scope user
+```
+
+Replace `codex` with your agent host, or use `--scope project` for a repository-local installation.
+
+### Skills CLI
+
 Install all skills:
 
 ```bash

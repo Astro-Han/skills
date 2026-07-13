@@ -36,6 +36,24 @@
 
 ## 安装
 
+### GitHub CLI
+
+使用 v2.90.0 或更高版本的 [GitHub CLI](https://cli.github.com/manual/gh_skill)，为 Codex 安装全部 skills：
+
+```bash
+gh skill install Astro-Han/skills --all --agent codex --scope user
+```
+
+也可以只装一个：
+
+```bash
+gh skill install Astro-Han/skills shape --agent codex --scope user
+```
+
+如果使用其他 Agent，请替换 `codex`；如果只想在当前仓库中安装，请改用 `--scope project`。
+
+### Skills CLI
+
 安装全部 skills：
 
 ```bash
