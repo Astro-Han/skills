@@ -1,11 +1,11 @@
 ---
 name: shape
-description: "Interview the user to stress-test a plan, decision, or idea and resolve material user-owned decisions before acting. Use when multiple reasonable choices would materially change scope, cost, reversibility, or outcome, or when the user asks to brainstorm, shape, or grill an idea. Do not use when facts can resolve the ambiguity or a reversible assumption would not materially affect the result."
+description: "Interview the user to resolve material branches of a decision tree and converge on a shared plan before acting. Use when multiple reasonable choices would materially change scope, cost, reversibility, or outcome, or when the user asks to brainstorm, shape, or grill an idea. Do not use when facts can resolve the ambiguity or a reversible assumption would not materially affect the result."
 ---
 
 # Shape
 
-Interview the user about every material aspect until you reach a shared understanding. Walk down each material branch of the decision tree, resolving dependencies between decisions one by one. For each question, provide your recommended answer.
+Walk down each material branch of the decision tree until you reach a shared understanding, resolving dependencies between decisions one by one. For each question, provide your recommended answer.
 
 Ask questions one at a time, waiting for feedback before continuing. Asking multiple questions at once is bewildering.
 
