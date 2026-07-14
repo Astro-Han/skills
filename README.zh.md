@@ -23,7 +23,7 @@
 | Skill | 什么时候用 | 你会得到什么 |
 | --- | --- | --- |
 | [`goal-writer`](skills/goal-writer/) | 你有一个有野心或需要长期推进的任务，但终点还很模糊。 | 一份最小执行契约，写清可观察结果、接受判据，以及当前任务真正需要的边界。 |
-| [`shape`](skills/shape/) | 产品或设计还有关键选择没定，而 Agent 自己猜会真正改变结果。 | 一份你确实参与决定并同意的方案；沿着 design tree，每次只解决一个影响结果的分支。 |
+| [`shape`](skills/shape/) | 方案、决定或想法需要推敲，而 Agent 自己猜会真正改变结果。 | 一份你确实参与决定并同意的方案；沿着 decision tree，每次只解决一个影响结果的分支。 |
 | [`craft-skill`](skills/craft-skill/) | 你想创建或改进一个可复用的 Agent skill，也想知道它的指令是否值得占用上下文。 | 一份符合目标平台的 skill：用 Call 找对任务，用 Steer 把行动带到真正完成，再让每个 token、每次评测和每行代码通过 Earn。 |
 | [`parallel-research`](skills/parallel-research/) | 一个重要问题需要广泛、最新且可信的证据。 | 更快得到覆盖充分、证据更扎实的答案：并行调查不同证据方向，再由主 Agent 交叉核验关键结论与冲突。 |
 | [`learn-anything`](skills/learn-anything/) | 你想真正学会或练习一个主题，而不只是听一遍解释。 | 根据你的水平实时调整的辅导，通过主动回忆、应用和复述，建立真正能用的理解。 |
@@ -32,7 +32,7 @@
 | [`review-feedback`](skills/review-feedback/) | code review 意见可能引发代码改动，需要先判断再行动。 | 对每条意见做出有证据的决定：在真正负责问题的层次修复、简化、暂缓，或明确拒绝。 |
 | [`wrap-up`](skills/wrap-up/) | 工作即将结束，你要的是确实完成，而不只是一段总结。 | 一个真正收好的工作现场：承诺的结果经过验证，本次会话留下的问题得到处理，最终状态如实报告。 |
 
-`shape` 最能代表这套思路。它真正重要的只有 design tree：凡是会把方案带向不同方向的选择，都应该拿出来和用户逐项确认，而不是让模型悄悄替用户做决定。如果要选的是界面、布局或其他视觉方案，就直接做成 HTML 给人看。能看，就别只靠说。
+`shape` 最能代表这套思路。它真正重要的只有 decision tree：凡是会把方案带向不同方向的选择，都应该拿出来和用户逐项确认，而不是让模型悄悄替用户做决定。如果要选的是界面、布局或其他视觉方案，就直接做成 HTML 给人看。能看，就别只靠说。
 
 ## 安装
 
@@ -81,7 +81,7 @@ npx skills add Astro-Han/skills --skill shape
 
 - `learn-anything` 和 `wrap-up` 是我从自己的工作流里做出来的原创 skills。
 - `craft-skill` 借鉴了 [OpenAI 的 `skill-creator`](https://github.com/openai/skills/tree/main/skills/.system/skill-creator)、[Anthropic 的 `skill-creator`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator)、Matt Pocock 的 [`writing-great-skills`](https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-great-skills) 和 Superpowers 的 [`writing-skills`](https://github.com/obra/superpowers-skills/tree/main/skills/meta/writing-skills)。它没有叠加四套流程，而是围绕三个约束重新构建：为正确的任务 Call skill，用 Steer 把 Agent 带到真正完成，并让每个 token Earn 自己的位置。
-- `shape` 借鉴了 Matt Pocock 的 [`grill-me`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me)。遇到视觉选择时直接展示方案，这一点来自 Superpowers 的 [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming)。
+- `shape` 借鉴了 Matt Pocock 的 [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling)。遇到视觉选择时直接展示方案，这一点来自 Superpowers 的 [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming)。
 - `tdd` 借鉴了 Matt Pocock 的 [`tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)。
 - `debug` 参考了 Matt Pocock 的 [`diagnosing-bugs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs)、Superpowers 的 [`systematic-debugging`](https://github.com/obra/superpowers/tree/main/skills/systematic-debugging) 和 Waza 的 [`hunt`](https://github.com/tw93/Waza/tree/main/skills/hunt)。我有意删掉了其中不少流程，只留下最小的证据链。
 - `review-feedback` 最初参考了 Superpowers 的 [`receiving-code-review`](https://github.com/obra/superpowers/tree/main/skills/receiving-code-review)，后来围绕证据、职责、改动范围和系统成本重新写过，现在已经很不一样了。

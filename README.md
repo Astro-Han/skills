@@ -21,7 +21,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 | Skill | Use it when | What you get |
 | --- | --- | --- |
 | [`goal-writer`](skills/goal-writer/) | You have an ambitious or long-running task, but the finish line is still vague. | A minimal execution contract that states the observable result, its acceptance criterion, and only the boundaries the task truly needs. |
-| [`shape`](skills/shape/) | Important product or design choices are still open, and choosing silently would change the outcome. | A shared plan you have actually agreed on, reached one consequential branch of the design tree at a time. |
+| [`shape`](skills/shape/) | A plan, decision, or idea needs stress-testing because choosing silently would change the outcome. | A shared plan you have actually agreed on, reached one consequential branch of the decision tree at a time. |
 | [`craft-skill`](skills/craft-skill/) | You want to create or improve a reusable agent skill and need to know whether its instructions earn their context. | A platform-valid skill shaped through Call and Steer, with every token, evaluation, and line of code held to Earn. |
 | [`parallel-research`](skills/parallel-research/) | A high-cost question needs broad, current, trustworthy evidence. | A faster, better-supported answer: independent evidence angles run in parallel, then the main agent cross-checks critical claims and conflicts. |
 | [`learn-anything`](skills/learn-anything/) | You want to genuinely learn or practise something, not just receive an explanation. | Adaptive coaching that uses retrieval, application, and teach-back to build understanding you can actually use. |
@@ -30,7 +30,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 | [`review-feedback`](skills/review-feedback/) | Code-review feedback may lead to changes and needs to be evaluated before acting. | An evidence-backed decision for every claim—fix, simplify, defer, or reject it at the layer that actually owns the problem. |
 | [`wrap-up`](skills/wrap-up/) | The work is ending and you want the result finished, not merely summarized. | A closed workstream: promised outcomes verified, session-owned loose ends resolved, and the real final state reported. |
 
-`shape` is the clearest example of the design. Its core is a **design tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it renders the alternatives in HTML because seeing them is more useful than describing them.
+`shape` is the clearest example of the design. Its core is a **decision tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it renders the alternatives in HTML because seeing them is more useful than describing them.
 
 ## Install
 
@@ -79,7 +79,7 @@ Every line competes for limited context. If removing it does not make the agent 
 
 - `learn-anything` and `wrap-up` are original skills developed from my own workflows.
 - `craft-skill` draws from [OpenAI's `skill-creator`](https://github.com/openai/skills/tree/main/skills/.system/skill-creator), [Anthropic's `skill-creator`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator), Matt Pocock's [`writing-great-skills`](https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-great-skills), and Superpowers' [`writing-skills`](https://github.com/obra/superpowers-skills/tree/main/skills/meta/writing-skills). It rebuilds their strongest ideas around three constraints: call the right skill, steer the agent to genuine completion, and make every token earn its place.
-- `shape` is inspired by Matt Pocock's [`grill-me`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me). Its visual-decision rule also carries forward an idea from Superpowers' [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming) workflow.
+- `shape` is inspired by Matt Pocock's [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling). Its visual-decision rule also carries forward an idea from Superpowers' [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming) workflow.
 - `tdd` is inspired by Matt Pocock's [`tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd).
 - `debug` draws from Matt Pocock's [`diagnosing-bugs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs), Superpowers' [`systematic-debugging`](https://github.com/obra/superpowers/tree/main/skills/systematic-debugging), and Waza's [`hunt`](https://github.com/tw93/Waza/tree/main/skills/hunt). It deliberately reduces those approaches to a smaller evidence-driven core.
 - `review-feedback` began with ideas from Superpowers' [`receiving-code-review`](https://github.com/obra/superpowers/tree/main/skills/receiving-code-review), but has since been substantially rewritten around evidence, ownership, scope, and system cost.
