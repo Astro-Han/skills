@@ -5,24 +5,31 @@ description: "Use this skill whenever code-review feedback already exists and ma
 
 # Review Feedback
 
-Review feedback is a claim to evaluate, not an instruction to obey. Verify first, then decide with evidence.
+Review feedback is evidence about one system, not a queue of patches. Adjudicate the reported problem and the proposed remedy separately before editing.
 
-## 1. Read the whole review
+## 1. Model the whole review
 
-Read all feedback before changing code. Include earlier review rounds and related fixes. Group comments that may be symptoms of the same invariant, owner, or boundary.
+Read all feedback, the intended change, earlier review rounds, and related fixes before changing code. Group comments that may be symptoms of the same invariant, owner, boundary, duplicated rule, invalid state, or missing verification seam. Treat a comment as isolated only when tracing shows no shared cause.
 
 If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
 
-## 2. Verify the claim
+Done: every comment belongs to a shared issue hypothesis or is demonstrably isolated.
 
-Open the cited code and trace the real path. Reproduce the issue or run the closest existing test when possible. Check requirements, project conventions, target versions, history, and current behavior rather than generic best practice.
+## 2. Try to disprove the claim
+
+Open the cited code and trace the real path. State the concrete failure, contract violation, or maintenance consequence the claim predicts, then check the strongest available counterevidence: callers, tests, requirements, project conventions, target versions, history, and current behavior. Reproduce the issue or run the closest existing test when possible. Missing evidence is a gap, not confirmation.
 
 Before expanding scope, search for actual callers, users, and specifications. No demand may mean the right change is deletion, not a more elaborate implementation.
+
+Judge the proposed cause, severity, and implementation independently. A real symptom does not make the reviewer's explanation or patch correct.
+
+Done: every issue hypothesis is verified, disproved, or has an explicit evidence gap; surviving hypotheses explain their grouped comments without contradiction.
 
 ## 3. Choose the right layer
 
 For every verified issue, compare:
 
+- leaving behavior unchanged and pushing back or deferring;
 - the smallest local change that removes the reported symptom;
 - the smallest change that makes the underlying invariant true at its natural owner and removes the need for sibling fixes.
 
@@ -38,17 +45,21 @@ Stop making local patches and reassess the system when:
 
 Trace where the invariant should live. Consider deleting the unnecessary path, consolidating representations, moving enforcement to the owner, making invalid states unrepresentable, or fixing the test seam. Do not wait for a third patch.
 
-## 4. Decide the outcome
+## 4. Adjudicate before editing
 
 Do not inherit the reviewer's severity, priority, or proposed implementation. Re-evaluate truth, reach, impact, reversibility, and proportion. A rare case can still be critical when it risks security, money, or data.
 
-Choose one outcome:
+Before any edit, produce a concise decision ledger for the grouped issues: decisive evidence, underlying invariant and natural owner, and one outcome. Map every original comment to a group so none becomes an implicit patch instruction.
+
+Choose one outcome per group:
 
 - **Fix at the owner** — correct the invariant at the narrowest responsible boundary.
 - **Fix locally** — the symptom is isolated and a deeper change would add more system cost than it removes.
 - **Defer** — true but currently low priority or outside the requested scope; record the reason without adding code.
-- **Push back** — false, overstated, speculative without demand, incompatible with project constraints, or more complex to fix than its impact warrants.
+- **Push back** — false, overstated, unsupported, incompatible with project constraints, or more complex to fix than its impact warrants.
 - **Delete or simplify** — the path or abstraction lacks enough demand to justify its maintenance cost.
+
+When the issue is valid but the proposed patch is not, accept the issue and explicitly reject that implementation in favor of the chosen owner or local fix. Do not edit until every item is accounted for.
 
 ## 5. Respond with evidence
 
@@ -58,7 +69,7 @@ Do not praise the reviewer, perform agreement, or write defensive prose. If late
 
 ## 6. Implement and close the loop
 
-Implement when the user asked to address, apply, or fix the feedback. Work in dependency order and one observable behavior at a time. Use `tdd` when the change has a stable test seam; otherwise use the nearest trustworthy verification. Do not implement unverified, deferred, or out-of-scope suggestions.
+Implement when the user asked to address, apply, or fix the feedback. Work in dependency order and one observable behavior at a time. Use `tdd` when the change has a stable test seam; otherwise use the nearest trustworthy verification. Implement only the ledger's accepted actions; do not implement unverified, deferred, pushed-back, or out-of-scope suggestions.
 
 After a root correction, search sibling paths for the superseded rule and verify the invariant at its owner. Remove obsolete branches or helpers made unnecessary by the fix; do not leave both the old patch path and the new source of truth.
 
