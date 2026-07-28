@@ -30,7 +30,7 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 | [`review-feedback`](skills/review-feedback/) | Code-review feedback may lead to changes and needs to be evaluated before acting. | An evidence-backed decision for every claim—fix, simplify, defer, or reject it at the layer that actually owns the problem. |
 | [`wrap-up`](skills/wrap-up/) | The work is ending and you want the result finished, not merely summarized. | A closed workstream: promised outcomes verified, session-owned loose ends resolved, and the real final state reported. |
 
-`shape` is the clearest example of the design. Its core is a **decision tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it renders the alternatives in HTML because seeing them is more useful than describing them.
+`shape` is the clearest example of the design. Its core is a **decision tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it shows faithful alternatives with the most suitable visual tool, falling back to HTML, because seeing them is more useful than describing them.
 
 ## Install
 
