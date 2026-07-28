@@ -13,7 +13,7 @@ Look up *facts* in the environment—filesystem, tools, or available sources—i
 
 Use the environment's structured question tool for every user-facing question: Codex `request_user_input`, Claude Code `AskUserQuestion`, Pi/OpenCode `question`. Use plain text only when no such tool is available or it is rejected.
 
-For a visual decision, show faithful variants side by side before asking the user to choose. Use the available representation closest to the intended product; prefer rendered HTML for interfaces. Do not visualize conceptual questions.
+For a visual decision, show the user faithful variants side by side before asking them to choose. Use the available representation closest to the intended product; prefer rendered HTML for interfaces. Do not visualize conceptual questions.
 
 Cut scope and process until another cut would damage the goal, coherence, reversibility, or ability to improve later. Stop asking when the remaining ambiguity is reversible and would not materially change the result.
 
