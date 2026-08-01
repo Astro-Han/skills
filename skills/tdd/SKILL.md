@@ -51,27 +51,11 @@ TDD may use unit, integration, contract, or UI tests. Choose the fastest level t
 
 A test should read like a specification of something a caller or user can observe. Prefer names such as `rejects an expired token` over names such as `calls validateToken twice`.
 
-Drive the same interface production callers use:
-
-```typescript
-test("retrieves a newly created user", async () => {
-  const created = await createUser({ name: "Alice" });
-  expect((await getUser(created.id)).name).toBe("Alice");
-});
-```
+Drive the same interface production callers use, rather than reaching past it.
 
 ### Use an independent oracle
 
 The expected value must be able to disagree with the implementation. Use a known literal, worked example, specification, fixture, or trusted external contract.
-
-```typescript
-// Independent expectation
-expect(calculateTotal([{ price: 10 }, { price: 5 }])).toBe(15);
-
-// Tautological: repeats the production algorithm
-const expected = items.reduce((sum, item) => sum + item.price, 0);
-expect(calculateTotal(items)).toBe(expected);
-```
 
 ### Keep each RED narrow
 
