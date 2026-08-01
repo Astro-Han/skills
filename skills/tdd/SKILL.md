@@ -9,17 +9,13 @@ description: "Test-driven development for production behavior. Use whenever impl
 
 Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed: a function, API, CLI, UI interaction, or service interface.
 
-Not every change earns a test. If no fast, reliable test can reach the behavior through a stable seam, or the only test available would fail the gate below, use the nearest trustworthy validation instead, say the work was not TDD, and name the behavior left unverified.
-
 ## The loop
 
-1. **RED** — Write one test for the next observable behavior. Run it and confirm it fails for the predicted reason, not a typo, missing import, or unrelated path.
+1. **RED** — Write one test for the next observable behavior. Run it and confirm it fails for the predicted reason.
 2. **GREEN** — Write only enough production code to pass that test. Run it, then run the nearest related tests.
 3. **REFACTOR** — Improve names, structure, and duplication without changing behavior. Keep tests green throughout.
 
 Then choose the next behavior and repeat. Do not write a batch of tests followed by a batch of implementation. One test introduces one behavior; if its name needs `and`, split it unless those outcomes form one inseparable contract.
-
-Bug fixes require a failing regression test that reproduces the original symptom before the fix.
 
 ## Pure refactors
 
