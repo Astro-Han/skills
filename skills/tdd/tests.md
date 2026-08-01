@@ -30,10 +30,4 @@ expect(calculateTotal(items)).toBe(expected);
 
 One test should introduce one behavior. If the test name needs `and`, split it unless those outcomes form one inseparable contract.
 
-Write the next test only after the current slice is green. Bulk-written tests commit to imagined behavior and usually couple the suite to a design that has not yet been learned.
-
-## Check the failure signal
-
-Before implementing, read the failure. It must prove the missing behavior is what failed. A syntax error, broken fixture, wrong import, or failure on another path is not a useful RED.
-
-After GREEN, run the new test plus the nearest suite that covers the same public contract and its direct consumers.
+Bulk-written tests commit to imagined behavior and usually couple the suite to a design that has not yet been learned.
