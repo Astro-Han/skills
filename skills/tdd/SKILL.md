@@ -5,13 +5,11 @@ description: "Test-driven development for production behavior. Use whenever impl
 
 # TDD
 
-Work in vertical slices: one test → one minimal implementation → refactor while green → repeat.
-
 ## Before RED
 
-Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed, such as a function, API, CLI, UI interaction, or service interface.
+Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed: a function, API, CLI, UI interaction, or service interface.
 
-Not every change earns a test. If no fast, reliable test can exercise the behavior through a stable seam, or the only test available would fail the value gate below, use the nearest trustworthy validation instead, say that the work was not TDD, and name the behavior left unverified.
+Not every change earns a test. If no fast, reliable test can reach the behavior through a stable seam, or the only test available would fail the gate below, use the nearest trustworthy validation instead, say the work was not TDD, and name the behavior left unverified.
 
 ## The loop
 
@@ -19,7 +17,7 @@ Not every change earns a test. If no fast, reliable test can exercise the behavi
 2. **GREEN** — Write only enough production code to pass that test. Run it, then run the nearest related tests.
 3. **REFACTOR** — Improve names, structure, and duplication without changing behavior. Keep tests green throughout.
 
-Then choose the next behavior and repeat. Do not write a batch of tests followed by a batch of implementation.
+Then choose the next behavior and repeat. Do not write a batch of tests followed by a batch of implementation. One test introduces one behavior; if its name needs `and`, split it unless those outcomes form one inseparable contract.
 
 Bug fixes require a failing regression test that reproduces the original symptom before the fix.
 
@@ -31,9 +29,9 @@ An extracted helper does not earn a test of its own; the behavior test that alre
 
 ## Test quality
 
-Tests specify observable behavior through public interfaces and survive internal refactors. Expected values come from an independent source of truth, not a reimplementation of the production logic.
+Tests specify observable behavior through public interfaces and survive internal refactors.
 
-Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. A test that survives broken behavior reports coverage that does not exist; delete it and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
+Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. Delete a test that survives broken behavior, and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
 
 Refuse these shapes as well. Never write them, and delete the ones already covering the code you touch:
 
@@ -43,24 +41,8 @@ Refuse these shapes as well. Never write them, and delete the ones already cover
 - a test reaching into private methods or internal state to observe what the public seam already exposes
 - an assertion so weak it holds for broken output, such as a type, a length, or a non-empty check
 
-Reading the existing tests is already part of Before RED; deleting the ones that fail the gate is part of finishing the change.
+Deleting the ones that fail the gate is part of finishing the change.
 
-TDD may use unit, integration, contract, or UI tests. Choose the fastest level that exercises the real contract with acceptable fidelity. Mock only at system boundaries you do not control.
-
-### Test behavior at a public seam
-
-A test should read like a specification of something a caller or user can observe. Prefer names such as `rejects an expired token` over names such as `calls validateToken twice`.
-
-Drive the same interface production callers use, rather than reaching past it.
-
-### Use an independent oracle
-
-The expected value must be able to disagree with the implementation. Use a known literal, worked example, specification, fixture, or trusted external contract.
-
-### Keep each RED narrow
-
-One test should introduce one behavior. If the test name needs `and`, split it unless those outcomes form one inseparable contract.
-
-Bulk-written tests commit to imagined behavior and usually couple the suite to a design that has not yet been learned.
+Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
 
 Read [mocking.md](mocking.md) when a test needs doubles, dependency injection, a database, time, randomness, filesystem access, or an external service.
