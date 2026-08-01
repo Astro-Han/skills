@@ -11,9 +11,7 @@ Work in vertical slices: one test → one minimal implementation → refactor wh
 
 Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed, such as a function, API, CLI, UI interaction, or service interface.
 
-If no fast, reliable test can exercise the behavior through a stable seam, use the nearest trustworthy validation instead and say that the work was not TDD.
-
-Not every change earns a test. Skip the loop when the change alters no observable behavior, or when the only test available would fail the value gate below. Then say plainly which behavior is left unverified.
+Not every change earns a test. If no fast, reliable test can exercise the behavior through a stable seam, or the only test available would fail the value gate below, use the nearest trustworthy validation instead, say that the work was not TDD, and name the behavior left unverified.
 
 ## The loop
 
@@ -37,11 +35,11 @@ Tests specify observable behavior through public interfaces and survive internal
 
 Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. A test that survives broken behavior reports coverage that does not exist; delete it and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
 
-These always fail the gate. Never write them, and delete the ones already covering the code you touch:
+Refuse these shapes as well. Never write them, and delete the ones already covering the code you touch:
 
 - an expectation recomputed from the production algorithm, or read back from the production constant it exists to pin
 - a mocked internal collaborator, or an assertion on call count or order where the call is not itself the contract
-- an assertion on literal text, log output, or a snapshot no caller depends on
+- an assertion on literal text, log output, or a snapshot that no caller, user, or published format depends on
 - a test reaching into private methods or internal state to observe what the public seam already exposes
 - an assertion so weak it holds for broken output, such as a type, a length, or a non-empty check
 
