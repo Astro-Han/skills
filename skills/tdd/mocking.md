@@ -8,7 +8,7 @@ Do not mock your own modules merely to isolate a unit. Run real internal code th
 
 Pass external dependencies in rather than constructing them inside business logic. Prefer a small domain-specific interface such as `chargePayment(order)` over a generic request function whose mock needs conditional routing.
 
-Assert the observable boundary effect: destination, payload, returned result, emitted event, or persisted state. Avoid asserting private method names or call counts unless the call itself is the public contract.
+Assert the observable boundary effect: destination, payload, returned result, emitted event, or persisted state.
 
 ## Choose fidelity deliberately
 

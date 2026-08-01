@@ -13,8 +13,6 @@ test("retrieves a newly created user", async () => {
 });
 ```
 
-Avoid bypassing that interface to inspect internal storage, private methods, collaborator call order, or implementation-specific events.
-
 ## Use an independent oracle
 
 The expected value must be able to disagree with the implementation. Use a known literal, worked example, specification, fixture, or trusted external contract.

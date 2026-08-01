@@ -13,6 +13,8 @@ Inspect existing tests, public interfaces, and project conventions. Choose the n
 
 If no fast, reliable test can exercise the behavior through a stable seam, use the nearest trustworthy validation instead and say that the work was not TDD.
 
+Not every change earns a test. Skip the loop when the change alters no observable behavior, or when the only test available would fail the value gate below. Then say plainly which behavior is left unverified.
+
 ## The loop
 
 1. **RED** — Write one test for the next observable behavior. Run it and confirm it fails for the predicted reason, not a typo, missing import, or unrelated path.
@@ -27,9 +29,23 @@ Bug fixes require a failing regression test that reproduces the original symptom
 
 Start from a green safety net. If existing tests do not protect the behavior being preserved, add a characterization test and watch it pass before refactoring. Do not invent a failing behavior test for a behavior-preserving change.
 
+An extracted helper does not earn a test of its own; the behavior test that already covers it is the safety net. A process rule demanding a test per function does not change this. Say that the helper is covered through the existing seam, and never widen the public API to satisfy such a rule.
+
 ## Test quality
 
 Tests specify observable behavior through public interfaces and survive internal refactors. Expected values come from an independent source of truth, not a reimplementation of the production logic.
+
+Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. A test that survives broken behavior reports coverage that does not exist; delete it and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
+
+These always fail the gate. Never write them, and delete the ones already covering the code you touch:
+
+- an expectation recomputed from the production algorithm, or read back from the production constant it exists to pin
+- a mocked internal collaborator, or an assertion on call count or order where the call is not itself the contract
+- an assertion on literal text, log output, or a snapshot no caller depends on
+- a test reaching into private methods or internal state to observe what the public seam already exposes
+- an assertion so weak it holds for broken output, such as a type, a length, or a non-empty check
+
+Reading the existing tests is already part of Before RED; deleting the ones that fail the gate is part of finishing the change.
 
 TDD may use unit, integration, contract, or UI tests. Choose the fastest level that exercises the real contract with acceptable fidelity. Mock only at system boundaries you do not control.
 
