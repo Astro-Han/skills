@@ -44,5 +44,3 @@ Refuse these shapes as well. Never write them, and delete the ones already cover
 Deleting the ones that fail the gate is part of finishing the change.
 
 Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
-
-Read [mocking.md](mocking.md) when a test needs doubles, dependency injection, a database, time, randomness, filesystem access, or an external service.
