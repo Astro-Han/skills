@@ -42,7 +42,7 @@ Simplifications compose. After closing a finding, re-derive the minimum for its 
 
 ## Trace demand
 
-Use demand chains for surface-sized leads and exact-symbol, exact-string, or representation searches for local ones. Before concluding absence, check dynamic connections: DI, registries, reflection, dynamic import, string lookup, generated code, serialization hooks, configuration, feature flags, environment variables, deployment manifests, startup composition, persisted artifacts, queues and events, replay/resume inputs, public APIs, CLIs, file formats, protocols, webhooks, and operational tooling.
+Use demand chains for surface-sized leads and exact-symbol, exact-string, or representation searches for local ones. Before concluding absence, confirm the search tool does not silently skip files (binary detection, ignore rules, unindexed paths), then check dynamic connections: DI, registries, reflection, dynamic import, string lookup, generated code, serialization hooks, configuration, feature flags, environment variables, deployment manifests, startup composition, persisted artifacts, queues and events, replay/resume inputs, public APIs, CLIs, file formats, protocols, webhooks, and operational tooling.
 
 Usage is retention evidence, not proof; architecture states intended ownership; resolve conflicts among ownership, demand, and usage. For a compatibility path, absence of a current writer is insufficient — check supported persisted artifacts, deployed versions, replay/resume, rolling upgrades, and third-party producers before its reader can disappear. Public and extension contracts require checking ecosystem demand; existence or documentation alone establishes none.
 
