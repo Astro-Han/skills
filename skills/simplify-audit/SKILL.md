@@ -7,7 +7,7 @@ description: Audit an existing repository or scoped architecture area for action
 
 Find removals and consolidations whose maintenance cost exceeds their present value. The unit of simplification is a concept, authority, state, path, contract, coordination mechanism, or representation that can disappear — not a line count.
 
-Operating principle: **discover aggressively, report by tier, execute conservatively.** Audit only: do not edit production code or turn the report into an implementation plan; naming a decisive verification step is fine.
+Operating principle: **discover aggressively, report by tier, execute conservatively.** The audit's value is the provably deletable surface it uncovers, not the safety of its report. Audit only: do not edit production code or turn the report into an implementation plan; naming a decisive verification step is fine.
 
 ## Establish coverage
 
@@ -29,14 +29,16 @@ Actively search for (each is a lead, not a conclusion):
 
 - duplicate authorities or representations of one fact; mirrored or derivable-but-persisted state; parallel paths kept consistent only by synchronization;
 - interface, factory, registry, strategy, or plugin machinery with one implementation or one semantic consumer;
-- pass-through services, facades, adapters, or wrappers adding no policy, invariant, ownership, isolation, or operational value;
+- layers that mostly delegate — services, facades, adapters, or wrappers passing calls through unchanged; a few non-trivial methods do not justify the layer: propose folding it into its natural owner and rehoming the exceptions;
 - duplicated domain models, DTOs, or schemas with mapper chains; serialize-then-reparse or convert-and-reconvert paths; one business rule repeatedly validated, defaulted, or translated;
 - feature flags, config branches, fallback or old/new paths, and migration scaffolding with only one proven live value or no supported producer;
 - production APIs, hooks, or helper layers whose only consumer is tests; complexity kept alive only by tests, docs, or historical machinery;
-- abstractions justified only by future reuse, symmetry, or "may swap later"; escape hatches added to bypass another abstraction; responsibilities implemented outside their natural owner;
+- abstractions justified only by future reuse, symmetry, or "may swap later"; product-shaped generality — multi-backend, multi-tenant, live reconfiguration, pluggability — that no product owner currently demands; escape hatches added to bypass another abstraction; responsibilities implemented outside their natural owner;
 - defensive copies, freezes, and validators at same-process trusted boundaries — name where each value comes from and who owns it next; tests built on hostile getters or post-handoff mutation evidence a speculative contract, not a reason to keep it;
 - several mechanisms mirroring one liveness, settlement, or lifecycle fact in async code — propose a single owner, but preserve machinery protecting rollback, callback containment, first-terminal-outcome arbitration, or dispose-to-quiescence;
 - hand-rolled infrastructure (retry, parsing, framing, globbing, diffing) that a well-maintained dependency or platform builtin already provides — a dependency swap is a valid simplification when net deletion (implementation + dedicated tests + docs − remaining glue) is real.
+
+Simplifications compose. After closing a finding, re-derive the minimum for its neighbors: a layer that becomes pure delegation, a state that becomes derivable, or a contract that loses its last consumer once another finding lands is itself a finding — report it with its prerequisite named and size the chain's disappearance surface together. Do not let early strong findings end the hunt; the largest wins often sit in the biggest, most defended surfaces.
 
 ## Trace demand
 
@@ -51,6 +53,8 @@ Do not read every file. A slice is Reviewed when its top-level surfaces, demand 
 A lead becomes a **Candidate** only when its deletion proof establishes: the current authority, production consumers, demand chain, and strongest retention reason stated in its most favorable form; the whole-system disappearance surface; what is added or moved and why the result is still a strict net reduction; why the strongest retention reason no longer applies; and the capability given up, impact radius, and material uncertainty. The proof is closed only when the retention reason is resolved and net reduction does not depend on a future implementation choice.
 
 The burden is asymmetric: for a bounded internal lead, exhaustive evidence within the affected boundary suffices — do not demand nonexistent historical rationale or refutation of purely theoretical uses. Public contracts, supported extensions, persisted representations, deployed-version compatibility, replay/resume paths, and third-party producers always require the full proof.
+
+Behavior preservation is not a proof requirement: a candidate may change behavior slightly when the new behavior is still reasonable and easier to explain — record the difference as capability given up.
 
 ## Report in three tiers
 
