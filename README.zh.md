@@ -35,6 +35,10 @@
 
 `shape` 最能代表这套思路。它真正重要的只有 decision tree：凡是会把方案带向不同方向的选择，都应该拿出来和用户逐项确认，而不是让模型悄悄替用户做决定。如果要选的是界面、布局或其他视觉方案，就用最接近目标产品的可用呈现方式忠实地并排展示；界面优先使用渲染后的 HTML。能看，就别只靠说。
 
+## Evals
+
+`evals/` 放的是这些 skills 背后的配对 A/B 装置：代替真实工作的 fixture、每个 Agent CLI 一个的无头 runner，以及把每次运行折算成分数、交给 [`craft-skill`](skills/craft-skill/) 汇总的 grader。改动落库的依据是配对实验说明 Agent 把事做得更好，而不是文字读起来更顺。详见 [evals/README.md](evals/README.md)。
+
 ## 安装
 
 ### GitHub CLI

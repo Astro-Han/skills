@@ -33,6 +33,10 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 `shape` is the clearest example of the design. Its core is a **decision tree**: whenever a branch would materially change the outcome, the agent discusses that branch with the user instead of silently choosing. When the decision is genuinely visual, it shows faithful alternatives with the available representation closest to the intended product, preferring rendered HTML for interfaces, because seeing them is more useful than describing them.
 
+## Evals
+
+`evals/` holds the paired A/B harness behind these skills: fixtures that stand in for real work, a headless runner per agent CLI, and a grader that turns each run into a number [`craft-skill`](skills/craft-skill/) can summarize. A skill change lands when a paired run says the agent got better at the job — not because the wording improved. See [evals/README.md](evals/README.md).
+
 ## Install
 
 ### GitHub CLI
