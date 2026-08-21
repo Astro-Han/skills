@@ -29,6 +29,7 @@
 | [`learn-anything`](skills/learn-anything/) | 你想真正学会或练习一个主题，而不只是听一遍解释。 | 根据你的水平实时调整的辅导，通过主动回忆、应用和复述，建立真正能用的理解。 |
 | [`tdd`](skills/tdd/) | 你要新增或改变生产行为，需要快速而可信的反馈。 | 以小步、可验证的方式交付：先看到符合预期的 RED，再完成最小 GREEN，然后安全重构。 |
 | [`debug`](skills/debug/) | bug 或性能退化需要调查，不能靠一个听起来合理的猜测。 | 一个可重复的故障信号、一条能排除其他可能的证据链，以及经过原始场景验证的根因。 |
+| [`simplify-audit`](skills/simplify-audit/) | 一个已有代码库里堆着没人证明过还需要的复杂度。 | 一份关于什么真的可以消失的审计：每条删减都有需求链和净减少作为依据，还没证明闭合的线索单独列出，不包装成结论。 |
 | [`review-feedback`](skills/review-feedback/) | code review 意见可能引发代码改动，需要先判断再行动。 | 对每条意见做出有证据的决定：在真正负责问题的层次修复、简化、暂缓，或明确拒绝。 |
 | [`wrap-up`](skills/wrap-up/) | 工作即将结束，你要的是确实完成，而不只是一段总结。 | 一个真正收好的工作现场：承诺的结果经过验证，本次会话留下的问题得到处理，最终状态如实报告。 |
 
@@ -84,6 +85,7 @@ npx skills add Astro-Han/skills --skill shape
 - `shape` 借鉴了 Matt Pocock 的 [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling)。遇到视觉选择时直接展示方案，这一点来自 Superpowers 的 [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming)。
 - `tdd` 借鉴了 Matt Pocock 的 [`tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)。
 - `debug` 参考了 Matt Pocock 的 [`diagnosing-bugs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs)、Superpowers 的 [`systematic-debugging`](https://github.com/obra/superpowers/tree/main/skills/systematic-debugging) 和 Waza 的 [`hunt`](https://github.com/tw93/Waza/tree/main/skills/hunt)。我有意删掉了其中不少流程，只留下最小的证据链。
+- `simplify-audit` 基于 [M4n5ter 的 `simplify-audit`](https://github.com/M4n5ter/skills/tree/main/simplify-audit) 重写，改成默认怀疑的姿态、不对称举证，并加入 Deletion probe：只差一步有界验证的高信号线索不再被直接丢掉。其中两个猎场——成熟依赖已经提供却手搓的基础设施、防御性拷贝与重复的生命周期状态——来自 DeepSeek 的 [`dsh-find-simplifications`](https://github.com/deepseek-ai/deepseek-harness/tree/master/.agents/skills/dsh-find-simplifications)。
 - `review-feedback` 最初参考了 Superpowers 的 [`receiving-code-review`](https://github.com/obra/superpowers/tree/main/skills/receiving-code-review)，后来围绕证据、职责、改动范围和系统成本重新写过，现在已经很不一样了。
 
 这些外部项目仍然是各自 skills 的权威来源。这里放的是我自己的改写版本，没有直接复制外部 skill。Astro Skills 以英文 `SKILL.md` 为准。
