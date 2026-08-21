@@ -4,8 +4,8 @@ from . import html_formatter, registry, text_formatter  # noqa: F401  (registrat
 from .. import config
 
 
-def render_digest(items):
-    formatter = registry.resolve(config.OUTPUT_FORMAT)
+def render_digest(items, output_format=None):
+    formatter = registry.resolve(output_format or config.OUTPUT_FORMAT)
     lines = []
     for source in sorted({item.source for item in items}):
         lines.append(formatter.heading(source))

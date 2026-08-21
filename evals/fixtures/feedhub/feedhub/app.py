@@ -12,7 +12,7 @@ from .ingest.dedupe import Deduper
 from .ingest.normalizer import normalize
 from .model.dto import from_dto, to_dto
 from .render.digest import render_digest
-from .scheduler import BatchRunner
+from .scheduler import BatchCancelled, BatchRunner
 from .store.gateway import StoreGateway
 from .store.repository import Repository
 
@@ -53,10 +53,15 @@ def run(spool_dir):
     previous = signal.signal(signal.SIGTERM, lambda *_: runner.cancel())
     try:
         runner.run(accepted)
+    except BatchCancelled as cancelled:
+        # The run continues after a cancelled batch: the digest below is rendered from
+        # whatever the store holds, so a half-applied batch would show up in the output.
+        print("batch cancelled at {}; store rolled back".format(cancelled))
     finally:
         signal.signal(signal.SIGTERM, previous)
 
-    digest = render_digest([from_dto(dto) for dto in gateway.load_all()])
+    digest = render_digest([from_dto(dto) for dto in gateway.load_all()],
+                           config.load_output_format(spool_dir))
 
     first = HEADLINE.search(digest)
     lead = (first.group("text") or first.group("html")) if first else "(empty)"
