@@ -1,17 +1,17 @@
 ---
 name: simplify-audit
-description: Audit an existing repository or scoped architecture area for actionable and decision-gated simplification opportunities. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
+description: Audit an existing repository or scoped architecture area for simplification opportunities that are either proved or one decisive check away. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
 ---
 
 # Simplification Audit
 
 Find removals and consolidations whose maintenance cost exceeds their present value. The unit of simplification is a concept, authority, state, path, contract, coordination mechanism, or representation that can disappear — not a line count.
 
-Operating principle: **discover aggressively, report by tier, execute conservatively.** The audit's value is the provably deletable surface it uncovers, not the safety of its report. Audit only: do not edit production code or turn the report into an implementation plan; naming a decisive verification step is fine.
+Discover aggressively: the audit's value is the provably deletable surface it uncovers, not the safety of its report. Audit only: do not edit production code or turn the report into an implementation plan; naming a decisive verification step is fine.
 
 ## Establish coverage
 
-Read repository instructions and sources of current architectural authority. Enumerate shipped deliverables, supported entry points, compositions, persisted artifacts, deployed/replay/resume paths, and public or extension contracts. Trace each maintained top-level surface to the shipped behavior, contract, or operational obligation sustaining it. Slice by responsibility and authority, not file count; track each slice as **Reviewed**, **Partial** (name the gap), or **Unreviewed** (state why). Independent slices may be investigated in parallel; the primary agent owns the final evidence check and cross-slice synthesis. Keep the requested boundary as candidate scope; read adjacent producers and consumers as evidence without silently widening it.
+Read repository instructions and sources of current architectural authority. Enumerate the surfaces where behavior enters, leaves, or persists — shipped deliverables, entry points and startup composition; configuration, environment variables, feature flags, and deployment manifests; dynamic wiring such as DI, registries, reflection, dynamic import, string lookup, generated code, and serialization hooks; persisted artifacts, queues, events, and replay/resume inputs; public APIs, CLIs, file formats, protocols, webhooks, extension contracts, and operational tooling. Trace each maintained top-level surface to the shipped behavior, contract, or operational obligation sustaining it. Slice by responsibility and authority, not file count; mark each slice **Reviewed**, or name the gap that keeps it from being Reviewed. Independent slices may be investigated in parallel; the primary agent owns the final evidence check and cross-slice synthesis. Keep the requested boundary as candidate scope; read adjacent producers and consumers as evidence without silently widening it.
 
 ## Presume suspicion
 
@@ -23,7 +23,7 @@ Treat something as an explicit design decision only when current architectural a
 
 ## Hunt
 
-Derive per deliverable the smallest set of concepts, states, and contracts that satisfies its evidenced behavior and obligations; investigate the largest gaps between that minimum and the current composition first. The minimum is a discovery lens, not a target design. Mutually supporting internal consumers form one demand cluster; chains ending inside the cluster establish no independent demand.
+Derive per deliverable the smallest set of concepts, states, and contracts that satisfies its evidenced behavior and obligations; investigate the largest gaps between that minimum and the current composition first. The minimum is a discovery lens, not a target design. A chain that ends inside a group of mutually supporting internal consumers establishes no independent demand.
 
 Actively search for (each is a lead, not a conclusion):
 
@@ -42,7 +42,7 @@ Simplifications compose. After closing a finding, re-derive the minimum for its 
 
 ## Trace demand
 
-Use demand chains for surface-sized leads and exact-symbol, exact-string, or representation searches for local ones. Before concluding absence, confirm the search tool does not silently skip files (binary detection, ignore rules, unindexed paths), then check dynamic connections: DI, registries, reflection, dynamic import, string lookup, generated code, serialization hooks, configuration, feature flags, environment variables, deployment manifests, startup composition, persisted artifacts, queues and events, replay/resume inputs, public APIs, CLIs, file formats, protocols, webhooks, and operational tooling.
+Use demand chains for surface-sized leads and exact-symbol, exact-string, or representation searches for local ones. Before concluding absence, confirm the search tool does not silently skip files (binary detection, ignore rules, unindexed paths), then check the enumerated surfaces for a connection a static call graph misses — dynamic wiring, configuration, persistence, replay/resume, and published contracts all reach code that nothing appears to call.
 
 Usage is retention evidence, not proof; architecture states intended ownership; resolve conflicts among ownership, demand, and usage. For a compatibility path, absence of a current writer is insufficient — check supported persisted artifacts, deployed versions, replay/resume, rolling upgrades, and third-party producers before its reader can disappear. Public and extension contracts require checking ecosystem demand; existence or documentation alone establishes none.
 
@@ -56,19 +56,17 @@ The burden is asymmetric: for a bounded internal lead, exhaustive evidence withi
 
 Behavior preservation is not a proof requirement: a candidate may change behavior slightly when the new behavior is still reasonable and easier to explain — record the difference as capability given up.
 
-## Report in three tiers
+## Report
 
 **Candidate** — closed proof; eligible for implementation priority.
 
-**Deletion probe** — likely accidental complexity with a clear disappearance surface and one or few bounded, decisively checkable uncertainties. Do not drop a high-signal lead just because one bounded verification is missing. State: the suspected disappearing concept and why it reads as accidental; observed consumers and traced demand; the strongest plausible retention reason; the single decisive check; and how a failed check downgrades it. Report at most 10; no implementation priority — state expected leverage only.
-
-**Decision gate** — a genuinely open product or architecture choice. A gap closable by searching, tracing, or reading configuration and artifacts is an evidence gap or a probe, not a gate. State: the decision, what each choice keeps or removes, the disappearance surface, the strongest retention reason, and the missing evidence or policy. Never an implementation recommendation.
+**Open lead** — likely accidental complexity with a clear disappearance surface whose proof is not closed. Do not drop a high-signal lead just because it is one step short. State: the suspected disappearing concept and why it reads as accidental; observed consumers and traced demand; the strongest plausible retention reason; and the blocker — either the single decisive check that would close or kill it, or the product or architecture choice its owner has to make. Prefer a check: when evidence could settle it, the blocker is a check, not a choice. Where the blocker is an owner's choice, state what each option keeps or removes and never recommend one. Report at most 10; no implementation priority — state expected leverage only.
 
 Omit observations that only say code looks complex, layered, or inelegant. Cosmetic defects, naming, mechanical file merges, like-for-like abstraction swaps, and pure line-count wins are out of scope unless they embody a recurring maintenance obligation or a duplicate authority.
 
 ## Prioritize
 
-Priorities apply to Candidates only and describe when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost, sufficient evidence; **P2** worthwhile, ordinary urgency; **P3** modest value, opportunistic. Any tier may be empty; no ranking within a tier; no quota.
+Priorities apply to Candidates only and describe when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost, sufficient evidence; **P2** worthwhile, ordinary urgency; **P3** modest value, opportunistic. Any priority may be empty; no ranking within a priority; no quota.
 
 ## Close
 
@@ -76,7 +74,6 @@ Merge findings that share one underlying simplification: report the concept once
 
 1. a coverage table with every slice, its status, and remaining gaps;
 2. Candidates grouped P0–P3;
-3. Deletion probes;
-4. Decision gates.
+3. Open leads.
 
 If evidence or access blocks closure, report a partial audit without full-scope claims. Stop when the coverage table accounts for the requested scope; every claim traces to production evidence rather than tests or restated docs; no underlying simplification is reported twice; no uncertainty is hidden as certainty; and no material high-signal lead was omitted merely because absolute certainty was unreachable.
