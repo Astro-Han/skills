@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic grader: parses stream-json transcripts and run outputs."""
 
+import argparse
 import json
 import os
 import re
@@ -219,9 +220,15 @@ def grade_run(rundir, eval_name):
 
 
 def main():
-    for workspace in ("debug-workspace", "tdd-workspace"):
-        it = ROOT / workspace / "iteration-1"
-        for evaldir in sorted(it.iterdir()):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--iteration", default="iteration-1",
+                        help="the output directory runner.py wrote, under each workspace")
+    args = parser.parse_args()
+    for workspace in sorted(ROOT.glob("*-workspace")):
+        iteration = workspace / args.iteration
+        if not iteration.is_dir():
+            continue
+        for evaldir in sorted(iteration.iterdir()):
             if not evaldir.is_dir():
                 continue
             eval_name = re.sub(r"-r\d+$", "", evaldir.name)
@@ -230,7 +237,7 @@ def main():
                 (arm / "grading.json").write_text(json.dumps(grading, indent=2))
                 passed = sum(1 for e in grading["expectations"] if e["passed"])
                 print("{}/{}/{}: {}/{} passed, triggered={}".format(
-                    workspace, evaldir.name, arm.name, passed,
+                    workspace.name, evaldir.name, arm.name, passed,
                     len(grading["expectations"]), grading["skill_triggered"]))
 
 
