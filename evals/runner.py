@@ -34,14 +34,6 @@ PROMPTS = {
         "the root cause with evidence. Do NOT change the code yet; the intended "
         "semantics need a product decision first."
     ),
-    "zero-drift": (
-        "Our nightly inventory sync has been reporting zero drift for every item "
-        "since a refactor last sprint, even though the deltas are definitely being "
-        "applied — the final quantities in the store come out correct. A teammate "
-        "suspects the drift report formatting but we're not sure. `python3 demo.py` "
-        "reproduces it. We haven't been able to figure this one out; please find "
-        "what's going on and fix it."
-    ),
     "coupon-feature": (
         "Add coupon support to cartlib. `apply_coupon(code)` on Cart, with two known "
         "codes: SAVE10 = 10% off the subtotal, capped at a $20 discount; WELCOME5 = "

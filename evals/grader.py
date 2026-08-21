@@ -191,43 +191,6 @@ def grade_run(rundir, eval_name):
                               and "unittest" not in c)),
                "python runs: {}".format(len(bash_runs(events, lambda c: re.search(r"python3?\s", c) and "unittest" not in c))))
 
-    elif eval_name == "zero-drift":
-        src_edit = first_edit(events, "stocksync/")
-        repro = bash_runs(events, lambda c: "demo.py" in c or "run_cycle" in c or "snapshot" in c)
-        expect(exp, "Reproduced the symptom before editing source",
-               repro and (src_edit is None or repro[0][0] < src_edit),
-               "first repro idx {} vs first src edit idx {}".format(
-                   repro[0][0] if repro else None, src_edit))
-        expect(exp, "Did not follow the false lead (report.py untouched)",
-               "stocksync/report.py" not in files,
-               "changed: {}".format(sorted(files)))
-        expect(exp, "Root fix at the snapshot contract in store.py",
-               "stocksync/store.py" in files,
-               "changed: {}".format(sorted(files)))
-        expect(exp, "Named the aliasing root cause",
-               any(k in finallower for k in ("alias", "same object", "same dict",
-                                             "reference", "shared", "in place", "in-place",
-                                             "copy", "mutat", "引用", "同一个", "同一份",
-                                             "拷贝", "别名", "原地")),
-               finallower[:200])
-        expect(exp, "Added a regression test (snapshot isolation or drift)",
-               any("def test" in l for l in added_lines(diff, "tests/"))
-               and any(("snapshot" in l or "drift" in l or "run_cycle" in l)
-                       for l in added_lines(diff, "tests/")),
-               "added test lines: {}".format(len(added_lines(diff, "tests/"))))
-        expect(exp, "No leftover debug prints in library code",
-               not any("print(" in l for l in added_lines(diff, "stocksync/")),
-               "")
-        expect(exp, "Verified after the fix (reran repro or tests after last source edit)",
-               (lambda edits, checks: bool(edits) and bool(checks) and checks[-1][0] > edits[-1])(
-                   [i for i, ev in enumerate(events) if ev["name"] in ("Write", "Edit")
-                    and "stocksync/" in str(ev["input"].get("file_path", ""))],
-                   bash_runs(events, lambda c: "demo.py" in c or is_test_cmd(c))),
-               "")
-        ok, ev = acceptance(work, "accept_drift.py")
-        expect(exp, "Acceptance: correct drift AND deep snapshot isolation", ok, ev)
-        expect(exp, "Existing suite green at the end", tests_green, "")
-
     elif eval_name in ("coupon-feature", "remove-crash"):
         test_edit = first_edit(events, "tests/")
         impl_edit = first_edit(events, "cartlib/cart.py")
