@@ -10,9 +10,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-PROMPTS = json.loads((ROOT / "prompts.json").read_text()) if (ROOT / "prompts.json").exists() else {}
-
-
 PI_NAME_MAP = {"bash": "Bash", "write": "Write", "edit": "Edit", "read": "Read"}
 
 
