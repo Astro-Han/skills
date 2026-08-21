@@ -23,7 +23,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartlib` | `tdd` | A feature to add and a crash to fix, both with a clear acceptance test. |
 | `pricer` | `debug` | Order-dependent coupon totals — diagnosis only, the fix needs a product decision. |
 | `reportlib` | `debug` | Shared mutable section state leaking between reports. |
-| `feedhub` | `simplify-audit` | Seven removable concepts, four traps that must survive, and one open product question that must be escalated rather than deleted. |
+| `feedhub` | `simplify-audit` | Seven removable concepts, four traps that must survive, and one open product question that must be escalated rather than deleted. Answer key: [`feedhub.md`](fixtures/feedhub.md). |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
