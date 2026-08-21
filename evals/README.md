@@ -36,6 +36,10 @@ python3 evals/runner.py --provider pi --reps 1     # writes evals/<skill>-worksp
 python3 evals/grader.py                            # scores those runs
 ```
 
+The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
+skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text
+this directory keeps a copy of.
+
 Run outputs are ignored by git: they are large, model-specific, and regenerable by re-running.
 Keep the conclusion in the skill and in the commit message, not the transcripts.
 

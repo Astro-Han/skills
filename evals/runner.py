@@ -17,7 +17,13 @@ from pathlib import Path
 from typing import Callable
 
 ROOT = Path(__file__).resolve().parent
+SKILLS = ROOT.parent / "skills"
 CONCURRENCY = 6
+
+# The arm under test is the shipped skill itself, read from skills/<name>/. A named arm is a
+# frozen historical baseline under evals/baselines/ — those exist to be compared against, and
+# are the only skill text this directory owns a copy of.
+SHIPPED = "shipped"
 
 PROMPTS = {
     "shared-sections": (
@@ -137,14 +143,14 @@ def suite_runs(provider_name, reps=3):
             for eval_name, fixture in (("shared-sections", "reportlib"),
                                        ("diagnose-only", "pricer")):
                 for arm, skill_arm in (("without_skill", None),
-                                       ("with_skill", "debug-current")):
+                                       ("with_skill", SHIPPED)):
                     runs.append({"workspace": "debug-workspace", "eval": eval_name,
                                  "rep": rep, "arm": arm, "fixture": fixture,
                                  "skill_arm": skill_arm, "skill_name": "debug"})
             arms = (("without_skill", None), ("old_skill", "tdd-old"),
-                    ("with_skill", "tdd-current"))
+                    ("with_skill", SHIPPED))
         else:
-            arms = (("without_skill", None), ("with_skill", "tdd-current"))
+            arms = (("without_skill", None), ("with_skill", SHIPPED))
         for eval_name in ("coupon-feature", "remove-crash"):
             for arm, skill_arm in arms:
                 runs.append({"workspace": "tdd-workspace", "eval": eval_name,
@@ -170,8 +176,9 @@ def prepare(provider, spec, iteration):
         subprocess.run(cmd, cwd=work, check=True, capture_output=True)
     skill_args = []
     if spec["skill_arm"]:
-        skill_args = provider.install_skill(
-            work, ROOT / "skill-arms" / spec["skill_arm"], spec["skill_name"])
+        arm_dir = (SKILLS / spec["skill_name"] if spec["skill_arm"] == SHIPPED
+                   else ROOT / "baselines" / spec["skill_arm"])
+        skill_args = provider.install_skill(work, arm_dir, spec["skill_name"])
     return rundir, work, skill_args
 
 
