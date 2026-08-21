@@ -1,6 +1,6 @@
 ---
 name: simplify-audit
-description: Audit an existing repository or scoped architecture area for simplification opportunities that are either proved or one decisive check away. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
+description: Audit an existing repository or scoped architecture area for actionable and decision-gated simplification opportunities. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
 ---
 
 # Simplification Audit
@@ -56,11 +56,13 @@ The burden is asymmetric: for a bounded internal lead, exhaustive evidence withi
 
 Behavior preservation is not a proof requirement: a candidate may change behavior slightly when the new behavior is still reasonable and easier to explain — record the difference as capability given up.
 
-## Report
+## Report in three tiers
 
 **Candidate** — closed proof; eligible for implementation priority.
 
-**Open lead** — likely accidental complexity with a clear disappearance surface whose proof is not closed. Do not drop a high-signal lead just because it is one step short. State: the suspected disappearing concept and why it reads as accidental; observed consumers and traced demand; the strongest plausible retention reason; and the blocker — either the single decisive check that would close or kill it, or the product or architecture choice its owner has to make. Prefer a check: when evidence could settle it, the blocker is a check, not a choice. Where the blocker is an owner's choice, state what each option keeps or removes and never recommend one. Report at most 10; no implementation priority — state expected leverage only.
+**Deletion probe** — likely accidental complexity with a clear disappearance surface and one or few bounded, decisively checkable uncertainties. Do not drop a high-signal lead just because one bounded verification is missing. State: the suspected disappearing concept and why it reads as accidental; observed consumers and traced demand; the strongest plausible retention reason; the single decisive check; and how a failed check downgrades it. Report at most 10; no implementation priority — state expected leverage only.
+
+**Decision gate** — a genuinely open product or architecture choice. A gap closable by searching, tracing, or reading configuration and artifacts is an evidence gap or a probe, not a gate. State: the decision, what each choice keeps or removes, the disappearance surface, the strongest retention reason, and the missing evidence or policy. Never an implementation recommendation.
 
 Omit observations that only say code looks complex, layered, or inelegant. Cosmetic defects, naming, mechanical file merges, like-for-like abstraction swaps, and pure line-count wins are out of scope unless they embody a recurring maintenance obligation or a duplicate authority.
 
@@ -74,6 +76,7 @@ Merge findings that share one underlying simplification: report the concept once
 
 1. a coverage table with every slice, its status, and remaining gaps;
 2. Candidates grouped P0–P3;
-3. Open leads.
+3. Deletion probes;
+4. Decision gates.
 
 If evidence or access blocks closure, report a partial audit without full-scope claims. Stop when the coverage table accounts for the requested scope; every claim traces to production evidence rather than tests or restated docs; no underlying simplification is reported twice; no uncertainty is hidden as certainty; and no material high-signal lead was omitted merely because absolute certainty was unreachable.
