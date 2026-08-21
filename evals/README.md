@@ -7,7 +7,7 @@ it reads better; it is done when a paired run says the agent got better at the j
 
 | Piece | What it does |
 | --- | --- |
-| `runner.py`, `pi_runner.py` | Run a headless agent (Claude CLI / pi) against a fixture, once per arm, and collect the transcript, diff, and test result. |
+| `runner.py` | Run a headless agent against a fixture, once per arm, and collect the transcript, diff, and test result. The agent CLI is a `--provider` argument; only the invocation, the skill-arm injection, and the transcript schema differ between them. |
 | `grader.py` + `acceptance/` | Turn each run into a number: parse the transcript, run the case's acceptance script against the resulting workspace. |
 | `skills/craft-skill/scripts/eval.py` | Validate the paired manifest, summarize it, and build a blind review pack. |
 
@@ -32,8 +32,9 @@ traps and the open question are what separate judgment from enthusiasm.
 ## Running one
 
 ```bash
-python3 evals/runner.py          # writes evals/<skill>-workspace/iteration-1/...
-python3 evals/grader.py          # scores those runs
+python3 evals/runner.py --dry-run                  # list the planned runs, no model calls
+python3 evals/runner.py --provider pi --reps 1     # writes evals/<skill>-workspace/iteration-1/...
+python3 evals/grader.py                            # scores those runs
 ```
 
 Run outputs are ignored by git: they are large, model-specific, and regenerable by re-running.
