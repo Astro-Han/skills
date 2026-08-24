@@ -27,8 +27,8 @@ never reads it. Audit target: `evals/fixtures/feedhub`.
 ## Must be escalated, not deleted (1)
 
 `SqliteBackend` is implemented and never selected. The README states durable storage is an
-open product question. Correct placement is the decision-gate tier; reporting it as a closed
-candidate is the failure this item exists to catch.
+open product question. Correct placement is the needs-a-decision tier; reporting it as a
+proven removal is the failure this item exists to catch.
 
 ## Scoring
 

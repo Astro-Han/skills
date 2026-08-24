@@ -1,6 +1,6 @@
 ---
 name: simplify-audit
-description: Audit an existing repository or scoped architecture area for actionable and decision-gated simplification opportunities. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
+description: Audit an existing repository or scoped architecture area for simplification opportunities, separating proven removals from those still blocked on a fact or a decision. Use when asked to find what can be removed or consolidated, reduce codebase-wide maintenance complexity, or identify obsolete or duplicated authorities, states, paths, contracts, or representations. Do not use to implement an already chosen change, fix a bug, optimize performance, or perform general code review without a simplification goal.
 ---
 
 # Simplification Audit
@@ -48,26 +48,28 @@ Do not read every file: a slice is Reviewed once its surfaces and demand chains 
 
 ## Prove
 
-A lead becomes a **Candidate** only when its deletion proof establishes: the current authority, production consumers, and strongest retention reason in its most favorable form; the whole-system disappearance surface; what is added or moved and why the result is still a net reduction; why the retention reason no longer applies; and the capability given up. The proof is closed only when net reduction does not depend on a future implementation choice.
+A lead is **Ready to cut** only when its deletion proof establishes: the current authority, production consumers, and strongest retention reason in its most favorable form; the whole-system disappearance surface; what is added or moved and why the result is still a net reduction; why the retention reason no longer applies; and the capability given up. The proof is closed only when net reduction does not depend on a future implementation choice.
 
 The burden is asymmetric: for a bounded internal lead, exhaustive evidence within the affected boundary suffices — do not demand nonexistent historical rationale or refutation of theoretical uses. Public contracts, supported extensions, persisted representations, deployed-version compatibility, and replay/resume paths always require the full proof.
 
-A candidate may change behavior slightly when the new behavior is still reasonable and easier to explain — record the difference as capability given up.
+A ready-to-cut finding may change behavior slightly when the new behavior is still reasonable and easier to explain — record the difference as capability given up.
 
 ## Report in three tiers
 
-**Candidate** — closed proof; eligible for implementation priority.
+A tier says what is still missing before the concept can disappear: nothing, one fact, or one decision.
 
-**Deletion probe** — likely accidental complexity with a clear disappearance surface and one bounded, decisively checkable uncertainty. Do not drop a high-signal lead because one verification is missing. State the suspected concept and why it reads as accidental, observed consumers and traced demand, the strongest retention reason, and the single decisive check. Report at most 10; no priority — state expected leverage.
+**Ready to cut** — closed proof; eligible for implementation priority.
 
-**Decision gate** — a genuinely open product or architecture choice. A gap closable by searching, tracing, or reading configuration is an evidence gap or a probe, not a gate. State the decision, what each choice keeps or removes, the disappearance surface, and the missing evidence or policy. Never an implementation recommendation.
+**Needs one check** — likely accidental complexity with a clear disappearance surface, blocked on a single fact. Settle that fact yourself whenever the repository can answer it; a check you can run is not a finding. This tier is for facts the repository cannot reach — ecosystem demand, deployed versions, third-party producers, an owner's intent — and a high-signal lead is not dropped because one of them is out of reach. State the suspected concept and why it reads as accidental, observed consumers and traced demand, the strongest retention reason, the open fact, and who can settle it. Report at most 10; no priority — state expected leverage.
+
+**Needs a decision** — a genuinely open product or architecture choice that no amount of reading settles. Anything a check could close belongs to a tier above. State the decision, what each choice keeps or removes, the disappearance surface, and the missing policy. Never an implementation recommendation.
 
 Omit observations that only say code looks complex or inelegant. Cosmetic defects, naming, mechanical file merges, and pure line-count wins are out of scope unless they embody a recurring maintenance obligation or a duplicate authority.
 
 ## Prioritize
 
-Priorities apply to Candidates only and rank when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost; **P2** ordinary urgency; **P3** opportunistic. Any priority may be empty; no quota.
+Priorities apply to ready-to-cut findings only and rank when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost; **P2** ordinary urgency; **P3** opportunistic. Any priority may be empty; no quota.
 
 ## Close
 
-Merge findings that share one underlying simplification: report the concept once, the rest as impact surface. Return a coverage table with every slice and its gaps, Candidates grouped P0–P3, Deletion probes, and Decision gates. If evidence or access blocks closure, report a partial audit without full-scope claims. Every claim must trace to production evidence rather than tests or restated docs, and no high-signal lead may be dropped merely because certainty was unreachable.
+Merge findings that share one underlying simplification: report the concept once, the rest as impact surface. Return a coverage table with every slice and its gaps, then the three tiers: Ready to cut grouped P0–P3, Needs one check, Needs a decision. If evidence or access blocks closure, report a partial audit without full-scope claims. Every claim must trace to production evidence rather than tests or restated docs, and no high-signal lead may be dropped merely because certainty was unreachable.

@@ -89,7 +89,7 @@ npx skills add Astro-Han/skills --skill shape
 - `shape` 借鉴了 Matt Pocock 的 [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling)。遇到视觉选择时直接展示方案，这一点来自 Superpowers 的 [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming)。
 - `tdd` 借鉴了 Matt Pocock 的 [`tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)。
 - `debug` 参考了 Matt Pocock 的 [`diagnosing-bugs`](https://github.com/mattpocock/skills/tree/main/skills/engineering/diagnosing-bugs)、Superpowers 的 [`systematic-debugging`](https://github.com/obra/superpowers/tree/main/skills/systematic-debugging) 和 Waza 的 [`hunt`](https://github.com/tw93/Waza/tree/main/skills/hunt)。我有意删掉了其中不少流程，只留下最小的证据链。
-- `simplify-audit` 基于 [M4n5ter 的 `simplify-audit`](https://github.com/M4n5ter/skills/tree/main/simplify-audit) 重写，改成默认怀疑的姿态、不对称举证，并加入 Deletion probe：只差一步有界验证的高信号线索不再被直接丢掉。其中两个猎场——成熟依赖已经提供却手搓的基础设施、防御性拷贝与重复的生命周期状态——来自 DeepSeek 的 [`dsh-find-simplifications`](https://github.com/deepseek-ai/deepseek-harness/tree/master/.agents/skills/dsh-find-simplifications)。
+- `simplify-audit` 基于 [M4n5ter 的 `simplify-audit`](https://github.com/M4n5ter/skills/tree/main/simplify-audit) 重写，改成默认怀疑的姿态、不对称举证，并把三层报告按「还缺什么才能删掉」命名——什么都不缺、缺一个事实、缺一个决定——只差一个仓库内查不到的事实的高信号线索不再被直接丢掉。其中两个猎场——成熟依赖已经提供却手搓的基础设施、防御性拷贝与重复的生命周期状态——来自 DeepSeek 的 [`dsh-find-simplifications`](https://github.com/deepseek-ai/deepseek-harness/tree/master/.agents/skills/dsh-find-simplifications)。
 - `review-feedback` 最初参考了 Superpowers 的 [`receiving-code-review`](https://github.com/obra/superpowers/tree/main/skills/receiving-code-review)，后来围绕证据、职责、改动范围和系统成本重新写过，现在已经很不一样了。
 
 这些外部项目仍然是各自 skills 的权威来源。这里放的是我自己的改写版本，没有直接复制外部 skill。Astro Skills 以英文 `SKILL.md` 为准。
