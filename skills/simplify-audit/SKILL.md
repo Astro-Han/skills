@@ -5,7 +5,7 @@ description: Audit an existing repository or scoped architecture area for simpli
 
 # Simplification Audit
 
-Find removals and consolidations whose maintenance cost exceeds their present value. The unit is a concept, authority, state, path, contract, or representation that can disappear — not a line count. Discover aggressively: the audit's value is the deletable surface it uncovers, not the safety of its report. Audit only: do not edit production code or turn the report into an implementation plan.
+Find removals and consolidations whose maintenance cost exceeds their present value. The unit is a concept, authority, state, path, contract, or representation that can disappear — not a line count. Discover aggressively: the audit's value is the deletable surface it uncovers, not the safety of its report. Audit only — do not edit production code or turn the report into an implementation plan.
 
 ## Establish coverage
 
@@ -17,11 +17,11 @@ Assume accidental complexity is widespread. An internal concept is suspicious un
 
 These are retention claims, never proof: code exists and is called; internal modules call each other; tests cover it; docs restate the implementation; naming or symmetry implies it belongs; hypothetical reuse; the pattern is widely copied; deletion would touch many call sites.
 
-Treat something as an explicit design decision only when current architectural authority states its rationale and ownership — never infer one from prevalence, tests, or naming, and never read a decision the owner has not made as an absent demand. Do not reopen a valid one unless evidence changes a premise or shows the promised demand is gone.
+Treat something as an explicit design decision only when current architectural authority states its rationale and ownership — never infer one from prevalence, tests, or naming, and never read an unmade decision as absent demand. Do not reopen one unless evidence changes a premise or shows the promised demand is gone.
 
 ## Hunt
 
-Derive per deliverable the smallest set of concepts, states, and contracts its evidenced behavior and obligations require; investigate the largest gaps from the current composition first. A chain ending inside a group of mutually supporting internal consumers establishes no independent demand.
+Derive per deliverable the smallest set of concepts, states, and contracts its evidenced behavior and obligations require; investigate the largest gaps first. A chain ending inside a group of mutually supporting internal consumers establishes no independent demand.
 
 Search for (each a lead, not a conclusion):
 
@@ -36,13 +36,13 @@ Search for (each a lead, not a conclusion):
 - several mechanisms mirroring one liveness or lifecycle fact in async code — propose a single owner, but preserve machinery protecting rollback, callback containment, first-terminal-outcome arbitration, or dispose-to-quiescence;
 - hand-rolled infrastructure (retry, parsing, framing, globbing, diffing) a maintained dependency or platform builtin already provides, when net deletion is real.
 
-Simplifications compose. After closing a finding, re-derive the minimum for its neighbors: a layer that becomes pure delegation, a state that becomes derivable, or a contract that loses its last consumer is itself a finding — report it with its prerequisite named. Do not let early strong findings end the hunt.
+Simplifications compose. After closing a finding, re-derive the minimum for its neighbors: a layer that becomes pure delegation, a state that becomes derivable, or a contract left without consumers is itself a finding — report it with its prerequisite named. Do not let early strong findings end the hunt.
 
 ## Trace demand
 
-Use demand chains for surface-sized leads and exact-symbol or exact-string searches for local ones. Before concluding absence, confirm the search tool does not silently skip files (binary detection, ignore rules, unindexed paths), then check the enumerated surfaces — dynamic wiring, configuration, persistence, replay/resume, and published contracts all reach code nothing appears to call.
+Use demand chains for surface-sized leads and exact-symbol or exact-string searches for local ones. Before concluding absence, confirm the search tool does not silently skip files (binary detection, ignore rules, unindexed paths), then check the enumerated surfaces: every one of them reaches code nothing appears to call.
 
-Usage is retention evidence, not proof; architecture states intended ownership; resolve conflicts among them. For a compatibility path, absence of a current writer is insufficient — check persisted artifacts, deployed versions, replay/resume, rolling upgrades, and third-party producers before its reader can disappear. Public and extension contracts require ecosystem demand; documentation alone establishes none.
+Architecture states intended ownership; resolve conflicts between it and observed usage. For a compatibility path, absence of a current writer is insufficient — check persisted artifacts, deployed versions, replay/resume, rolling upgrades, and third-party producers before its reader can disappear. Public and extension contracts require ecosystem demand; documentation alone establishes none.
 
 Do not read every file: a slice is Reviewed once its surfaces and demand chains are investigated far enough to disposition credible leads.
 
@@ -58,18 +58,14 @@ A ready-to-cut finding may change behavior slightly when the new behavior is sti
 
 A tier says what is still missing before the concept can disappear: nothing, one fact, or one decision.
 
-**Ready to cut** — closed proof; eligible for implementation priority.
+**Ready to cut** — closed proof. Prioritize by when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost; **P2** ordinary urgency; **P3** opportunistic. Any priority may be empty; no quota.
 
-**Needs one check** — likely accidental complexity with a clear disappearance surface, blocked on a single fact. Settle that fact yourself whenever the repository can answer it; a check you can run is not a finding. This tier is for facts the repository cannot reach — ecosystem demand, deployed versions, third-party producers, an owner's intent — and a high-signal lead is not dropped because one of them is out of reach. State the suspected concept and why it reads as accidental, observed consumers and traced demand, the strongest retention reason, the open fact, and who can settle it. Report at most 10; no priority — state expected leverage.
+**Needs one check** — likely accidental complexity with a clear disappearance surface, blocked on a single fact. Settle that fact yourself whenever the repository can answer it; a check you can run is not a finding. This tier is for facts the repository cannot reach — ecosystem demand, deployed versions, third-party producers, an owner's intent — and no high-signal lead is dropped because one is out of reach. State the suspected concept and why it reads as accidental, observed consumers and traced demand, the strongest retention reason, the open fact, and who can settle it. At most 10; no priority — state expected leverage.
 
-**Needs a decision** — a genuinely open product or architecture choice that no amount of reading settles. Anything a check could close belongs to a tier above. State the decision, what each choice keeps or removes, the disappearance surface, and the missing policy. Never an implementation recommendation.
+**Needs a decision** — an open product or architecture choice no amount of reading settles. Anything a check could close belongs to a tier above. State the decision, what each choice keeps or removes, the disappearance surface, and the missing policy. Never an implementation recommendation.
 
 Omit observations that only say code looks complex or inelegant. Cosmetic defects, naming, mechanical file merges, and pure line-count wins are out of scope unless they embody a recurring maintenance obligation or a duplicate authority.
 
-## Prioritize
-
-Priorities apply to ready-to-cut findings only and rank when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost; **P2** ordinary urgency; **P3** opportunistic. Any priority may be empty; no quota.
-
 ## Close
 
-Merge findings that share one underlying simplification: report the concept once, the rest as impact surface. Return a coverage table with every slice and its gaps, then the three tiers: Ready to cut grouped P0–P3, Needs one check, Needs a decision. If evidence or access blocks closure, report a partial audit without full-scope claims. Every claim must trace to production evidence rather than tests or restated docs, and no high-signal lead may be dropped merely because certainty was unreachable.
+Merge findings that share one underlying simplification: report the concept once, the rest as impact surface. Return a coverage table with every slice and its gaps, then the three tiers in order. If evidence or access blocks closure, report a partial audit without full-scope claims. Every claim must trace to production evidence rather than tests or restated docs, and no high-signal lead may be dropped merely because certainty was unreachable.
