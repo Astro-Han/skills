@@ -58,7 +58,7 @@ A ready-to-cut finding may change behavior slightly when the new behavior is sti
 
 A tier says what is still missing before the concept can disappear: nothing, one fact, or one decision.
 
-**Ready to cut** — closed proof. Prioritize by when implementation is worth it, not defect severity: **P0** active harm, blocked work, or spreading complexity; **P1** high leverage, real current cost; **P2** ordinary urgency; **P3** opportunistic. Any priority may be empty; no quota.
+**Ready to cut** — closed proof. Order by when implementation is worth it, not defect severity, and say what puts the first one first.
 
 **Needs one check** — likely accidental complexity with a clear disappearance surface, blocked on a single fact. Settle that fact yourself whenever the repository can answer it; a check you can run is not a finding. This tier is for facts the repository cannot reach — ecosystem demand, deployed versions, third-party producers, an owner's intent — and no high-signal lead is dropped because one is out of reach. State the suspected concept and why it reads as accidental, observed consumers and traced demand, the strongest retention reason, the open fact, and who can settle it. At most 10; no priority — state expected leverage.
 
