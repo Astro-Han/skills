@@ -36,13 +36,16 @@ Astro Skills grew from that standard. I keep only the constraints that earn thei
 
 ## Evals
 
-`evals/` holds the paired A/B harness behind these skills: fixtures that stand in for real work, a headless runner per agent CLI, and a grader that turns each run into a number [`craft-skill`](skills/craft-skill/) can summarize. A skill change lands when a paired run says the agent got better at the job — not because the wording improved. See [evals/README.md](evals/README.md).
+`evals/` contains executable paired comparisons for `tdd`, `debug`, `review-feedback`, and
+`pr-review`. Its fixtures stand in for real work; the shared runner preserves each arm's artifacts,
+and the grader records predeclared expectations. Evaluation coverage is explicit rather than implied
+for every skill. See the [shared harness](evals/README.md) and its per-skill evaluation records.
 
 ## Install
 
 ### GitHub CLI
 
-With [GitHub CLI](https://cli.github.com/manual/gh_skill) v2.90.0 or later, install all skills for Codex:
+With [GitHub CLI](https://cli.github.com/manual/gh_skill_install) v2.90.0 or later, install all skills for Codex:
 
 ```bash
 gh skill install Astro-Han/skills --all --agent codex --scope user

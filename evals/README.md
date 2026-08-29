@@ -1,17 +1,18 @@
 # Evals
 
-Paired A/B evidence for the skills in this repository. A skill change is not done because
-it reads better; it is done when a paired run says the agent got better at the job.
+Paired A/B evidence for selected skills in this repository. A skill change is not done because
+it reads better; it is done when a predeclared comparison says the agent got better at the job.
 
 ## The three pieces
 
 | Piece | What it does |
 | --- | --- |
-| `runner.py` | Run a headless agent against a fixture, once per arm, and collect the transcript, diff, and test result. The agent CLI is a `--provider` argument; only the invocation, the skill-arm injection, and the transcript schema differ between them. |
-| `grader.py` + `acceptance/` | Turn each run into a number: parse the transcript, run the case's acceptance script against the resulting workspace. |
-| `skills/craft-skill/scripts/eval.py` | Validate the paired manifest, summarize it, and build a blind review pack. |
+| `runner.py` | Run one named suite against isolated fixture copies and retain each arm's transcript, workspace diff, and test result. Providers own CLI invocation, skill injection, transcript parsing, and any provider-specific suite support. |
+| `grader.py` + `acceptance/` | Parse a run and persist its expectation ledger. Acceptance scripts verify resulting workspaces where a case has executable behavior. |
+| `skills/craft-skill/scripts/eval.py` | Independently validate and summarize a numeric paired manifest, or build a blind review pack. The runner and grader do not generate that manifest. |
 
-They compose in that order: run → grade → summarize. Nothing here judges a skill by reading it.
+The runner and grader compose directly. The manifest tool is a separate boundary for comparisons
+that have already assigned one declared value to each arm. Nothing here judges a skill by reading it.
 
 ## Skill suites
 
@@ -23,8 +24,8 @@ This file documents only the shared harness.
 | `pr-review` | [PR Review evals](pr-review/README.md) | [`pr_review_cases.py`](pr_review_cases.py) |
 | `review-feedback` | [Review Feedback evals](review-feedback/README.md) | [`review_feedback_cases.py`](review_feedback_cases.py) |
 
-The remaining fixtures currently exercise `tdd` (`cartlib`), `debug` (`pricer`, `reportlib`),
-and `simplify-audit` (`feedhub`). A fixture is an exam paper, not a library: its value is the
+The remaining executable suites exercise `tdd` (`cartlib`) and `debug` (`pricer`, `reportlib`).
+The `debug` suite currently supports Claude only. A fixture is an exam paper, not a library: its value is the
 specific mistakes an agent can make in it. Findable items alone measure eagerness; traps and open
 questions are what separate judgment from enthusiasm.
 
@@ -33,15 +34,16 @@ questions are what separate judgment from enthusiasm.
 Run commands from the repository root:
 
 ```bash
-python3 evals/runner.py --dry-run
-python3 evals/runner.py --provider pi --reps 1
+python3 evals/runner.py --provider claude --suite debug --reps 1 --dry-run
+python3 evals/runner.py --provider pi --suite tdd --reps 1
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite <suite> --reps <n>
 python3 evals/grader.py
 ```
 
-The runner writes model-specific workspaces under `evals/<skill>-workspace/`. Those outputs are
-ignored by Git and can be regenerated. Keep durable conclusions in the corresponding skill eval
-record and in the commit message, not in raw transcripts.
+The runner writes each arm under
+`evals/<workspace>/<iteration>/<case>-r<rep>/<arm>/`. Reuse an iteration name only when replacing
+that run intentionally. Outputs are ignored by Git and can be regenerated. Keep durable conclusions
+in the corresponding skill eval record and in the commit message, not in raw transcripts.
 
 ## Read a result
 

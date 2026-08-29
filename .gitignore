@@ -1,7 +1,3 @@
 __pycache__/
 *.pyc
-evals/debug-workspace/
-evals/tdd-workspace/
-evals/review-feedback-workspace/
-evals/pr-review-workspace/
-evals/*.log
+evals/*-workspace/

@@ -7,7 +7,7 @@ and compatibility obligations.
 
 ## Fixtures
 
-| Fixture | Role | What it plants |
+| Fixture | Original role | What it plants |
 | --- | --- | --- |
 | `quoteview` | regression | Two local-patch suggestions with one domain-owner cause, plus one false finding and a nonstandard severity scale. |
 | `seatmap` | holdout | Two synchronization suggestions caused by mirrored state, plus a false zero-capacity finding. |
@@ -20,30 +20,16 @@ and compatibility obligations.
 | `cartsummary` | final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
+| `mediathread` | cumulative-diff regression | A second review round that must retain owner-level fixes while removing adjacent scope expansion. |
 
 ## Run
 
 ```bash
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback --reps 3
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-holdout --reps 3
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-second-holdout --reps 6
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-final-holdout --reps 8
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-matrix --reps 5
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression --reps 3
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression-holdout --reps 5
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-structural-compression --reps 2
 python3 evals/grader.py
 ```
 
-## Compression decision
-
-The full arm is frozen at `0685def7c43dc8a3f16944bc3804c1871583f504`; only the
-shipped skill changes. Adopt the compressed arm only when it is at most 820 words, its total
-score is not below the full arm in either the nine-case regression suite or the unseen holdout,
-and edit-gate, owner-level end state, false-suggestion-not-implemented, and acceptance counts
-are each no lower in either suite. Otherwise restore the frozen full skill.
-
-## Structural compression decision
+## Current decision
 
 The baseline is the complete scope-aware skill at
 `fd4056164c7c7c618db5c4cc45f1d4cc3cb599df`. Compare it with the shipped skill on
@@ -61,3 +47,6 @@ deterministic violation, or the same expectation loses to its paired baseline in
 least two independent runs and has more paired losses than gains. Otherwise the
 predeclared non-inferiority result controls the decision; do not add repetitions to
 chase a perfect count.
+
+Earlier staged comparisons are retained in Git history rather than as parallel runner paths. This
+12-case comparison is the sole current review-feedback gate.

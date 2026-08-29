@@ -38,13 +38,16 @@
 
 ## Evals
 
-`evals/` 放的是这些 skills 背后的配对 A/B 装置：代替真实工作的 fixture、每个 Agent CLI 一个的无头 runner，以及把每次运行折算成分数、交给 [`craft-skill`](skills/craft-skill/) 汇总的 grader。改动落库的依据是配对实验说明 Agent 把事做得更好，而不是文字读起来更顺。详见 [evals/README.md](evals/README.md)。
+`evals/` 目前为 `tdd`、`debug`、`review-feedback` 和 `pr-review` 提供可执行的配对对照。
+fixture 代替真实工作，共用 runner 保留每个 arm 的产物，grader 记录预先声明的检查项。
+评测覆盖什么会明确写出，不暗示每个 skill 都已经接入自动评测。详见
+[共用评测装置](evals/README.md) 和其中各 skill 的评测记录。
 
 ## 安装
 
 ### GitHub CLI
 
-使用 v2.90.0 或更高版本的 [GitHub CLI](https://cli.github.com/manual/gh_skill)，为 Codex 安装全部 skills：
+使用 v2.90.0 或更高版本的 [GitHub CLI](https://cli.github.com/manual/gh_skill_install)，为 Codex 安装全部 skills：
 
 ```bash
 gh skill install Astro-Han/skills --all --agent codex --scope user

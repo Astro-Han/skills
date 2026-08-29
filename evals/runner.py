@@ -16,16 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from review_feedback_cases import (
-    COMPRESSION_HOLDOUT_CASES,
-    COMPRESSION_REGRESSION_CASES,
-    FIRST_HOLDOUT_CASES,
-    FINAL_HOLDOUT_CASES,
-    REGRESSION_CASE,
-    REVIEW_FEEDBACK_CASES,
-    SECOND_HOLDOUT_CASES,
-    SCOPE_REBASE_CASES,
-)
+from review_feedback_cases import REVIEW_FEEDBACK_CASES
 from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
@@ -43,11 +34,9 @@ CONCURRENCY = 6
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
 # are the only skill text this directory owns a copy of.
 SHIPPED = "shipped"
-REVIEW_FEEDBACK_FULL_REF = "0685def7c43dc8a3f16944bc3804c1871583f504"
 PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
 PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
 PR_REVIEW_THREE_STATES_REF = "d4ea3b6bc9dc198a43024ae500373b8d0f5567ae"
-REVIEW_FEEDBACK_SCOPE_BASELINE_REF = "856518d226e22259ffa5a5d38015ff7ef1e4bac4"
 REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "fd4056164c7c7c618db5c4cc45f1d4cc3cb599df"
 
 PROMPTS = {
@@ -193,7 +182,7 @@ PROVIDERS = {
 # --- suites ----------------------------------------------------------------
 
 
-def suite_runs(provider_name, reps=3, suite="all"):
+def suite_runs(provider_name, reps=3, suite=None):
     runs = []
     pr_review_suites = {
         "pr-review": PR_REVIEW_DESIGN_CASES,
@@ -202,6 +191,16 @@ def suite_runs(provider_name, reps=3, suite="all"):
         "pr-review-partial-facts": PR_REVIEW_PARTIAL_FACT_CASES,
         "pr-review-no-statuses": PR_REVIEW_NO_STATUS_CASES,
     }
+    supported_suites = set(pr_review_suites) | {
+        "review-feedback-structural-compression",
+        "debug",
+        "tdd",
+    }
+    if suite not in supported_suites:
+        raise ValueError("unsupported suite: {!r}".format(suite))
+    if suite == "debug" and provider_name != "claude":
+        raise ValueError("the debug suite currently supports only the claude provider")
+
     for rep in range(1, reps + 1):
         if suite in pr_review_suites:
             cases = pr_review_suites[suite]
@@ -226,58 +225,21 @@ def suite_runs(provider_name, reps=3, suite="all"):
                                  "skill_name": "pr-review",
                                  "installed_skill_name": "pr-review-eval"})
             continue
-        review_cases = ()
-        if suite == "review-feedback":
-            review_cases = (REGRESSION_CASE,)
-        elif suite == "review-feedback-holdout":
-            review_cases = FIRST_HOLDOUT_CASES
-        elif suite == "review-feedback-second-holdout":
-            review_cases = SECOND_HOLDOUT_CASES
-        elif suite == "review-feedback-final-holdout":
-            review_cases = FINAL_HOLDOUT_CASES
-        elif suite in ("review-feedback-matrix", "review-feedback-compression"):
-            review_cases = COMPRESSION_REGRESSION_CASES
-        elif suite == "review-feedback-compression-holdout":
-            review_cases = COMPRESSION_HOLDOUT_CASES
-        elif suite == "review-feedback-scope-rebase":
-            review_cases = SCOPE_REBASE_CASES
-        elif suite == "review-feedback-scope-regression":
-            review_cases = COMPRESSION_REGRESSION_CASES
-        elif suite == "review-feedback-structural-compression":
-            review_cases = (COMPRESSION_REGRESSION_CASES + COMPRESSION_HOLDOUT_CASES
-                            + SCOPE_REBASE_CASES)
-        elif suite == "all":
-            review_cases = tuple(REVIEW_FEEDBACK_CASES)
-        for eval_name in review_cases:
-            fixture = REVIEW_FEEDBACK_CASES[eval_name]["fixture"]
-            if suite in ("review-feedback-compression",
-                         "review-feedback-compression-holdout"):
-                arms = (("full_skill", "git:" + REVIEW_FEEDBACK_FULL_REF),
-                        ("compressed_skill", SHIPPED))
-            elif suite in ("review-feedback-scope-rebase",
-                           "review-feedback-scope-regression"):
-                arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_SCOPE_BASELINE_REF),
-                        ("candidate_skill", SHIPPED))
-            elif suite == "review-feedback-structural-compression":
-                arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF),
-                        ("candidate_skill", SHIPPED))
-            else:
-                arms = (("old_skill", "review-feedback-old"),
-                        ("with_skill", SHIPPED))
-            for arm, skill_arm in arms:
-                runs.append({"workspace": "review-feedback-workspace",
-                             "eval": eval_name, "rep": rep,
-                             "arm": arm, "fixture": fixture,
-                             "skill_arm": skill_arm,
-                             "skill_name": "review-feedback",
-                             "installed_skill_name": "review-feedback-eval"})
-        if suite in ("review-feedback", "review-feedback-holdout",
-                     "review-feedback-second-holdout", "review-feedback-final-holdout",
-                     "review-feedback-matrix", "review-feedback-compression",
-                     "review-feedback-compression-holdout",
-                     "review-feedback-structural-compression") or provider_name == "codex":
+
+        if suite == "review-feedback-structural-compression":
+            arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF),
+                    ("candidate_skill", SHIPPED))
+            for eval_name, case in REVIEW_FEEDBACK_CASES.items():
+                for arm, skill_arm in arms:
+                    runs.append({"workspace": "review-feedback-workspace",
+                                 "eval": eval_name, "rep": rep,
+                                 "arm": arm, "fixture": case["fixture"],
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "review-feedback",
+                                 "installed_skill_name": "review-feedback-eval"})
             continue
-        if provider_name == "claude":
+
+        if suite == "debug":
             for eval_name, fixture in (("shared-sections", "reportlib"),
                                        ("diagnose-only", "pricer")):
                 for arm, skill_arm in (("without_skill", None),
@@ -285,6 +247,10 @@ def suite_runs(provider_name, reps=3, suite="all"):
                     runs.append({"workspace": "debug-workspace", "eval": eval_name,
                                  "rep": rep, "arm": arm, "fixture": fixture,
                                  "skill_arm": skill_arm, "skill_name": "debug"})
+
+            continue
+
+        if provider_name == "claude":
             arms = (("without_skill", None), ("old_skill", "tdd-old"),
                     ("with_skill", SHIPPED))
         else:
@@ -419,17 +385,12 @@ def main():
     parser.add_argument("--iteration", default="iteration-1",
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
-    parser.add_argument("--suite", choices=("all", "pr-review", "pr-review-holdout",
+    parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
                                             "pr-review-no-statuses",
-                                            "review-feedback", "review-feedback-holdout",
-                                            "review-feedback-second-holdout", "review-feedback-final-holdout",
-                                            "review-feedback-matrix", "review-feedback-compression",
-                                            "review-feedback-compression-holdout",
-                                            "review-feedback-scope-rebase",
-                                            "review-feedback-scope-regression",
-                                            "review-feedback-structural-compression"),
-                        default="all")
+                                            "review-feedback-structural-compression",
+                                            "debug", "tdd"),
+                        required=True)
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")
     args = parser.parse_args()

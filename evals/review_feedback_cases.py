@@ -356,22 +356,3 @@ REVIEW_FEEDBACK_CASES = {
         "kind": "scope_rebase",
     },
 }
-
-
-REGRESSION_CASE = "adjudicate-before-edit"
-FIRST_HOLDOUT_CASES = (
-    "remove-mirrored-state",
-    "centralize-normalization",
-    "remove-legacy-representation",
-    "centralize-lifecycle",
-)
-SECOND_HOLDOUT_CASES = (
-    "centralize-batch-policy",
-    "centralize-wire-contract",
-    "remove-obsolete-toggle",
-)
-FINAL_HOLDOUT_CASES = ("remove-derived-cache",)
-HOLDOUT_CASES = FIRST_HOLDOUT_CASES + SECOND_HOLDOUT_CASES + FINAL_HOLDOUT_CASES
-COMPRESSION_REGRESSION_CASES = (REGRESSION_CASE,) + HOLDOUT_CASES
-COMPRESSION_HOLDOUT_CASES = ("protect-committed-boundary", "preserve-live-compatibility")
-SCOPE_REBASE_CASES = ("rebase-cumulative-diff",)
