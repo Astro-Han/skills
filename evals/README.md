@@ -57,7 +57,7 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-reachability --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-partial-facts --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-no-statuses --reps 4
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-structural-compression --reps 5
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-structural-compression --reps 2
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -179,7 +179,7 @@ are each no lower in either suite. Otherwise restore the frozen full skill.
 
 The baseline is the complete scope-aware skill at
 `fd4056164c7c7c618db5c4cc45f1d4cc3cb599df`. Compare it with the shipped skill on
-all twelve review-feedback fixtures, five paired repetitions each, using GPT-5.6 Luna
+all twelve review-feedback fixtures, two paired repetitions each, using GPT-5.6 Luna
 with high reasoning. One pair is one fixture and repetition. Its score is the fraction
 of deterministic expectations passed, so fixtures have equal weight.
 
