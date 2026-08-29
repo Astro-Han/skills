@@ -5,7 +5,7 @@ description: "Use this skill whenever existing code-review feedback may lead to 
 
 # Review Feedback
 
-Review feedback is evidence about one system, not a patch queue. Decide whether the reported problem is real, why the system permits it, and what the simplest sound end state is before editing.
+Review feedback is evidence, not a patch queue. Find the problem, its cause, and the simplest end state before editing.
 
 ## Before editing
 
@@ -14,12 +14,12 @@ Read-only inspection, reproduction, and tests may begin immediately. Do not edit
 Use one row for comments with the same cause and list every comment ID in its row. Each row must state:
 
 - verdict: **Verified**, **Disproved**, or **Evidence gap**;
-- decisive evidence, the concrete cause, and where the rule belongs;
+- decisive evidence, the cause, and the smallest one-owner end state covering the group;
 - who can hit it and severity: **P0**, **P1**, **P2**, **P3**, or **No finding**;
 - one outcome: **Delete or simplify**, **Fix at owner**, **Fix locally**, **Defer**, or **Push back**;
 - for an existing diff or later review round, scope: **required by the original change**, **regression caused by this diff**, **unrelated change already added**, or **pre-existing/adjacent**.
 
-Publish the table, then continue with accepted work when the user already asked for fixes. It is a safety gate, not another approval request. Ask only when a missing fact changes coupled decisions or a material product or compatibility choice remains.
+Publish the table, then continue when asked. Ask only when a missing fact changes coupled decisions or a product or compatibility choice remains.
 
 ## 1. Read and group
 
@@ -37,7 +37,7 @@ For each surviving group, explain:
 
 `observed symptom → rule that must always hold → where that rule belongs → why the current design breaks it`
 
-The failing line, a missing guard, or a restated symptom is not a cause. Judge the reported defect, proposed explanation, severity, and suggested patch separately. Every requested file, mechanism, and patch is a proposal. A real defect is **Verified** when it breaks an independent contract even if the proposed cause or patch is wrong; accept the issue and reject the patch. Use **Disproved** only when no reported defect remains. **Disproved** permits only **Push back** and must not produce code or tests disguised as hardening, cleanup, or consistency work.
+The failing line, a missing guard, or a restated symptom is not a cause. Judge the reported defect, proposed explanation, severity, and suggested patch separately. Every requested file, mechanism, and patch is a proposal. A real defect is **Verified** when it breaks an independent contract even if the proposed cause or patch is wrong; accept the issue and reject the patch. Use **Disproved** only when no reported defect remains. **Disproved** permits only **Push back** and must not produce code or tests disguised as hardening, cleanup, or consistency work. A root fix may incidentally cover it, but add no branch or test for its false mechanism.
 
 Grade actual reach, consequence, spread, and recoverability; never inherit the reviewer's scale:
 
@@ -51,8 +51,8 @@ Reachability alone does not make an issue P1. A recoverable preview error, in-me
 
 Choose the lowest-cost end state that preserves proven behavior:
 
-1. **Delete or simplify** an unnecessary behavior, state, path, representation, or abstraction.
-2. **Fix at owner** by enforcing the rule once where every current and future producer must pass. Remove duplicate state, validation, and sibling patches made unnecessary by that source of truth.
+1. **Delete or simplify** an unnecessary behavior, state, path, representation, or abstraction. Before synchronizing duplicate or derived representations, prove both have current consumers; otherwise remove or derive one.
+2. **Fix at owner** once at the boundary every producer uses. An entry point is not the owner because data passes through it: when several producers build the same domain value, put intrinsic validity in that value. Remove duplicate state, validation, and sibling patches made unnecessary by that source of truth.
 3. **Fix locally** only when the symptom is truly isolated and moving the rule would add more total system cost. When several comments repeat one rule, this outcome is unavailable unless independent contracts prove that the sites intentionally own different policies.
 4. **Defer** a true but low-priority or out-of-scope issue without adding code.
 5. **Push back** on a false, overstated, incompatible, unsupported, or net-complexity-increasing suggestion.
