@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Callable
 
 from review_feedback_cases import (
+    COMPRESSION_HOLDOUT_CASES,
+    COMPRESSION_REGRESSION_CASES,
     FIRST_HOLDOUT_CASES,
     FINAL_HOLDOUT_CASES,
     HOLDOUT_CASES,
@@ -33,6 +35,7 @@ CONCURRENCY = 6
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
 # are the only skill text this directory owns a copy of.
 SHIPPED = "shipped"
+REVIEW_FEEDBACK_FULL_REF = "0685def7c43dc8a3f16944bc3804c1871583f504"
 
 PROMPTS = {
     "shared-sections": (
@@ -188,12 +191,19 @@ def suite_runs(provider_name, reps=3, suite="all"):
             review_cases = SECOND_HOLDOUT_CASES
         elif suite == "review-feedback-final-holdout":
             review_cases = FINAL_HOLDOUT_CASES
-        elif suite in ("all", "review-feedback-matrix"):
+        elif suite in ("review-feedback-matrix", "review-feedback-compression"):
+            review_cases = COMPRESSION_REGRESSION_CASES
+        elif suite == "review-feedback-compression-holdout":
+            review_cases = COMPRESSION_HOLDOUT_CASES
+        elif suite == "all":
             review_cases = tuple(REVIEW_FEEDBACK_CASES)
         for eval_name in review_cases:
             fixture = REVIEW_FEEDBACK_CASES[eval_name]["fixture"]
-            for arm, skill_arm in (("old_skill", "review-feedback-old"),
-                                   ("with_skill", SHIPPED)):
+            arms = (("full_skill", "git:" + REVIEW_FEEDBACK_FULL_REF),
+                    ("compressed_skill", SHIPPED)) if suite in (
+                        "review-feedback-compression", "review-feedback-compression-holdout") else (
+                        ("old_skill", "review-feedback-old"), ("with_skill", SHIPPED))
+            for arm, skill_arm in arms:
                 runs.append({"workspace": "review-feedback-workspace",
                              "eval": eval_name, "rep": rep,
                              "arm": arm, "fixture": fixture,
@@ -202,7 +212,8 @@ def suite_runs(provider_name, reps=3, suite="all"):
                              "installed_skill_name": "review-feedback-eval"})
         if suite in ("review-feedback", "review-feedback-holdout",
                      "review-feedback-second-holdout", "review-feedback-final-holdout",
-                     "review-feedback-matrix") or provider_name == "codex":
+                     "review-feedback-matrix", "review-feedback-compression",
+                     "review-feedback-compression-holdout") or provider_name == "codex":
             continue
         if provider_name == "claude":
             for eval_name, fixture in (("shared-sections", "reportlib"),
@@ -242,8 +253,18 @@ def prepare(provider, spec, iteration):
         subprocess.run(cmd, cwd=work, check=True, capture_output=True)
     skill_args = []
     if spec["skill_arm"]:
-        arm_dir = (SKILLS / spec["skill_name"] if spec["skill_arm"] == SHIPPED
-                   else ROOT / "baselines" / spec["skill_arm"])
+        if spec["skill_arm"].startswith("git:"):
+            ref = spec["skill_arm"].removeprefix("git:")
+            arm_dir = rundir / "frozen-skill"
+            arm_dir.mkdir()
+            skill_text = subprocess.run(
+                ["git", "show", "{}:skills/{}/SKILL.md".format(ref, spec["skill_name"])],
+                cwd=ROOT.parent, check=True, capture_output=True, text=True,
+            ).stdout
+            (arm_dir / "SKILL.md").write_text(skill_text)
+        else:
+            arm_dir = (SKILLS / spec["skill_name"] if spec["skill_arm"] == SHIPPED
+                       else ROOT / "baselines" / spec["skill_arm"])
         installed_name = spec.get("installed_skill_name", spec["skill_name"])
         skill_args = provider.install_skill(work, arm_dir, installed_name)
     return rundir, work, skill_args
@@ -326,7 +347,8 @@ def main():
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--suite", choices=("all", "review-feedback", "review-feedback-holdout",
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
-                                            "review-feedback-matrix"),
+                                            "review-feedback-matrix", "review-feedback-compression",
+                                            "review-feedback-compression-holdout"),
                         default="all")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")

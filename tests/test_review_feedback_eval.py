@@ -65,6 +65,21 @@ class ReviewFeedbackEvalTests(unittest.TestCase):
         self.assertEqual({run["arm"] for run in runs}, {"old_skill", "with_skill"})
         self.assertEqual(len({run["eval"] for run in runs}), 9)
 
+    def test_compression_suite_pairs_frozen_full_and_shipped_skills(self):
+        runs = runner.suite_runs("codex", reps=3, suite="review-feedback-compression")
+        self.assertEqual(len(runs), 54)
+        self.assertEqual({run["arm"] for run in runs}, {"full_skill", "compressed_skill"})
+        self.assertEqual(
+            {run["skill_arm"] for run in runs},
+            {"git:" + runner.REVIEW_FEEDBACK_FULL_REF, runner.SHIPPED},
+        )
+
+    def test_compression_holdout_uses_two_unseen_fixtures(self):
+        runs = runner.suite_runs("codex", reps=5, suite="review-feedback-compression-holdout")
+        self.assertEqual(len(runs), 20)
+        self.assertEqual({run["fixture"] for run in runs}, {"transferlog", "credrotate"})
+        self.assertEqual({run["arm"] for run in runs}, {"full_skill", "compressed_skill"})
+
     def test_second_holdout_is_new_and_pairs_both_arms(self):
         runs = runner.suite_runs("codex", reps=6, suite="review-feedback-second-holdout")
         self.assertEqual(len(runs), 36)

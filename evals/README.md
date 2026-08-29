@@ -33,6 +33,8 @@ library: its value is the specific mistakes an agent can make in it.
 | `wireview` | `review-feedback` second holdout | Two exporter patches whose representation belongs to the wire-contract owner. |
 | `launchmode` | `review-feedback` second holdout | Two synchronization patches caused by an obsolete toggle that should be deleted. |
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
+| `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
+| `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -47,6 +49,8 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-fee
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-second-holdout --reps 6
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-final-holdout --reps 8
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-matrix --reps 5
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression --reps 3
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression-holdout --reps 5
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -56,6 +60,14 @@ this directory keeps a copy of.
 
 Run outputs are ignored by git: they are large, model-specific, and regenerable by re-running.
 Keep the conclusion in the skill and in the commit message, not the transcripts.
+
+### Review-feedback compression decision
+
+The full arm is frozen at `0685def7c43dc8a3f16944bc3804c1871583f504`; only the
+shipped skill changes. Adopt the compressed arm only when it is at most 820 words, its total
+score is not below the full arm in either the nine-case regression suite or the unseen holdout,
+and edit-gate, owner-level end state, false-suggestion-not-implemented, and acceptance counts
+are each no lower in either suite. Otherwise restore the frozen full skill.
 
 ## Reading a result
 

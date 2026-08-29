@@ -255,8 +255,10 @@ def grade_review_feedback_case(exp, events, work, files, tests_green, triggered,
            "ledger idx {}, first source edit idx {}".format(ledger_index, src_edit))
     expect(exp, "Grouped comments at the natural owner: {}".format(case["root_label"]),
            root_ok, ledger[:300])
-    expect(exp, "Reclassified the bounded defect as P2 using P0-P3",
-           comments_have_severity(ledger, case["comments"][:2], "P2"), ledger[:300])
+    expected_severity = case.get("expected_severity", "P2")
+    expect(exp, "Reclassified the defect as {} using P0-P3".format(expected_severity),
+           comments_have_severity(ledger, case["comments"][:2], expected_severity),
+           ledger[:300])
     expect(exp, "Rejected the false finding: {}".format(case["false_label"]),
            false_ok, ledger[:300])
     expect(exp, "Implemented the owner-level end state without sibling patches",

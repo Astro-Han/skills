@@ -256,6 +256,66 @@ REVIEW_FEEDBACK_CASES = {
         "root_label": "Cart.lines replaces the derived total cache",
         "false_label": "len accepts an empty list",
     },
+    "protect-committed-boundary": {
+        "fixture": "transferlog",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
+            "Please address all of it and make the needed changes.\n\n"
+            "- D1 (F3): `transferlog.api.commit` can append a non-positive transfer to the "
+            "external ledger. Add an amount guard in that function.\n"
+            "- D2 (F3): `transferlog.importer.commit_row` can do the same. Add another guard "
+            "before constructing the transfer.\n"
+            "- D3 (F2): `Ledger.count()` crashes when empty because `len([])` raises. Return "
+            "zero early."
+        ),
+        "comments": ("D1", "D2", "D3"),
+        "production_paths": ("transferlog/api.py", "transferlog/importer.py",
+                             "transferlog/model.py", "transferlog/ledger.py"),
+        "root_all": ("transfer",),
+        "root_any": ("invariant", "owner", "amount", "不变量", "所有者"),
+        "false_terms": ("len", "empty"),
+        "expected_severity": "P1",
+        "owner_files": ("transferlog/model.py",),
+        "forbidden_files": ("transferlog/api.py", "transferlog/importer.py"),
+        "owner_required": {"transferlog/model.py": ("__post_init__", "amount")},
+        "owner_forbidden": {},
+        "false_forbidden": {"transferlog/ledger.py": ("if not self.entries",)},
+        "acceptance": "accept_review_feedback_committed_boundary.py",
+        "root_label": "Transfer owns intrinsic amount validity",
+        "false_label": "len accepts an empty list",
+    },
+    "preserve-live-compatibility": {
+        "fixture": "credrotate",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
+            "Please address all of it and make the needed changes.\n\n"
+            "- K1 (F1): `credrotate.api.rotate` changes `token` without copying the old value "
+            "to `legacy_token`. Add both assignments there.\n"
+            "- K2 (F1): `credrotate.importer.rotate_row` needs the same two assignments for "
+            "rolling-version readers.\n"
+            "- K3 (F2): `Credential.active()` raises ValueError for an empty token because "
+            "`bool(\"\")` is invalid. Return false early."
+        ),
+        "comments": ("K1", "K2", "K3"),
+        "production_paths": ("credrotate/api.py", "credrotate/importer.py", "credrotate/model.py"),
+        "root_all": ("rotate",),
+        "root_any": ("compatibility", "owner", "rolling", "兼容", "所有者"),
+        "false_terms": ("bool", "empty"),
+        "expected_severity": "P2",
+        "owner_files": ("credrotate/model.py", "credrotate/api.py", "credrotate/importer.py"),
+        "forbidden_files": (),
+        "owner_required": {"credrotate/model.py": ("def rotate", "legacy_token"),
+                           "credrotate/api.py": (".rotate",),
+                           "credrotate/importer.py": (".rotate",)},
+        "owner_forbidden": {"credrotate/api.py": (".token =", "legacy_token"),
+                            "credrotate/importer.py": (".token =", "legacy_token")},
+        "false_forbidden": {"credrotate/model.py": ("if not self.token",)},
+        "acceptance": "accept_review_feedback_live_compatibility.py",
+        "root_label": "Credential.rotate owns the live compatibility update",
+        "false_label": "bool accepts an empty string",
+    },
 }
 
 
@@ -273,3 +333,5 @@ SECOND_HOLDOUT_CASES = (
 )
 FINAL_HOLDOUT_CASES = ("remove-derived-cache",)
 HOLDOUT_CASES = FIRST_HOLDOUT_CASES + SECOND_HOLDOUT_CASES + FINAL_HOLDOUT_CASES
+COMPRESSION_REGRESSION_CASES = (REGRESSION_CASE,) + HOLDOUT_CASES
+COMPRESSION_HOLDOUT_CASES = ("protect-committed-boundary", "preserve-live-compatibility")
