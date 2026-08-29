@@ -37,6 +37,7 @@ class PrReviewEvalTests(unittest.TestCase):
     def test_section_position_accepts_english_and_chinese_headings(self):
         self.assertEqual(grader.section_position("intro\n## Problem\nbody", "problem", "问题"), 6)
         self.assertEqual(grader.section_position("# 问题与真实性\nbody", "problem", "问题"), 0)
+        self.assertEqual(grader.section_position("## 方案与生产组合\nbody", "solution", "方案"), 0)
 
 
 if __name__ == "__main__":

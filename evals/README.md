@@ -67,6 +67,14 @@ as P2 rather than P1. A separate rolling-compatibility case is supporting holdou
 is not blind because the skill author can inspect its fixed answer key; do not claim generalization
 from this suite alone.
 
+### PR-review compression decision
+
+The full package is frozen at `538bf102514f54277ea6e829e6785f73d165af31`. Adopt a
+compressed package only when `SKILL.md` is at most 750 words, the directly loaded package is at
+most 1,000 words, it contains no Chinese text, and it retains 28/28 design assertions plus 9/9
+holdout assertions. The accepted arm used 749 + 215 words and met both behavioral thresholds on
+one `gpt-5.6-luna`/high run per case; this supports non-regression but does not measure variance.
+
 The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
 skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text
 this directory keeps a copy of.

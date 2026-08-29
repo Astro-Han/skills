@@ -5,91 +5,77 @@ description: "Perform a new evidence-backed review of one pull request or triage
 
 # PR Review
 
-A pull request is a proposed change to a real problem, not merely a diff. Decide whether the change deserves to exist before deciding whether its code is correct.
+A pull request proposes a solution to a problem. Decide whether it deserves to exist before deciding whether its code is correct. Remain read-only unless separately authorized.
 
-Review read-only unless the user separately authorizes an external action. Keep observed facts, supported conclusions, and evidence gaps distinct.
+## Anchor one exact head
 
-## Establish the review unit
+Read repository and review rules. Use the host's PR API or CLI to capture:
 
-Read the repository instructions and resolve the PR, its linked Issue or other problem statement, and the project's human-review rules. Capture one exact-head snapshot:
+- clickable PR and Issue links, titles, author, base, and exact head SHA;
+- additions, deletions, changed files and paths;
+- exact-head CI, mergeability, reviews, comments, and unresolved threads.
 
-- PR and Issue links, titles, author, base, and exact head SHA;
-- additions, deletions, changed-file count, and changed paths;
-- CI checks for that SHA, mergeability, existing reviews and comments, and unresolved threads.
+Separate facts, conclusions, and gaps; never mix heads.
 
-Use the host's PR API or CLI rather than search snippets. Treat absent or stale evidence as unknown. CI, reviews, and conclusions belong to one SHA; never combine them across heads. Initial fact gathering is complete when a reader can identify the proposal, stated problem, reviewed code, and known review state without opening another page.
+## Prove the problem first
 
-## Prove the problem before reading the solution
+Ask first:
 
-Answer this compact checklist in the review:
+> What problem does this PR solve? How does it solve it? Is the problem defined correctly? Do the problem definition and solution follow first principles and Occam's razor?
 
-> 这个 PR 解决了什么问题？这个 PR 如何解决这个问题？这个问题定义的对吗？解决方式和问题定义是否符合第一性原理，是否符合奥卡姆剃刀原理。
+Seek a report, reproduction, log, real failing check, or other observation independent of the patch. A new test proves neither demand nor prior failure. Classify the problem as **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**.
 
-For the problem half, seek user reports, a reproducible scenario, logs, a real failing check, or another observation independent of the proposed patch. A test written in the PR proves neither demand nor prior failure. Classify the problem as **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**.
+Map the Issue's setup, inputs, observed and expected results to PR coverage. A patch for another scenario is not a fix. Do not approve with value or scope unknown.
 
-Map the Issue's setup, inputs, observed result, and expected result to what the PR actually covers. A clean patch for a different scenario is not a fix for the reported problem. State the mismatch before discussing code quality. Do not approve while material value or scope alignment remains unknown.
+## Trace ownership and production composition
 
-This step is complete when the report says what breaks, who or what observed it, and whether the PR covers that same reachable scenario.
-
-## Trace the solution through production composition
-
-Explain the mechanism in plain language, then identify the natural owner, authoritative state, and composition boundary that every real producer uses. Follow the production entry point through wiring, launchers, factories, dependency injection, persistence, and lifecycle ownership; do not stop at a helper or fixture named by the diff.
+Explain the mechanism, natural owner, authoritative state, and composition boundary used by real producers. Follow production wiring, persistence, and lifecycle ownership rather than stopping at a changed helper or fixture.
 
 Check whether the change:
 
-- restores one invariant at its owner or creates a second authority, mirrored state, synchronization rule, or loop;
-- extends an existing seam or adds a parallel implementation, wrapper, state machine, or compatibility path;
-- is atomic across interruption, retry, concurrency, restart, and recovery where those are supported paths;
-- exercises the owned production composition. A detached fixture cannot prove an owned launcher, a helper test cannot prove its caller, and an in-process test cannot prove a process-lifecycle race.
-
-Prefer the smallest coherent end state that covers all current producers. Existing complexity is evidence to investigate, not a reason to add more.
+- restores one invariant at its owner or adds parallel authority, mirrored state, synchronization, or another loop;
+- extends an existing seam or adds another wrapper, state machine, compatibility path, or implementation;
+- stays atomic across supported interruption, retry, concurrency, restart, and recovery;
+- is tested through owned production composition. A detached fixture cannot prove an owned launcher, a helper cannot prove its caller, and an in-process test cannot prove a process-lifecycle race.
 
 ## Audit the whole diff for subtraction
 
-Quantify production and test changes separately. Name the regression test that fails on the real old behavior and passes through the production seam. Distinguish it from low-value matrices that only enumerate defensive shapes, restate implementation, or exercise a fixture the product bypasses.
+Report total diff and production/test split. Identify a regression test that fails on old behavior through production composition, not matrices or bypassed fixtures.
 
-Use this second checklist without turning it into a questionnaire:
+> Is this the smallest complete solution? What low-value tests, code, wrappers, states, or old paths can disappear? Can the result converge on one owner without losing required behavior?
 
-> 针对要解决的问题，本次的所有改动已经是最优解了吗？是否符合第一性原理，是否符合奥卡姆剃刀？是否有可以删除的低质量测试，有可以删除的代码？是否可以重构为最优解？
-
-Account for removable code, tests, wrappers, states, representations, and superseded paths. Judge net codebase cost, not raw line count: a larger process-level regression may be necessary, while a small duplicate authority may be too expensive. The audit is complete when every substantial diff region either carries necessary behavior/evidence or has a concrete deletion or consolidation suggestion.
+Judge net codebase cost, not line count: a process-level regression may be necessary, while a tiny duplicate authority may be too expensive.
 
 ## Report only reachable findings
 
-Classify the triggering path before assigning severity:
+Classify the triggering path first:
 
-1. normal user path;
+1. normal user or supported operational path;
 2. reasonable failure, reconnect, concurrency, or recovery path;
 3. attacker-controlled trust boundary;
 4. contrived path requiring several unsupported premises.
 
-A deliberate everyday product action is category 1. A crash, killed process, disconnect, retry,
-race, partial write, restart, or recovery is category 2 even when it occurs during an otherwise
-normal workflow. Do not collapse those two labels.
+A crash, killed process, disconnect, retry, race, partial write, restart, or recovery is category 2, never category 1. Category 4 is normally **No finding** unless it risks irreversible data loss, privilege breach, destruction of a core authority, or broad outage.
 
-Category 4 is normally **No finding**. Report it only for irreversible data loss, privilege or trust-boundary breach, destruction of a core authority, or broad outage. Severity follows actual reach, consequence, scope, and recoverability—not a theoretical worst case or a security-sounding label.
+- **P0** — blocks release.
+- **P1** — must be fixed before merge: reachable security, durable-state, data-loss, money, sustained-outage, or broadly unusable core-workflow failure.
+- **P2** — bounded or recoverable wrong behavior, including user-visible state; normally non-blocking.
+- **P3** — minor and deferrable, with no meaningful wrong outcome.
 
-- **P0** — blocks release: the shipped version cannot responsibly go out.
-- **P1** — must be fixed before merge: a reachable merge-blocking correctness, security, durable-state, data-loss, money-movement, sustained-outage, or broadly unusable core-workflow failure.
-- **P2** — should be fixed but normally does not block: bounded or recoverable incorrect behavior without those consequences.
-- **P3** — minor; may be deferred or left unchanged.
+Each finding states its category, condition, consequence, evidence, location, and smallest correction. Merge duplicates by cause; say explicitly when none remain.
 
-Each finding must name its path category, exact condition, consequence, evidence or reproduction, location, and smallest actionable correction. Merge duplicates by root cause. If no real gap remains, say explicitly that no findings were found.
+## Deliver the decision packet
 
-## Deliver a decision packet
+Use this order:
 
-For each PR, report in this order:
+1. **Facts** — copy exact clickable PR/Issue URLs, head SHA, numeric `+A/-D`, file count, production/test split, CI, mergeability, and review state.
+2. **Problem** — evidence, truth classification, and scenario match.
+3. **Solution and simplification** — mechanism, owner, authority, production composition, and removable surface.
+4. **Findings** — P0–P3 or none.
+5. **Recommendation** — begin with exactly one: **Approve**, **Comment**, **Wait**, or **Human confirmation required**; state any missing condition.
 
-1. **Facts** — clickable PR and Issue links, exact head, total `+additions/-deletions`, changed-file count, production/test split, CI, mergeability, and unresolved review state;
-2. **Problem** — what is demonstrated, its evidence, and whether the Issue and PR scenarios match;
-3. **Solution and simplification** — mechanism, owner, authority, production composition, and removable diff surface;
-4. **Findings** — ordered P0–P3, or an explicit statement that none were found;
-5. **Recommendation** — **Approve**, **Comment**, **Wait**, or **Human confirmation required**, with the missing condition stated.
-
-The first substantive section must be Facts. Do not mention or imply the action recommendation
-before the final section; labels such as “review conclusion” also violate this order. Never lead
-with approval. UI, UX, visual, or user-visible interaction changes require an explicit manual acceptance path and a check against the project's current design primitives, including Astryx when it is that project's authority; recommend human confirmation before any public review or approval.
+Facts must be the first substantive section; do not reveal the recommendation earlier. For UI or user-visible changes, use **Human confirmation required** until the manual acceptance path and current design primitives, including Astryx when authoritative, are verified.
 
 When reviewing a queue, delegating independent angles, rereviewing, or preparing a public review, read [references/queue-and-publication.md](references/queue-and-publication.md) before acting.
 
-Done means the decision packet identifies the exact reviewed head, establishes whether the stated problem is real and matched, traces the solution through production ownership, accounts for the full diff, reports only calibrated reachable findings, and leaves every external action behind the host project's confirmation and human-responsibility boundary.
+Done means the packet proves value and scope at one exact head, traces production ownership, accounts for the diff, calibrates findings, and preserves project confirmation and human responsibility.

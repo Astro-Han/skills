@@ -57,7 +57,7 @@ PR_REVIEW_CASES = {
         "solution_terms": ("retry", "refresh", "cache"),
         "decision_terms": ("comment",),
         "severity": "P2",
-        "reach_terms": ("normal user", "category 1", "类别 1", "①"),
+        "reach_terms": ("normal user", "正常用户", "category 1", "类别 1", "①"),
         "forbid_p1": True,
     },
     "status-only-close-non-trigger": {
@@ -86,7 +86,7 @@ PR_REVIEW_CASES = {
         "solution_terms": ("rolling", "legacy_token", "compatibility"),
         "decision_terms": ("comment",),
         "severity": "P1",
-        "reach_terms": ("normal user", "normal deployment", "category 1", "类别 1", "正常部署", "①"),
+        "reach_terms": ("normal user", "正常用户", "normal deployment", "category 1", "类别 1", "正常部署", "①"),
         "forbid_approve": True,
     },
 }

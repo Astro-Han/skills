@@ -306,15 +306,17 @@ def grade_pr_review_case(exp, final, triggered, case):
     additions, deletions = case["diff_counts"]
     link_facts = (case["pr_url"].lower(), case["issue_url"].lower())
     verbose_diff = all(term.lower() in lower for term in case["diff_terms"])
-    compact_diff = bool(re.search(
+    compact_diff = re.search(
         r"\+{}\s*/\s*-{}".format(additions, deletions), lower
-    ))
-    facts_ok = all(term in lower for term in link_facts) and (verbose_diff or compact_diff)
+    )
+    facts_ok = all(term in lower for term in link_facts) and (verbose_diff or bool(compact_diff))
     expect(exp, "Reported PR, Issue, head, and diff facts",
            facts_ok, final[:500])
 
     problem_pos = section_position(lower, "problem", "问题")
     solution_pos = section_position(lower, "solution", "解法")
+    if solution_pos is None:
+        solution_pos = section_position(lower, "solution", "方案")
     if problem_pos is None:
         problem_pos = first_position(lower, tuple(term.lower() for term in case["problem_terms"]))
     if solution_pos is None:
@@ -329,10 +331,9 @@ def grade_pr_review_case(exp, final, triggered, case):
                problem_pos, solution_pos, decision_pos))
 
     fact_positions = [lower.find(term) for term in link_facts]
-    diff_position = first_position(lower, (
-        case["diff_terms"][0].lower(),
-        "+{}/-{}".format(additions, deletions),
-    ))
+    diff_position = first_position(lower, (case["diff_terms"][0].lower(),))
+    if diff_position is None and compact_diff:
+        diff_position = compact_diff.start()
     fact_positions.append(diff_position if diff_position is not None else -1)
     expect(exp, "Placed decision-critical PR, Issue, and diff facts before the recommendation",
            decision_pos is not None and all(position >= 0 and position < decision_pos

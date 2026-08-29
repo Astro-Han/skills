@@ -1,34 +1,23 @@
 # Queue, rereview, and publication
 
-Load this reference only when the task covers a PR queue, independent reviewer delegation, a changed head, or a public review action.
+Load only for a PR queue, reviewer delegation, changed head, or public action.
 
-## Triage a queue
+## Triage
 
-Scan the whole requested queue before opening every diff. Record exclusions such as drafts, bots, out-of-scope repositories, blocked dependencies, and PRs already carrying unresolved feedback from us. Prioritize by recent meaningful activity, reviewability, size, and whether a decision is currently useful.
+Scan before opening every diff. Record drafts, bots, blocked dependencies, exclusions, and PRs carrying our unresolved feedback. Prioritize activity, reviewability, size, and decision value.
 
-A changed head is not by itself a reason to repeat a review. Rereview when new changes touch the prior reasoning or when prior comments are resolved. If an old review comment is still unresolved and the relevant code is unchanged, report that state instead of mechanically reviewing again.
+A changed head alone does not justify rereview. Rereview when changes affect prior reasoning or resolve feedback. If our comment remains unresolved and relevant code is unchanged, report that state. Batch small PRs; separate architecture-sensitive work.
 
-Batch small, independent PRs. Keep large or architecture-sensitive work separate so its evidence does not get compressed into a queue summary.
+## Delegate proportionally
 
-## Use independent reviewers proportionally
+When delegation is allowed and useful, split a complex PR by decision angle: value, authority, concurrency, production composition, tests/simplification, or UI/UX. Give raw facts and bounded questions without an expected verdict.
 
-When delegation is available, allowed, and useful, split a complex PR by decision angle—problem value, architecture/authority, concurrency/recovery, tests/production composition, simplification, or UI/UX—not by arbitrary file ranges. Give each reviewer the raw PR/Issue facts and a bounded question; do not leak an expected verdict.
+The main reviewer cross-checks claims, deduplicates findings, calibrates severity, and resolves conflicts. Do not delegate small PRs merely to create activity.
 
-One main reviewer owns the final report: cross-check critical claims, deduplicate findings, calibrate reach and severity, and resolve conflicts. Do not delegate a small PR merely to create parallel activity.
+## Publish
 
-## Refresh before publication
+Before Comment, Approve, Request changes, or merge recommendation, refresh exact head, its CI, mergeability, and unresolved threads. If head changed, decide whether analysis remains valid.
 
-Immediately before a public Comment, Approve, Request changes, or merge recommendation, refresh the exact head SHA, CI for that SHA, mergeability, and unresolved threads. If the head changed, identify whether the change invalidates the analysis; do not silently attach an old conclusion to new code.
+Follow project confirmation, identity, and human-accountability rules. Review requests do not imply external action. UI/UX changes wait for named manual acceptance.
 
-Follow the host project's confirmation, identity, and human-accountability rules. Approval, publication, and merge are external actions, not implied by a review request. For UI or UX changes, wait for the named manual acceptance path and human decision.
-
-Write public reviews for the author:
-
-- open with a brief thanks;
-- put precise line-local defects inline and the overall decision in the top-level review;
-- state the reviewed head and decisive evidence;
-- keep the tone collaborative and the correction actionable;
-- when the user prefers it, place a Chinese counterpart in a collapsed details block;
-- disclose the AI-assisted role and what the accountable human actually verified.
-
-Publication is complete only when the submitted review still matches the refreshed head and its public state, destination, identity, body, and human responsibility are explicit.
+Open with thanks. Put line-local defects inline and the decision at top level. State head and evidence, keep corrections collaborative, optionally collapse a requested translation, and disclose AI assistance plus human verification.
