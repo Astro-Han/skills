@@ -506,9 +506,11 @@ def grade_scope_rebase_case(exp, events, work, files, tests_green, triggered, ca
            and line_has("A2", ("introduced", "current diff", "current pr", "required", "本 pr", "当前 diff"),
                         ("fix at owner", "fix locally", "delete or simplify", "修复", "删除")),
            ledger[:500])
-    expect(exp, "Deferred the pre-existing transport policy expansion",
-           line_has("A3", ("pre-existing", "adjacent", "out of scope", "既有", "相邻", "范围外"),
-                    ("defer", "push back", "延后", "拒绝")),
+    expect(exp, "Rejected the transport scope drift",
+           line_has("A3", ("drift", "out of scope", "outside", "original goal",
+                           "范围外", "越界", "原始目标"),
+                    ("delete", "revert", "push back", "defer", "删除", "撤回", "恢复",
+                     "拒绝", "延后")),
            " ".join(comment_lines(ledger, "A3"))[:500])
     expect(exp, "Rejected speculative remote-image infrastructure",
            line_has("A4", ("future", "speculative", "no demand", "未来", "假想", "无需求"),
