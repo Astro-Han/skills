@@ -1,0 +1,16 @@
+diff --git a/credential.py b/credential.py
+@@
+ class Credential:
+     token: str
+-    legacy_token: str
+
+diff --git a/rotate.py b/rotate.py
+@@
+ def rotate(credential, next_token):
+-    credential.legacy_token = credential.token
+     credential.token = next_token
+
+diff --git a/tests/test_rotate.py b/tests/test_rotate.py
+@@
+-    assert credential.legacy_token == "old"
+     assert credential.token == "new"

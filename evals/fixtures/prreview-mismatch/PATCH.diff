@@ -1,0 +1,18 @@
+diff --git a/discovery.py b/discovery.py
+@@
+-        if not entry.is_dir():
++        if not entry.is_dir() and not entry.is_symlink():
+             continue
++        target = entry.resolve(strict=True)
++        target.relative_to(discovery_root.resolve())
+         load_extension(target)
+
+diff --git a/tests/test_discovery.py b/tests/test_discovery.py
+@@
++def test_discovers_link_whose_target_is_inside_root(tmp_path):
++    target = tmp_path / "targets" / "example"
++    link = tmp_path / "extensions" / "example"
++    target.mkdir(parents=True)
++    link.parent.mkdir()
++    link.symlink_to(target)
++    assert discover(tmp_path) == [target]

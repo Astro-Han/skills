@@ -1,0 +1,16 @@
+diff --git a/launcher.py b/launcher.py
+@@
+ def launch_detached(command, close_on_launcher_exit=False):
++    lifetime_pipe = make_lifetime_pipe() if close_on_launcher_exit else None
+     return spawn(command, lifetime_pipe=lifetime_pipe)
+
+ def launch_owned(command, close_on_launcher_exit=False, lease_fd=None):
+     lifetime_pipe = make_lifetime_pipe() if lease_fd is not None else None
+     return spawn(command, lifetime_pipe=lifetime_pipe)
+
+diff --git a/tests/test_host.py b/tests/test_host.py
+@@
++def test_detached_host_closes_after_launcher_exit():
++    host = launch_detached(HOST, close_on_launcher_exit=True)
++    kill_launcher()
++    assert host.wait(timeout=5) == 0

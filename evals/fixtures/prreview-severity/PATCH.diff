@@ -1,0 +1,14 @@
+diff --git a/preview-cache.ts b/preview-cache.ts
+@@
+ export function retryPreview(state: State) {
++  state.badge = undefined;
+   state.retryAt = now() + 1000;
+ }
+
+diff --git a/preview-cache.test.ts b/preview-cache.test.ts
+@@
++it("clears a stale badge while a retry is pending", () => {
++  const state = failedRefreshWithPreviousBadge();
++  retryPreview(state);
++  expect(state.badge).toBeUndefined();
++});

@@ -26,6 +26,11 @@ from review_feedback_cases import (
     REVIEW_FEEDBACK_CASES,
     SECOND_HOLDOUT_CASES,
 )
+from pr_review_cases import (
+    DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
+    HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
+    PR_REVIEW_CASES,
+)
 
 ROOT = Path(__file__).resolve().parent
 SKILLS = ROOT.parent / "skills"
@@ -65,6 +70,7 @@ PROMPTS = {
     ),
 }
 PROMPTS.update({name: case["prompt"] for name, case in REVIEW_FEEDBACK_CASES.items()})
+PROMPTS.update({name: case["prompt"] for name, case in PR_REVIEW_CASES.items()})
 
 
 # --- providers -------------------------------------------------------------
@@ -182,6 +188,19 @@ PROVIDERS = {
 def suite_runs(provider_name, reps=3, suite="all"):
     runs = []
     for rep in range(1, reps + 1):
+        if suite in ("pr-review", "pr-review-holdout"):
+            cases = (PR_REVIEW_DESIGN_CASES if suite == "pr-review"
+                     else PR_REVIEW_HOLDOUT_CASES)
+            for eval_name in cases:
+                fixture = PR_REVIEW_CASES[eval_name]["fixture"]
+                for arm, skill_arm in (("without_skill", None), ("with_skill", SHIPPED)):
+                    runs.append({"workspace": "pr-review-workspace",
+                                 "eval": eval_name, "rep": rep,
+                                 "arm": arm, "fixture": fixture,
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "pr-review",
+                                 "installed_skill_name": "pr-review-eval"})
+            continue
         review_cases = ()
         if suite == "review-feedback":
             review_cases = (REGRESSION_CASE,)
@@ -345,7 +364,8 @@ def main():
     parser.add_argument("--iteration", default="iteration-1",
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
-    parser.add_argument("--suite", choices=("all", "review-feedback", "review-feedback-holdout",
+    parser.add_argument("--suite", choices=("all", "pr-review", "pr-review-holdout",
+                                            "review-feedback", "review-feedback-holdout",
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
                                             "review-feedback-matrix", "review-feedback-compression",
                                             "review-feedback-compression-holdout"),

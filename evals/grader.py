@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from review_feedback_cases import REVIEW_FEEDBACK_CASES
+from pr_review_cases import PR_REVIEW_CASES
 
 ROOT = Path(__file__).resolve().parent
 
@@ -272,6 +273,93 @@ def grade_review_feedback_case(exp, events, work, files, tests_green, triggered,
     expect(exp, "Existing suite green at the end", tests_green, "")
 
 
+def first_position(text, terms):
+    positions = [text.find(term.lower()) for term in terms if text.find(term.lower()) >= 0]
+    return min(positions) if positions else None
+
+
+def section_position(text, english, chinese):
+    patterns = (
+        r"(?im)^#{{1,4}}\s*{}\b".format(re.escape(english)),
+        r"(?im)^#{{1,4}}\s*{}".format(re.escape(chinese)),
+    )
+    positions = [match.start() for pattern in patterns if (match := re.search(pattern, text))]
+    return min(positions) if positions else None
+
+
+def grade_pr_review_case(exp, final, triggered, case):
+    lower = final.lower()
+    should_trigger = case["should_trigger"]
+    expect(exp, "Trigger decision matches the declared boundary",
+           triggered == should_trigger,
+           "triggered={}, expected={}".format(triggered, should_trigger))
+
+    expect(exp, "Reported the exact reviewed head",
+           case["head"].lower() in lower, final[:300])
+    if not should_trigger:
+        expect(exp, "Reported the requested CI facts without a review decision",
+               all(all(term in lower for term in pair) for pair in case["status_pairs"])
+               and not any(term in lower for term in ("approve", "comment", "wait", "p0", "p1", "p2", "p3")),
+               final[:300])
+        return
+
+    additions, deletions = case["diff_counts"]
+    link_facts = (case["pr_url"].lower(), case["issue_url"].lower())
+    verbose_diff = all(term.lower() in lower for term in case["diff_terms"])
+    compact_diff = bool(re.search(
+        r"\+{}\s*/\s*-{}".format(additions, deletions), lower
+    ))
+    facts_ok = all(term in lower for term in link_facts) and (verbose_diff or compact_diff)
+    expect(exp, "Reported PR, Issue, head, and diff facts",
+           facts_ok, final[:500])
+
+    problem_pos = section_position(lower, "problem", "问题")
+    solution_pos = section_position(lower, "solution", "解法")
+    if problem_pos is None:
+        problem_pos = first_position(lower, tuple(term.lower() for term in case["problem_terms"]))
+    if solution_pos is None:
+        solution_pos = first_position(lower, tuple(term.lower() for term in case["solution_terms"]))
+    decision_pos = section_position(lower, "recommendation", "建议")
+    if decision_pos is None:
+        decision_pos = first_position(lower, tuple(term.lower() for term in case["decision_terms"]))
+    expect(exp, "Established the problem before solution and recommendation",
+           problem_pos is not None and solution_pos is not None and decision_pos is not None
+           and problem_pos < solution_pos < decision_pos,
+           "positions problem={}, solution={}, decision={}".format(
+               problem_pos, solution_pos, decision_pos))
+
+    fact_positions = [lower.find(term) for term in link_facts]
+    diff_position = first_position(lower, (
+        case["diff_terms"][0].lower(),
+        "+{}/-{}".format(additions, deletions),
+    ))
+    fact_positions.append(diff_position if diff_position is not None else -1)
+    expect(exp, "Placed decision-critical PR, Issue, and diff facts before the recommendation",
+           decision_pos is not None and all(position >= 0 and position < decision_pos
+                                            for position in fact_positions),
+           "fact positions={}, decision={}".format(fact_positions, decision_pos))
+
+    expect(exp, "Recommended the predeclared next action",
+           decision_pos is not None
+           and any(term.lower() in lower[decision_pos:] for term in case["decision_terms"]),
+           final[-400:])
+    if case.get("forbid_approve"):
+        expect(exp, "Did not recommend approval for an unresolved material gap",
+               not any(line.strip().lower().startswith(("approve", "recommendation: approve", "建议：approve"))
+                       for line in final.splitlines()),
+               final[-400:])
+    if severity := case.get("severity"):
+        expect(exp, "Calibrated the finding as {}".format(severity),
+               severity.lower() in lower, final[-500:])
+    if case.get("forbid_p1"):
+        expect(exp, "Did not preserve the overstated P1 severity",
+               "p1" not in lower or any(term in lower for term in ("not p1", "不是 p1", "降为 p2", "p1 → p2")),
+               final[-500:])
+    if reach_terms := case.get("reach_terms"):
+        expect(exp, "Named the triggering reachability category",
+               any(term.lower() in lower for term in reach_terms), final[-500:])
+
+
 def grade_run(rundir, eval_name):
     events, final = load_events(rundir / "transcript.jsonl")
     diff = real_diff(rundir / "work")
@@ -282,7 +370,8 @@ def grade_run(rundir, eval_name):
     triggered = any(
         ev["name"] == "Skill"
         or (ev["name"] == "Bash"
-            and "review-feedback-eval/SKILL.md" in str(ev["input"].get("command", "")))
+            and any(path in str(ev["input"].get("command", "")) for path in (
+                "review-feedback-eval/SKILL.md", "pr-review-eval/SKILL.md")))
         for ev in events
     )
     finallower = final.lower()
@@ -364,6 +453,9 @@ def grade_run(rundir, eval_name):
             exp, events, work, files, tests_green, triggered,
             REVIEW_FEEDBACK_CASES[eval_name],
         )
+
+    elif eval_name in PR_REVIEW_CASES:
+        grade_pr_review_case(exp, final, triggered, PR_REVIEW_CASES[eval_name])
 
     return {"expectations": exp, "skill_triggered": triggered}
 

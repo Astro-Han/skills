@@ -35,6 +35,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
+| `prreview-*` | `pr-review` | Four design cases for value/scope order, production composition, severity calibration, and a close non-trigger; one rolling-compatibility holdout reuses a pre-existing authority pattern not used to draft the skill. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -51,8 +52,20 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-fee
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-matrix --reps 5
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression --reps 3
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression-holdout --reps 5
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review --reps 1
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 1
 python3 evals/grader.py                            # scores those runs
 ```
+
+### PR-review adoption decision
+
+Compare the shipped skill with no installed skill. Adopt only if the candidate triggers for all
+three realistic review requests, does not trigger for the status-only close non-trigger, reports
+PR/Issue/head/diff facts before its recommendation, establishes problem value before solution
+mechanics, catches the production-composition bypass, and calibrates the recoverable preview gap
+as P2 rather than P1. A separate rolling-compatibility case is supporting holdout evidence, but it
+is not blind because the skill author can inspect its fixed answer key; do not claim generalization
+from this suite alone.
 
 The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
 skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text

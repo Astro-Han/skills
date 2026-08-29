@@ -3,4 +3,5 @@ __pycache__/
 evals/debug-workspace/
 evals/tdd-workspace/
 evals/review-feedback-workspace/
+evals/pr-review-workspace/
 evals/*.log
