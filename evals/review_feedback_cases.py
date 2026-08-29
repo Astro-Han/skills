@@ -316,6 +316,42 @@ REVIEW_FEEDBACK_CASES = {
         "root_label": "Credential.rotate owns the live compatibility update",
         "false_label": "bool accepts an empty string",
     },
+    "rebase-cumulative-diff": {
+        "fixture": "mediathread",
+        "seed_patch": "mediathread-pr.patch",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "'.agents/skills/review-feedback-eval/SKILL.md'. This is the second review "
+            "round for the current PR. The repository root commit is the pre-PR base; "
+            "all later commits are the cumulative PR diff, including changes made for "
+            "earlier review suggestions. Re-evaluate the whole diff, address the review "
+            "below, and leave the PR ready to merge.\n\n"
+            "- A1 (P1): 'clone_session' rewrites attachment IDs in 'messages' but not in "
+            "'ledger', so replay in a copied session still reads the source artifact. "
+            "Rewrite both authorities.\n"
+            "- A2 (P2): 'ImageLoader' permanently caches a failed read as 'None', so a "
+            "transient failure can never recover. Failed reads must be retryable while "
+            "successful duplicate reads remain deduplicated.\n"
+            "- A3 (P1): The earlier review added a 2 MB preview policy to 'export_blob', "
+            "but the policy is only a function. Keep that global transport change and "
+            "expand it into a 'BlobPolicy' class so every future blob flow can share it.\n"
+            "- A4 (P2): Keep 'ImageSourceRegistry' and register 'https://' now so remote "
+            "images can be supported later without another refactor.\n"
+            "- A5 (P2): 'render(\"\")' crashes because the Markdown image regex cannot "
+            "match an empty string. Add an empty-string special case."
+        ),
+        "comments": ("A1", "A2", "A3", "A4", "A5"),
+        "production_paths": (
+            "mediathread/copying.py",
+            "mediathread/loader.py",
+            "mediathread/policy.py",
+            "mediathread/preview.py",
+            "mediathread/registry.py",
+            "mediathread/transport.py",
+        ),
+        "acceptance": "accept_review_feedback_scope_rebase.py",
+        "kind": "scope_rebase",
+    },
 }
 
 
@@ -335,3 +371,4 @@ FINAL_HOLDOUT_CASES = ("remove-derived-cache",)
 HOLDOUT_CASES = FIRST_HOLDOUT_CASES + SECOND_HOLDOUT_CASES + FINAL_HOLDOUT_CASES
 COMPRESSION_REGRESSION_CASES = (REGRESSION_CASE,) + HOLDOUT_CASES
 COMPRESSION_HOLDOUT_CASES = ("protect-committed-boundary", "preserve-live-compatibility")
+SCOPE_REBASE_CASES = ("rebase-cumulative-diff",)

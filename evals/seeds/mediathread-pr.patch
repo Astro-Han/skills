@@ -1,0 +1,144 @@
+diff --git a/mediathread/copying.py b/mediathread/copying.py
+index e1ce8f1..db4feae 100644
+--- a/mediathread/copying.py
++++ b/mediathread/copying.py
+@@ -1,5 +1,14 @@
+ from .model import Session
+ 
+ 
+-def clone_session(session: Session) -> Session:
+-    return Session(tuple(session.messages), tuple(session.ledger))
++def _rewrite(text: str, artifact_ids: dict[str, str]) -> str:
++    for source, target in artifact_ids.items():
++        text = text.replace(f"media://{source}", f"media://{target}")
++    return text
++
++
++def clone_session(
++    session: Session, artifact_ids: dict[str, str] | None = None
++) -> Session:
++    artifact_ids = artifact_ids or {}
++    messages = tuple(_rewrite(text, artifact_ids) for text in session.messages)
++    return Session(messages, tuple(session.ledger))
+diff --git a/mediathread/loader.py b/mediathread/loader.py
+new file mode 100644
+index 0000000..075be33
+--- /dev/null
++++ b/mediathread/loader.py
+@@ -0,0 +1,16 @@
++from collections.abc import Callable
++
++
++class ImageLoader:
++    def __init__(self, reader: Callable[[str], bytes | None]):
++        self._reader = reader
++        self._cache: dict[str, bytes | None] = {}
++
++    def load(self, artifact_id: str) -> bytes | None:
++        if artifact_id not in self._cache:
++            self._cache[artifact_id] = self._reader(artifact_id)
++        return self._cache[artifact_id]
+diff --git a/mediathread/policy.py b/mediathread/policy.py
+new file mode 100644
+index 0000000..ac911e1
+--- /dev/null
++++ b/mediathread/policy.py
+@@ -0,0 +1,6 @@
++MAX_PREVIEW_BYTES = 2_000_000
++
++
++def allow_preview_payload(data: bytes) -> bool:
++    return len(data) <= MAX_PREVIEW_BYTES
+diff --git a/mediathread/preview.py b/mediathread/preview.py
+index a578aec..f24120c 100644
+--- a/mediathread/preview.py
++++ b/mediathread/preview.py
+@@ -1,5 +1,18 @@
+ from html import escape
++import re
++
++from .loader import ImageLoader
++from .registry import IMAGE_SOURCES
++
++
++IMAGE = re.compile(r"!\[([^]]*)\]\(([^)]+)\)")
+ 
+ 
+-def render(markdown: str) -> str:
++def render(markdown: str, loader: ImageLoader | None = None) -> str:
++    match = IMAGE.fullmatch(markdown)
++    if match and loader and IMAGE_SOURCES.accepts(match.group(2)):
++        alt, source = match.groups()
++        data = loader.load(source.removeprefix("media://"))
++        if data is not None:
++            return f'<img alt="{escape(alt)}" data-size="{len(data)}">'
+     return f"<p>{escape(markdown)}</p>"
+diff --git a/mediathread/registry.py b/mediathread/registry.py
+new file mode 100644
+index 0000000..6e13104
+--- /dev/null
++++ b/mediathread/registry.py
+@@ -0,0 +1,16 @@
++class ImageSourceRegistry:
++    def __init__(self) -> None:
++        self._prefixes: list[str] = []
++
++    def register(self, prefix: str) -> None:
++        self._prefixes.append(prefix)
++
++    def accepts(self, source: str) -> bool:
++        return any(source.startswith(prefix) for prefix in self._prefixes)
++
++
++IMAGE_SOURCES = ImageSourceRegistry()
++IMAGE_SOURCES.register("media://")
+diff --git a/mediathread/transport.py b/mediathread/transport.py
+index 586ea3b..7c8d285 100644
+--- a/mediathread/transport.py
++++ b/mediathread/transport.py
+@@ -1,3 +1,7 @@
+-def export_blob(data: bytes) -> bytes:
+-    """Return an export payload without applying renderer preview policy."""
+-    return bytes(data)
++from .policy import allow_preview_payload
++
++
++def export_blob(data: bytes) -> bytes | None:
++    """Return an export payload after applying the shared preview limit."""
++    return bytes(data) if allow_preview_payload(data) else None
+diff --git a/tests/test_mediathread.py b/tests/test_mediathread.py
+index 86d6d92..364540a 100644
+--- a/tests/test_mediathread.py
++++ b/tests/test_mediathread.py
+@@ -1,6 +1,7 @@
+ import unittest
+ 
+ from mediathread import Session, clone_session, export_blob, render
++from mediathread.loader import ImageLoader
+ 
+ 
+ class MediaThreadTests(unittest.TestCase):
+@@ -12,6 +13,20 @@ class MediaThreadTests(unittest.TestCase):
+     def test_export_preserves_payload(self):
+         self.assertEqual(export_blob(b"payload"), b"payload")
+ 
++    def test_export_reuses_preview_policy(self):
++        self.assertIsNone(export_blob(b"x" * 2_000_001))
++
++    def test_renders_session_image(self):
++        loader = ImageLoader(lambda artifact_id: b"image" if artifact_id == "a1" else None)
++        self.assertEqual(
++            render("![chart](media://a1)", loader),
++            '<img alt="chart" data-size="5">',
++        )
++
++    def test_successful_reads_are_reused(self):
++        calls = []
++        loader = ImageLoader(lambda artifact_id: calls.append(artifact_id) or b"image")
++        self.assertEqual(loader.load("a1"), b"image")
++        self.assertEqual(loader.load("a1"), b"image")
++        self.assertEqual(calls, ["a1"])
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

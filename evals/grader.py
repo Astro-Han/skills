@@ -484,6 +484,66 @@ def grade_pr_review_case(exp, final, triggered, case):
     if reach_terms := case.get("reach_terms"):
         expect(exp, "Named the triggering reachability category",
                any(term.lower() in lower for term in reach_terms), final[-500:])
+def grade_scope_rebase_case(exp, events, work, files, tests_green, triggered, case):
+    src_edit = first_production_edit(events, case["production_paths"])
+    ledger_index, ledger = adjudication_before(
+        events, src_edit if src_edit is not None else len(events), comments=case["comments"]
+    )
+    ledger_lower = ledger.lower()
+
+    def line_has(comment, *terms):
+        lines = " ".join(comment_lines(ledger, comment)).lower()
+        return all(any(option in lines for option in term) for term in terms)
+
+    expect(exp, "Loaded the isolated review-feedback eval arm",
+           triggered, "local eval skill loaded: {}".format(triggered))
+    expect(exp, "Rebased the complete second-round ledger before editing",
+           ledger_index is not None and src_edit is not None and ledger_index < src_edit,
+           "ledger idx {}, first source edit idx {}".format(ledger_index, src_edit))
+    expect(exp, "Classified A1 and A2 as current-diff obligations",
+           line_has("A1", ("introduced", "current diff", "current pr", "required", "本 pr", "当前 diff"),
+                    ("fix at owner", "fix locally", "修复"))
+           and line_has("A2", ("introduced", "current diff", "current pr", "required", "本 pr", "当前 diff"),
+                        ("fix at owner", "fix locally", "delete or simplify", "修复", "删除")),
+           ledger[:500])
+    expect(exp, "Deferred the pre-existing transport policy expansion",
+           line_has("A3", ("pre-existing", "adjacent", "out of scope", "既有", "相邻", "范围外"),
+                    ("defer", "push back", "延后", "拒绝")),
+           " ".join(comment_lines(ledger, "A3"))[:500])
+    expect(exp, "Rejected speculative remote-image infrastructure",
+           line_has("A4", ("future", "speculative", "no demand", "未来", "假想", "无需求"),
+                    ("push back", "delete or simplify", "defer", "拒绝", "删除", "延后")),
+           " ".join(comment_lines(ledger, "A4"))[:500])
+    expect(exp, "Rejected the false empty-render finding",
+           line_has("A5", ("disproved", "no finding", "false", "不成立"),
+                    ("push back", "拒绝")),
+           " ".join(comment_lines(ledger, "A5"))[:500])
+
+    changed_production = {
+        path for path in files if path.startswith("mediathread/")
+    }
+    expect(exp, "Final cumulative production diff contains only the feature owners",
+           changed_production == {
+               "mediathread/copying.py",
+               "mediathread/loader.py",
+               "mediathread/preview.py",
+           },
+           "changed production: {}".format(sorted(changed_production)))
+    expect(exp, "Removed superseded policy, registry, and transport edits",
+           not (work / "mediathread" / "policy.py").exists()
+           and not (work / "mediathread" / "registry.py").exists()
+           and "allow_preview_payload" not in (work / "mediathread" / "transport.py").read_text()
+           and "test_export_reuses_preview_policy" not in (
+               work / "tests" / "test_mediathread.py"
+           ).read_text(),
+           "policy={}, registry={}, transport_changed={}".format(
+               (work / "mediathread" / "policy.py").exists(),
+               (work / "mediathread" / "registry.py").exists(),
+               "mediathread/transport.py" in files,
+           ))
+    ok, evidence = acceptance(work, case["acceptance"])
+    expect(exp, "Acceptance: feature closes both authorities without adjacent scope", ok, evidence)
+    expect(exp, "Existing suite green at the end", tests_green, "")
 
 
 def grade_run(rundir, eval_name):
@@ -575,10 +635,15 @@ def grade_run(rundir, eval_name):
                    "{} added lines in cart.py".format(len(added_lines(diff, "cartlib/cart.py"))))
 
     elif eval_name in REVIEW_FEEDBACK_CASES:
-        grade_review_feedback_case(
-            exp, events, work, files, tests_green, triggered,
-            REVIEW_FEEDBACK_CASES[eval_name],
-        )
+        case = REVIEW_FEEDBACK_CASES[eval_name]
+        if case.get("kind") == "scope_rebase":
+            grade_scope_rebase_case(
+                exp, events, work, files, tests_green, triggered, case,
+            )
+        else:
+            grade_review_feedback_case(
+                exp, events, work, files, tests_green, triggered, case,
+            )
 
     elif eval_name in PR_REVIEW_CASES:
         grade_pr_review_case(exp, final, triggered, PR_REVIEW_CASES[eval_name])
