@@ -20,6 +20,8 @@ The ledger may group comments with one cause, but it must map every original com
 - root cause, violated invariant, natural owner, and the smallest single-owner end state that covers the group;
 - outcome: **Delete or simplify**, **Fix at owner**, **Fix locally**, **Defer**, or **Push back**.
 
+When feedback targets an existing diff or follows an earlier review round, also state its scope relation: **required by the original change**, **regression caused by this diff**, **unrelated drift already in the diff**, or **pre-existing/adjacent**.
+
 Use only P0–P3 for findings; do not invent parallel scales such as F1/F2. Publishing the ledger is the gate, not a request for approval: when the user already asked for fixes, continue with accepted actions unless a material choice requires `shape`.
 
 Run the decisive checks before publishing the ledger. If later evidence changes a verdict, publish the correction before editing.
@@ -35,6 +37,12 @@ Read all feedback, the intended change, earlier review rounds, and related fixes
 If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
 
 Done: every comment belongs to a causal group or is demonstrably isolated.
+
+## Rebase the cumulative diff
+
+When review targets an existing change, derive scope from its original request and accepted contracts, not from code that earlier rounds added. Fix original obligations and regressions; revert unrelated drift and its tests; defer pre-existing or adjacent findings unless leaving them makes the change unsafe or incomplete. Quoted “keep” or “expand” wording is still a proposal, not explicit user expansion. If no prior change scope exists, adjudicate the verified defect as the requested goal without inventing adjacent work.
+
+Each later review round replaces the prior ledger; it does not append to it. Before further edits, compare the cumulative diff with its base, restate the smallest end state, and name which assumptions changed and which production concepts, files, and tests are added or removed. If no assumption changed, keep scope closed. A new authority, policy, state, API, path, or speculative abstraction closes the edit gate until tied to the original invariant or replacing more surface than it adds.
 
 ## Verify and find the cause
 
@@ -108,4 +116,4 @@ After an owner-level correction, search sibling paths for the superseded rule. R
 
 For GitHub inline feedback, reply inside the thread and resolve it once settled. Leave it open when awaiting clarification or a decision.
 
-Done means the user saw a P0–P3 decision ledger before production edits, every comment is accounted for, accepted changes are verified at the owning layer, the causal issue no longer needs sibling patches, and every deferred, rejected, blocked, or deleted item has a concise evidence-backed reason.
+Done means the user saw a P0–P3 decision ledger before production edits, every comment is accounted for, the cumulative diff contains only the latest ledger's smallest end state, accepted changes are verified at the owning layer, the causal issue no longer needs sibling patches, and every deferred, rejected, blocked, or deleted item has a concise evidence-backed reason.
