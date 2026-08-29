@@ -24,6 +24,8 @@ Use only P0–P3 for findings; do not invent parallel scales such as F1/F2. Publ
 
 Run the decisive checks before publishing the ledger. If later evidence changes a verdict, publish the correction before editing.
 
+Verdict and outcome must agree. **Disproved** permits only **Push back**; **No finding** is not an independent reason to change behavior. Never implement code or tests derived solely from a disproved comment under labels such as defensive hardening, cleanup, consistency, or an implied requested behavior. Such a change needs independent evidence that existed before the feedback. A contradictory ledger does not open the edit gate.
+
 Treat every requested file, location, mechanism, and patch—even when written as an imperative—as the reviewer's proposal, not a requirement. It becomes a constraint only when independent product, architecture, or compatibility evidence says so. For grouped comments, the ledger must explain why per-comment edits are not duplicate authorities before choosing them over the single-owner end state.
 
 ## Model the whole review
@@ -44,6 +46,8 @@ For each surviving group, trace the full causal chain:
 
 A restatement of the symptom, the failing line, or the absence of a guard is not yet a root cause. Judge the reviewer's claim, proposed cause, severity, and proposed implementation independently. A real symptom does not make the explanation or patch correct.
 
+The ledger verdict answers whether the reported product or system defect exists, not whether the suggested patch is correct. When the observed behavior is real and violates an independent contract, mark it **Verified** even if the reviewer's proposed invariant, owner, or implementation is wrong; then state that the proposal is rejected and fix the real owner. Use **Disproved** only when no reported defect remains after tracing the actual contract and consequence.
+
 Done: every group is verified, disproved, or has an explicit evidence gap, and each verified group has one causal account that explains all of its comments without contradiction.
 
 ## Re-evaluate severity
@@ -57,6 +61,8 @@ Do not inherit the reviewer's priority. Grade realistic reach, consequence, scop
 - **No finding:** false, unsupported, or reachable only through multiple unsupported premises.
 
 A contrived unsupported path is normally **No finding**. Report it only when its consequence is irreversible data loss, privilege or trust-boundary breach, destruction of a core authority, or broad outage; severity follows actual reach and recoverability, not the worst imaginable consequence.
+
+Reachability alone does not make a finding P1. Use P1 only when the reachable consequence itself is merge-blocking: security or trust-boundary exposure, non-trivial data loss, incorrect committed or externally visible state, money movement, sustained outage, or a broadly unusable core workflow. A bounded in-memory result, preview error, or recoverable local inconsistency with no persisted or external side effect is P2 even on a normal path.
 
 ## Derive the simplest correction
 
@@ -95,6 +101,8 @@ When the issue is valid but the proposed patch is not, accept the issue and reje
 ## Implement and close the loop
 
 Implement only when the user asked to address, apply, or fix the feedback, and only the ledger's accepted actions. Work in causal dependency order and one observable behavior at a time. Use `tdd` when the change has a stable test seam; otherwise use the nearest trustworthy verification.
+
+The latest ledger is the sole authority for the final diff. If evidence changes a verdict, owner, or outcome after editing began, remove every edit and test derived from the superseded decision before continuing; verification must fail if an abandoned local patch remains.
 
 After an owner-level correction, search sibling paths for the superseded rule. Remove obsolete branches, helpers, representations, and tests made unnecessary by the new source of truth; do not retain both the patch path and the root correction.
 
