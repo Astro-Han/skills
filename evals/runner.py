@@ -49,6 +49,7 @@ PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
 PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
 PR_REVIEW_THREE_STATES_REF = "d4ea3b6bc9dc198a43024ae500373b8d0f5567ae"
 REVIEW_FEEDBACK_SCOPE_BASELINE_REF = "856518d226e22259ffa5a5d38015ff7ef1e4bac4"
+REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "fd4056164c7c7c618db5c4cc45f1d4cc3cb599df"
 
 PROMPTS = {
     "shared-sections": (
@@ -243,6 +244,9 @@ def suite_runs(provider_name, reps=3, suite="all"):
             review_cases = SCOPE_REBASE_CASES
         elif suite == "review-feedback-scope-regression":
             review_cases = COMPRESSION_REGRESSION_CASES
+        elif suite == "review-feedback-structural-compression":
+            review_cases = (COMPRESSION_REGRESSION_CASES + COMPRESSION_HOLDOUT_CASES
+                            + SCOPE_REBASE_CASES)
         elif suite == "all":
             review_cases = tuple(REVIEW_FEEDBACK_CASES)
         for eval_name in review_cases:
@@ -254,6 +258,9 @@ def suite_runs(provider_name, reps=3, suite="all"):
             elif suite in ("review-feedback-scope-rebase",
                            "review-feedback-scope-regression"):
                 arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_SCOPE_BASELINE_REF),
+                        ("candidate_skill", SHIPPED))
+            elif suite == "review-feedback-structural-compression":
+                arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF),
                         ("candidate_skill", SHIPPED))
             else:
                 arms = (("old_skill", "review-feedback-old"),
@@ -268,7 +275,8 @@ def suite_runs(provider_name, reps=3, suite="all"):
         if suite in ("review-feedback", "review-feedback-holdout",
                      "review-feedback-second-holdout", "review-feedback-final-holdout",
                      "review-feedback-matrix", "review-feedback-compression",
-                     "review-feedback-compression-holdout") or provider_name == "codex":
+                     "review-feedback-compression-holdout",
+                     "review-feedback-structural-compression") or provider_name == "codex":
             continue
         if provider_name == "claude":
             for eval_name, fixture in (("shared-sections", "reportlib"),
@@ -420,7 +428,8 @@ def main():
                                             "review-feedback-matrix", "review-feedback-compression",
                                             "review-feedback-compression-holdout",
                                             "review-feedback-scope-rebase",
-                                            "review-feedback-scope-regression"),
+                                            "review-feedback-scope-regression",
+                                            "review-feedback-structural-compression"),
                         default="all")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")

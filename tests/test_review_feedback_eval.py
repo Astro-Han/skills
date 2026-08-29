@@ -120,6 +120,18 @@ class ReviewFeedbackEvalTests(unittest.TestCase):
             {"git:" + runner.REVIEW_FEEDBACK_SCOPE_BASELINE_REF, runner.SHIPPED},
         )
 
+    def test_structural_compression_pairs_twelve_cases_with_current_full_skill(self):
+        runs = runner.suite_runs(
+            "codex", reps=5, suite="review-feedback-structural-compression"
+        )
+        self.assertEqual(len(runs), 120)
+        self.assertEqual(len({run["eval"] for run in runs}), 12)
+        self.assertEqual({run["arm"] for run in runs}, {"baseline_skill", "candidate_skill"})
+        self.assertEqual(
+            {run["skill_arm"] for run in runs},
+            {"git:" + runner.REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF, runner.SHIPPED},
+        )
+
     def test_codex_command_uses_requested_model_and_high_effort(self):
         command = runner.codex_command("gpt-5.6-luna", "prompt", [])
         self.assertIn("gpt-5.6-luna", command)

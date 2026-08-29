@@ -57,6 +57,7 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-reachability --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-partial-facts --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-no-statuses --reps 4
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-structural-compression --reps 5
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -173,6 +174,21 @@ shipped skill changes. Adopt the compressed arm only when it is at most 820 word
 score is not below the full arm in either the nine-case regression suite or the unseen holdout,
 and edit-gate, owner-level end state, false-suggestion-not-implemented, and acceptance counts
 are each no lower in either suite. Otherwise restore the frozen full skill.
+
+### Review-feedback structural compression decision
+
+The baseline is the complete scope-aware skill at
+`fd4056164c7c7c618db5c4cc45f1d4cc3cb599df`. Compare it with the shipped skill on
+all twelve review-feedback fixtures, five paired repetitions each, using GPT-5.6 Luna
+with high reasoning. One pair is one fixture and repetition. Its score is the fraction
+of deterministic expectations passed, so fixtures have equal weight.
+
+Adopt the candidate only when it is no more than 1,195 words (at least 35% shorter),
+all local tests pass, and the one-sided 90% paired-bootstrap lower bound for
+`candidate - baseline` is above the non-inferiority margin of -0.03. In addition, the
+candidate must not reduce the aggregate counts for the edit gate, owner-level end
+state, rejection of false suggestions, acceptance behavior, or cumulative-diff scope
+cleanup. Otherwise keep the baseline.
 
 ## Reading a result
 
