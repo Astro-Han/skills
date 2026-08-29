@@ -33,6 +33,9 @@ from pr_review_cases import (
 ROOT = Path(__file__).resolve().parent
 SKILLS = ROOT.parent / "skills"
 CONCURRENCY = 6
+REAL_PR_CASES = ROOT / "pr-review" / "real" / "cases"
+REAL_PR_FIXTURE = ROOT / "pr-review" / "real_fixture.py"
+REAL_PR_SELECTION = ROOT / "pr-review" / "real" / "selection.json"
 
 # The arm under test is the shipped skill itself, read from skills/<name>/. A named arm is a
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
@@ -199,6 +202,8 @@ PROVIDERS = {
 
 def suite_runs(provider_name, reps=3, suite=None):
     runs = []
+    if suite == "pr-review-real" and reps != 1:
+        raise ValueError("the real PR holdout requires exactly one paired run per case")
     pr_review_suites = {
         "pr-review": PR_REVIEW_DESIGN_CASES,
         "pr-review-holdout": PR_REVIEW_HOLDOUT_CASES,
@@ -207,6 +212,7 @@ def suite_runs(provider_name, reps=3, suite=None):
         "pr-review-no-statuses": PR_REVIEW_NO_STATUS_CASES,
     }
     supported_suites = set(pr_review_suites) | {
+        "pr-review-real",
         "review-feedback-causal-design",
         "review-feedback-causal-holdout",
         "review-feedback-structural-compression",
@@ -217,8 +223,24 @@ def suite_runs(provider_name, reps=3, suite=None):
         raise ValueError("unsupported suite: {!r}".format(suite))
     if suite == "debug" and provider_name != "claude":
         raise ValueError("the debug suite currently supports only the claude provider")
+    if suite == "pr-review-real" and provider_name != "codex":
+        raise ValueError("the real PR holdout currently supports only the codex provider")
 
     for rep in range(1, reps + 1):
+        if suite == "pr-review-real":
+            selection = json.loads(REAL_PR_SELECTION.read_text())
+            for case in selection["cases"]:
+                case_id = "maka-pr-{}".format(case["number"])
+                for arm, skill_arm in (("without_skill", None), ("with_skill", SHIPPED)):
+                    runs.append({"workspace": "pr-review-real-workspace",
+                                 "eval": case_id, "rep": rep,
+                                 "arm": arm, "real_case": REAL_PR_CASES / case_id,
+                                 "review_only": True,
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "pr-review",
+                                 "installed_skill_name": "pr-review-eval"})
+            continue
+
         if suite in pr_review_suites:
             cases = pr_review_suites[suite]
             for eval_name in cases:
@@ -324,19 +346,35 @@ def select_arms(runs, arm_names):
 # --- one run ---------------------------------------------------------------
 
 
-def prepare(provider, spec, iteration):
+def materialize_real_case(case_dir, repo_cache, work):
+    result = subprocess.run(
+        [sys.executable, str(REAL_PR_FIXTURE), "materialize",
+         "--case", str(case_dir), "--repo-cache", str(repo_cache),
+         "--output", str(work)],
+        check=True, capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
+def prepare(provider, spec, iteration, repo_cache=None):
     rundir = (ROOT / spec["workspace"] / iteration
               / "{}-r{}".format(spec["eval"], spec["rep"]) / spec["arm"])
     work = rundir / "work"
     if rundir.exists():
         shutil.rmtree(rundir)
     rundir.mkdir(parents=True)
-    shutil.copytree(ROOT / "fixtures" / spec["fixture"], work,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-    for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
-                ["git", "-c", "user.email=e@e.co", "-c", "user.name=eval",
-                 "commit", "-qm", "fixture"]):
-        subprocess.run(cmd, cwd=work, check=True, capture_output=True)
+    if real_case := spec.get("real_case"):
+        if repo_cache is None:
+            raise ValueError("real PR runs require a repository cache")
+        prompt = materialize_real_case(real_case, repo_cache, work)
+    else:
+        prompt = PROMPTS[spec["eval"]]
+        shutil.copytree(ROOT / "fixtures" / spec["fixture"], work,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
+                    ["git", "-c", "user.email=e@e.co", "-c", "user.name=eval",
+                     "commit", "-qm", "fixture"]):
+            subprocess.run(cmd, cwd=work, check=True, capture_output=True)
     case = REVIEW_FEEDBACK_CASES.get(spec["eval"], {})
     if seed_patch := case.get("seed_patch"):
         subprocess.run(
@@ -365,7 +403,7 @@ def prepare(provider, spec, iteration):
                        else ROOT / "baselines" / spec["skill_arm"])
         installed_name = spec.get("installed_skill_name", spec["skill_name"])
         skill_args.extend(provider.install_skill(work, arm_dir, installed_name))
-    return rundir, work, skill_args
+    return rundir, work, skill_args, prompt
 
 
 def invoke(provider, cmd, work, rundir):
@@ -392,7 +430,7 @@ def invoke(provider, cmd, work, rundir):
     return status, time.time() - started
 
 
-def finalize(provider, rundir, work, status, duration):
+def finalize(provider, rundir, work, status, duration, run_tests=True):
     """Provider-independent: collect the diff, the tests, and the run's numbers."""
     if provider.strip_dotclaude:
         shutil.rmtree(work / ".claude", ignore_errors=True)
@@ -400,8 +438,12 @@ def finalize(provider, rundir, work, status, duration):
     subprocess.run(["git", "add", "-A"], cwd=work, capture_output=True)
     diff = subprocess.run(["git", "diff", "--cached"], cwd=work,
                           capture_output=True, text=True).stdout
-    tests = subprocess.run(["python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."],
-                           cwd=work, capture_output=True, text=True, timeout=120)
+    tests = None
+    if run_tests:
+        tests = subprocess.run(
+            ["python3", "-m", "unittest", "discover", "-s", "tests", "-t", "."],
+            cwd=work, capture_output=True, text=True, timeout=120,
+        )
 
     events = []
     for line in (rundir / "transcript.jsonl").read_text().splitlines():
@@ -415,21 +457,26 @@ def finalize(provider, rundir, work, status, duration):
     outputs.mkdir(exist_ok=True)
     (outputs / "final_message.md").write_text(final_text)
     (outputs / "diff.patch").write_text(diff)
-    (outputs / "test_result.txt").write_text(
-        "exit={}\n".format(tests.returncode) + tests.stdout + tests.stderr)
+    test_result = (
+        "not run: review-only evaluation\n"
+        if tests is None
+        else "exit={}\n".format(tests.returncode) + tests.stdout + tests.stderr
+    )
+    (outputs / "test_result.txt").write_text(test_result)
     (rundir / "timing.json").write_text(json.dumps({
         "total_tokens": tokens, "duration_ms": int(duration * 1000),
         "total_duration_seconds": round(duration, 1), "run_status": status,
     }, indent=2))
 
 
-def run_one(provider, spec, iteration):
+def run_one(provider, spec, iteration, repo_cache=None):
     label = "{}/{}/{}-r{}/{}".format(provider.name, spec["workspace"], spec["eval"],
                                      spec["rep"], spec["arm"])
-    rundir, work, skill_args = prepare(provider, spec, iteration)
-    cmd = provider.command(provider.model, PROMPTS[spec["eval"]], skill_args)
+    rundir, work, skill_args, prompt = prepare(provider, spec, iteration, repo_cache)
+    cmd = provider.command(provider.model, prompt, skill_args)
     status, duration = invoke(provider, cmd, work, rundir)
-    finalize(provider, rundir, work, status, duration)
+    finalize(provider, rundir, work, status, duration,
+             run_tests=not spec.get("review_only", False))
     return label, status, round(duration)
 
 
@@ -447,9 +494,11 @@ def main():
                         help="run only this exact case from the selected suite; repeatable")
     parser.add_argument("--arm", action="append", dest="arms",
                         help="run only this exact arm from the selected suite; repeatable")
+    parser.add_argument("--repo-cache", type=Path,
+                        help="full local repository used to materialize real PR fixtures")
     parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
-                                            "pr-review-no-statuses",
+                                            "pr-review-no-statuses", "pr-review-real",
                                             "review-feedback-causal-design",
                                             "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",
@@ -467,6 +516,9 @@ def main():
     runs = select_cases(suite_runs(provider.name, args.reps, args.suite), args.cases)
     runs = select_arms(runs, args.arms)
 
+    if args.suite == "pr-review-real" and not args.dry_run and args.repo_cache is None:
+        parser.error("--repo-cache is required for pr-review-real")
+
     if args.dry_run:
         for spec in runs:
             print("{}/{}-r{}/{}".format(spec["workspace"], spec["eval"],
@@ -479,7 +531,7 @@ def main():
           flush=True)
     failures = 0
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
-        futures = {pool.submit(run_one, provider, spec, args.iteration): spec
+        futures = {pool.submit(run_one, provider, spec, args.iteration, args.repo_cache): spec
                    for spec in runs}
         for done, future in enumerate(as_completed(futures), start=1):
             try:

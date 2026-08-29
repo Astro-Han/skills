@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,30 @@ runner = load_runner()
 
 
 class EvalRunnerSuiteTests(unittest.TestCase):
+    def test_real_pr_holdout_plans_one_pair_for_each_frozen_case(self):
+        runs = runner.suite_runs("codex", reps=1, suite="pr-review-real")
+        self.assertEqual(len(runs), 24)
+        self.assertEqual(len({run["eval"] for run in runs}), 12)
+        self.assertEqual({run["arm"] for run in runs}, {"without_skill", "with_skill"})
+        self.assertTrue(all(run["review_only"] for run in runs))
+        self.assertTrue(all(run["real_case"].name.startswith("maka-pr-") for run in runs))
+
+        with self.assertRaisesRegex(ValueError, "exactly one paired run"):
+            runner.suite_runs("codex", reps=2, suite="pr-review-real")
+
+    def test_real_case_materialization_uses_the_frozen_fixture_tool(self):
+        completed = mock.Mock(stdout="Review the frozen PR.\n")
+        with mock.patch.object(runner.subprocess, "run", return_value=completed) as call:
+            prompt = runner.materialize_real_case(
+                Path("/cases/maka-pr-1"), Path("/cache/maka"), Path("/runs/work")
+            )
+        self.assertEqual(prompt, "Review the frozen PR.")
+        command = call.call_args.args[0]
+        self.assertEqual(command[1:3], [str(runner.REAL_PR_FIXTURE), "materialize"])
+        self.assertIn("/cases/maka-pr-1", command)
+        self.assertIn("/cache/maka", command)
+        self.assertIn("/runs/work", command)
+
     def test_codex_disables_same_name_user_skill_in_every_arm(self):
         args = runner.codex_disable_user_skill("pr-review")
         self.assertEqual(args[0], "-c")

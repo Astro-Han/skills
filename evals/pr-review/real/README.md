@@ -69,6 +69,19 @@ adjudicators score the outputs after execution against private copies of
 [`answer-key-template.json`](answer-key-template.json). Cases that informed the Skill may remain
 regression tests but never enter the public holdout percentage.
 
+Run the first paired execution with the weak model chosen for this decision. The runner rejects
+additional repetitions for this suite:
+
+```bash
+python3 evals/runner.py \
+  --provider codex --model gpt-5.6-luna \
+  --suite pr-review-real --reps 1 \
+  --iteration real-luna-high-v1 \
+  --repo-cache /path/to/maka
+```
+
+Do not open `final_message.md` or transcripts before the independent answer keys are complete.
+
 Two reviewers who did not design the Skill must independently complete each answer key before any
 model output is opened, then reconcile evidence against the historical repository. A required
 finding needs a reachable trigger, consequence, reproduction, code evidence, and calibrated
