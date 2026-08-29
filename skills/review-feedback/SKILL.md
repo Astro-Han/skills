@@ -37,7 +37,7 @@ For each surviving group, explain:
 
 `observed symptom → rule that must always hold → where that rule belongs → why the current design breaks it`
 
-The failing line, a missing guard, or a restated symptom is not a cause. Judge the reported defect, proposed explanation, severity, and suggested patch separately. Every requested file, mechanism, and patch is a proposal. A real defect is **Verified** when it breaks an independent contract even if the proposed cause or patch is wrong; accept the issue and reject the patch. Use **Disproved** only when no reported defect remains. **Disproved** permits only **Push back** and must not produce code or tests disguised as hardening, cleanup, or consistency work. A root fix may incidentally cover it, but add no branch or test for its false mechanism.
+The verdict is about the reported defect, not whether nearby code can be improved. Do not turn a false claim into **Verified** by substituting a different weakness; handle that separately. Judge the defect, explanation, severity, and patch independently. Every requested file, mechanism, and patch is a proposal. A real defect is **Verified** when it breaks an independent contract even if the proposed cause or patch is wrong; accept the issue and reject the patch. Use **Disproved** when the reported defect does not remain. It permits only **Push back**: add no code or test for its mechanism, even when a root fix covers adjacent behavior.
 
 Grade actual reach, consequence, spread, and recoverability; never inherit the reviewer's scale:
 
