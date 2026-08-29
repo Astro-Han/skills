@@ -190,6 +190,11 @@ candidate must not reduce the aggregate counts for the edit gate, owner-level en
 state, rejection of false suggestions, acceptance behavior, or cumulative-diff scope
 cleanup. Otherwise keep the baseline.
 
+If a candidate clears the score bound but misses exactly one hard gate, a wording-only
+correction may use one additional all-fixture repetition. Adopt it only when that run's
+total score and every hard-gate count are no lower than its paired baseline; do not add
+more repetitions.
+
 ## Reading a result
 
 Report the metric, the number of reps per arm, and the model. A difference that a handful of
