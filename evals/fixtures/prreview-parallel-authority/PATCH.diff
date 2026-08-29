@@ -1,0 +1,26 @@
+diff --git a/runtime/retry-loop.ts b/runtime/retry-loop.ts
+@@
++export function looksStalled(send: SendState, now: number) {
++  return send.status === "sending" && now - send.startedAt > 5000;
++}
+
+diff --git a/ui/use-send-recovery.ts b/ui/use-send-recovery.ts
+@@
++export function useSendRecovery(runtime: Runtime, composer: Composer) {
++  useInterval(() => {
++    if (looksStalled(runtime.send, Date.now())) {
++      runtime.stop();
++      const queued = composer.takeQueued();
++      runtime.send(queued.text);
++    }
++  }, 500);
++}
+
+diff --git a/ui/send-recovery.test.ts b/ui/send-recovery.test.ts
+@@
++it("stops and resends after the timeout", () => {
++  const runtime = fakeRuntime({status: "sending", startedAt: 0});
++  mountRecovery(runtime, fakeComposer("hello"));
++  advanceTimersByTime(5500);
++  expect(runtime.calls).toEqual(["stop", "send:hello"]);
++});

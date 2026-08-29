@@ -287,6 +287,60 @@ def section_position(text, english, chinese):
     return min(positions) if positions else None
 
 
+def component_split_present(text, label, additions, deletions):
+    text = text.lower()
+    label_pattern = (r"(?:production|prod|生产(?:代码)?)" if label == "production"
+                     else r"(?:tests?|测试)")
+    window = r"[^\n]{0,80}"
+    compact = re.search(
+        label_pattern + window + r"\+\s*{}\s*/\s*-\s*{}".format(additions, deletions),
+        text,
+    )
+    verbose = re.search(
+        label_pattern + window + r"{}\s+additions?".format(additions)
+        + window + r"{}\s+deletions?".format(deletions),
+        text,
+    )
+    additions_only = re.search(
+        label_pattern + window + r"\+?\s*{}(?:\D|$)".format(additions), text
+    )
+    return bool(compact or verbose or additions_only)
+
+
+def split_reported(text, production_add, production_del, test_add, test_del):
+    lower = text.lower()
+    combined = re.search(
+        r"(?:production|prod|生产)(?:\s*/\s*(?:tests?|测试))?\s+split"
+        r"[^\n]{{0,30}}\+\s*{}\s*/\s*-\s*{}\s*/\s*\+\s*{}\s*/\s*-?\s*{}".format(
+            production_add, production_del, test_add, test_del
+        ),
+        lower,
+    )
+    return bool(combined) or (
+        component_split_present(lower, "production", production_add, production_del)
+        and component_split_present(lower, "tests", test_add, test_del)
+    )
+
+
+def recommendation_choice(text):
+    choices = ("human confirmation required", "approve", "comment", "wait")
+    lines = text.lower().splitlines()
+    for index, line in enumerate(lines):
+        normalized = line.strip(" #*_-—:`")
+        if not normalized.startswith("recommendation"):
+            continue
+        candidates = [normalized.removeprefix("recommendation").strip(" :—-*")]
+        candidates.extend(
+            lines[next_index].strip(" #*_-—:`")
+            for next_index in range(index + 1, min(index + 4, len(lines)))
+        )
+        for candidate in candidates:
+            for choice in choices:
+                if candidate.startswith(choice):
+                    return choice
+    return None
+
+
 def grade_pr_review_case(exp, final, triggered, case):
     lower = final.lower()
     should_trigger = case["should_trigger"]
@@ -294,14 +348,19 @@ def grade_pr_review_case(exp, final, triggered, case):
            triggered == should_trigger,
            "triggered={}, expected={}".format(triggered, should_trigger))
 
-    expect(exp, "Reported the exact reviewed head",
-           case["head"].lower() in lower, final[:300])
     if not should_trigger:
+        if case.get("require_head", True):
+            expect(exp, "Reported the exact reviewed head",
+                   case["head"].lower() in lower, final[:300])
         expect(exp, "Reported the requested CI facts without a review decision",
                all(all(term in lower for term in pair) for pair in case["status_pairs"])
-               and not any(term in lower for term in ("approve", "comment", "wait", "p0", "p1", "p2", "p3")),
+               and recommendation_choice(final) is None
+               and not re.search(r"(?i)\bP[0-3]\b", final),
                final[:300])
         return
+
+    expect(exp, "Reported the exact reviewed head",
+           case["head"].lower() in lower, final[:300])
 
     additions, deletions = case["diff_counts"]
     link_facts = (case["pr_url"].lower(), case["issue_url"].lower())
@@ -312,6 +371,21 @@ def grade_pr_review_case(exp, final, triggered, case):
     facts_ok = all(term in lower for term in link_facts) and (verbose_diff or bool(compact_diff))
     expect(exp, "Reported PR, Issue, head, and diff facts",
            facts_ok, final[:500])
+
+    production_add, production_del, test_add, test_del = case["split_counts"]
+    expect(exp, "Reported the production/test split",
+           split_reported(lower, production_add, production_del, test_add, test_del),
+           final[:500])
+
+    expect(exp, "Reported a concept-level entropy delta",
+           any(term in lower for term in ("entropy", "complexity", "熵", "复杂度")) and any(term in lower for term in (
+               "authority", "owner", "state", "lifecycle", "contract", "wrapper", "test"
+           )), final[-700:])
+
+    for index, terms in enumerate(case.get("required_term_groups", ())):
+        expect(exp, "Covered case-specific review obligation {}".format(index + 1),
+               any(term.lower() in lower for term in terms),
+               "expected one of {}; {}".format(terms, final[-700:]))
 
     problem_pos = section_position(lower, "problem", "问题")
     solution_pos = section_position(lower, "solution", "解法")
@@ -344,17 +418,24 @@ def grade_pr_review_case(exp, final, triggered, case):
            decision_pos is not None
            and any(term.lower() in lower[decision_pos:] for term in case["decision_terms"]),
            final[-400:])
+    choice = recommendation_choice(final)
+    if required := case.get("required_recommendation"):
+        expect(exp, "Used the required explicit recommendation",
+               choice == required, "choice={!r}, expected={!r}".format(choice, required))
     if case.get("forbid_approve"):
         expect(exp, "Did not recommend approval for an unresolved material gap",
-               not any(line.strip().lower().startswith(("approve", "recommendation: approve", "建议：approve"))
-                       for line in final.splitlines()),
+               choice != "approve",
                final[-400:])
     if severity := case.get("severity"):
         expect(exp, "Calibrated the finding as {}".format(severity),
                severity.lower() in lower, final[-500:])
     if case.get("forbid_p1"):
         expect(exp, "Did not preserve the overstated P1 severity",
-               "p1" not in lower or any(term in lower for term in ("not p1", "不是 p1", "降为 p2", "p1 → p2")),
+               "p1" not in lower or any(term in lower for term in (
+                   "not p1", "不是 p1", "p1 不成立", "p1不成立", "p1 is overstated",
+                   "reject the p1", "withdraw", "撤回", "降为 p2", "降级", "p1 → p2",
+                   "不成立", "不应定为 p1"
+               )),
                final[-500:])
     if reach_terms := case.get("reach_terms"):
         expect(exp, "Named the triggering reachability category",

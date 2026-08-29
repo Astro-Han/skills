@@ -6,6 +6,7 @@
 - Base: main
 - Exact head: `203decaf`
 - Diff: 18 additions, 4 deletions, 2 files
+- Split: production 5 additions, 2 deletions; tests 13 additions, 2 deletions
 - Files: `preview-cache.ts`, `preview-cache.test.ts`
 - CI for `203decaf`: unit SUCCESS; lint SUCCESS
 - Mergeability: clean

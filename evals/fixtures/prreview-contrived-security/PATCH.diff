@@ -1,0 +1,13 @@
+diff --git a/debug_trace.py b/debug_trace.py
+@@
+     verify_trace_path(path)
++    verify_trace_path(path)
+     with open(path, "w") as trace:
+         trace.write(label)
+
+diff --git a/tests/test_debug_trace.py b/tests/test_debug_trace.py
+@@
++def test_rejects_symlink_before_open(tmp_path):
++    path = replace_with_symlink(tmp_path / "trace")
++    with pytest.raises(UnsafeTracePath):
++        write_trace(path, "resolver-start")

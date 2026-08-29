@@ -1,0 +1,25 @@
+diff --git a/transfer_worker.py b/transfer_worker.py
+@@
++SEEN = set()
+ def execute(item):
+-    if commit_ledger.contains(item.external_id):
++    if item.external_id in SEEN:
+         return
+     bank.commit(item)
+-    commit_ledger.record(item.external_id)
++    SEEN.add(item.external_id)
+
+diff --git a/commit_ledger.py b/commit_ledger.py
+@@
+-class CommitLedger:
+-    """Persist externally committed transfer identities across recovery."""
+-    ...
+
+diff --git a/tests/test_transfer.py b/tests/test_transfer.py
+@@
+-def test_replay_after_worker_restart_uses_durable_ledger():
++def test_duplicate_in_same_worker_uses_seen_set():
+     execute(item)
+-    restart_worker()
+     execute(item)
+     assert bank.commit_count == 1

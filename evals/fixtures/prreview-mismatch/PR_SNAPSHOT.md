@@ -6,6 +6,7 @@
 - Base: main
 - Exact head: `84ca11ab`
 - Diff: 42 additions, 9 deletions, 3 files
+- Split: production 14 additions, 5 deletions; tests 24 additions, 2 deletions; docs 4 additions, 2 deletions
 - Files: `discovery.py`, `tests/test_discovery.py`, `docs/extensions.md`
 - CI for `84ca11ab`: unit SUCCESS; lint SUCCESS
 - Mergeability: clean

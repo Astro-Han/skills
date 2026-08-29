@@ -6,6 +6,7 @@
 - Base: main
 - Exact head: `318feed0`
 - Diff: 24 additions, 37 deletions, 4 files
+- Split: production 14 additions, 30 deletions; tests 10 additions, 7 deletions
 - Files: `credential.py`, `rotate.py`, `reader_v1.py`, `tests/test_rotate.py`
 - CI for `318feed0`: unit SUCCESS; integration SUCCESS
 - Mergeability: clean

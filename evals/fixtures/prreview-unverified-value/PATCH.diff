@@ -1,0 +1,15 @@
+diff --git a/package-aliases.ts b/package-aliases.ts
+@@
++export const LEGACY_ALIASES = {"toolkit-old": "toolkit"};
+
+diff --git a/resolver.ts b/resolver.ts
+@@
++  const alias = LEGACY_ALIASES[name];
++  if (alias) return resolvePackage(alias);
+   return resolvePackage(name);
+
+diff --git a/resolver.test.ts b/resolver.test.ts
+@@
++it("resolves an invented legacy alias", () => {
++  expect(resolvePackage("toolkit-old")).toEqual(resolvePackage("toolkit"));
++});

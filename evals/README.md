@@ -35,7 +35,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
-| `prreview-*` | `pr-review` | Four design cases for value/scope order, production composition, severity calibration, and a close non-trigger; one rolling-compatibility holdout reuses a pre-existing authority pattern not used to draft the skill. |
+| `prreview-*` | `pr-review` | Eight review cases for value, scope, production composition, authority, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts for live compatibility and durable recovery authority. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -52,28 +52,40 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-fee
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-matrix --reps 5
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression --reps 3
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression-holdout --reps 5
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review --reps 1
-python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 1
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review --reps 4
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 4
 python3 evals/grader.py                            # scores those runs
 ```
 
 ### PR-review adoption decision
 
-Compare the shipped skill with no installed skill. Adopt only if the candidate triggers for all
-three realistic review requests, does not trigger for the status-only close non-trigger, reports
-PR/Issue/head/diff facts before its recommendation, establishes problem value before solution
-mechanics, catches the production-composition bypass, and calibrates the recoverable preview gap
-as P2 rather than P1. A separate rolling-compatibility case is supporting holdout evidence, but it
-is not blind because the skill author can inspect its fixed answer key; do not claim generalization
-from this suite alone.
+Compare the shipped skill with no installed skill in 48 paired A/B runs: four repetitions of eight
+review requests, two close non-triggers, and two held-out simplification traps. The decision gates
+are: correct invocation in every run; no approval when a material gap remains; PR/Issue/head/diff
+facts and problem value before the recommendation; correct production composition; explicit
+concept-level entropy accounting; preservation of necessary process tests, live compatibility,
+and durable recovery authority; and at least 90% of predeclared report assertions in both design
+and holdout suites.
+
+The accepted `gpt-5.6-luna`/high run used 96 model executions. On the 10-case design suite the
+candidate scored 406/412 assertions (98.5%) versus 123/412 (29.9%) without the skill. On the two-case
+holdout it scored 111/112 (99.1%) versus 45/112 (40.2%). Invocation was correct in 48/48 candidate
+runs; decision-critical facts and problem-first ordering were 40/40; unresolved material gaps were
+not approved in 32/32 applicable runs; required explicit Approve or Human-confirmation decisions
+were 8/8; and entropy or equivalent complexity deltas were reported in 40/40 reviews. Runner
+failures were 0/96.
+
+This supports adoption, not broad statistical generalization. The answer keys are fixed but
+inspectable by the author, grading is phrase-based free-text evaluation, fixtures do not exercise a
+live GitHub API, and only one model/reasoning configuration was tested. Keep those limits explicit
+when changing the skill or extrapolating to another model.
 
 ### PR-review compression decision
 
-The full package is frozen at `538bf102514f54277ea6e829e6785f73d165af31`. Adopt a
-compressed package only when `SKILL.md` is at most 750 words, the directly loaded package is at
-most 1,000 words, it contains no Chinese text, and it retains 28/28 design assertions plus 9/9
-holdout assertions. The accepted arm used 749 + 215 words and met both behavioral thresholds on
-one `gpt-5.6-luna`/high run per case; this supports non-regression but does not measure variance.
+The full package is frozen at `538bf102514f54277ea6e829e6785f73d165af31`. Adopt a compressed
+package only when `SKILL.md` is at most 750 words, the directly loaded package is at most 1,000
+words, and it contains no Chinese text. The accepted package uses 750 + 215 words and meets the
+behavioral decision above; do not trade away its hard decision gates merely to reduce word count.
 
 The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
 skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text

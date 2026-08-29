@@ -1,0 +1,12 @@
+diff --git a/route_registry.py b/route_registry.py
+@@
+     def lookup(self, method, path):
+-        return self.routes.get((method, path))
++        return self.routes.get((self.canonical_method(method), path))
+
+diff --git a/tests/test_route_registry.py b/tests/test_route_registry.py
+@@
++@pytest.mark.parametrize("method,path,handler", THIRTY_SIX_COMBINATIONS)
++def test_lookup_method_matrix(method, path, handler):
++    registry = registry_with(handler)
++    assert registry.lookup(method, path) is handler

@@ -1,0 +1,14 @@
+diff --git a/owned_host_supervisor.py b/owned_host_supervisor.py
+@@
+-    worker = spawn_worker(command)
+-    lease = lifetime_lease(worker.pid)
++    lease = lifetime_lease()
++    worker = spawn_worker(command, inherited_fd=lease.child_fd)
+     return OwnedWorker(worker, lease)
+
+diff --git a/tests/test_launcher_lifetime.py b/tests/test_launcher_lifetime.py
+@@
++def test_worker_exits_when_launcher_dies_at_spawn_barrier():
++    launcher, worker = start_real_processes(paused_after_spawn=True)
++    launcher.kill()
++    assert worker.wait(timeout=5) == 0

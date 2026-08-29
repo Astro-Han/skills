@@ -6,6 +6,7 @@
 - Base: main
 - Exact head: `1120cafe`
 - Diff: 31 additions, 6 deletions, 3 files
+- Split: production 15 additions, 6 deletions; tests 16 additions, 0 deletions
 - Files: `launcher.py`, `detached_fixture.py`, `tests/test_host.py`
 - CI for `1120cafe`: unit SUCCESS; package SUCCESS
 - Mergeability: clean
