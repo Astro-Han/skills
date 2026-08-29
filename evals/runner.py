@@ -29,6 +29,7 @@ from review_feedback_cases import (
 from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
+    NO_STATUS_CASES as PR_REVIEW_NO_STATUS_CASES,
     PARTIAL_FACT_CASES as PR_REVIEW_PARTIAL_FACT_CASES,
     PR_REVIEW_CASES,
     REACHABILITY_CASES as PR_REVIEW_REACHABILITY_CASES,
@@ -45,6 +46,7 @@ SHIPPED = "shipped"
 REVIEW_FEEDBACK_FULL_REF = "0685def7c43dc8a3f16944bc3804c1871583f504"
 PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
 PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
+PR_REVIEW_THREE_STATES_REF = "d4ea3b6bc9dc198a43024ae500373b8d0f5567ae"
 
 PROMPTS = {
     "shared-sections": (
@@ -196,6 +198,7 @@ def suite_runs(provider_name, reps=3, suite="all"):
         "pr-review-holdout": PR_REVIEW_HOLDOUT_CASES,
         "pr-review-reachability": PR_REVIEW_REACHABILITY_CASES,
         "pr-review-partial-facts": PR_REVIEW_PARTIAL_FACT_CASES,
+        "pr-review-no-statuses": PR_REVIEW_NO_STATUS_CASES,
     }
     for rep in range(1, reps + 1):
         if suite in pr_review_suites:
@@ -207,6 +210,9 @@ def suite_runs(provider_name, reps=3, suite="all"):
                             ("with_skill", SHIPPED))
                 elif suite == "pr-review-partial-facts":
                     arms = (("complete_facts", "git:" + PR_REVIEW_COMPLETE_FACTS_REF),
+                            ("with_skill", SHIPPED))
+                elif suite == "pr-review-no-statuses":
+                    arms = (("three_states", "git:" + PR_REVIEW_THREE_STATES_REF),
                             ("with_skill", SHIPPED))
                 else:
                     arms = (("without_skill", None), ("with_skill", SHIPPED))
@@ -383,6 +389,7 @@ def main():
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--suite", choices=("all", "pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
+                                            "pr-review-no-statuses",
                                             "review-feedback", "review-feedback-holdout",
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
                                             "review-feedback-matrix", "review-feedback-compression",

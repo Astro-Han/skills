@@ -16,8 +16,8 @@ The main reviewer cross-checks claims, deduplicates findings, calibrates severit
 
 ## Publish
 
-Before Comment, Approve, Request changes, or merge recommendation, refresh exact head, its CI, mergeability, and unresolved threads. If head changed, decide whether analysis remains valid.
+Before any public review action or merge recommendation, refresh exact head, its CI, mergeability, and unresolved threads. If head changed, decide whether analysis remains valid.
 
-Follow project confirmation, identity, and human-accountability rules. Review requests do not imply external action. For UI/UX changes, use **Wait** and name the manual checks that remain.
+Follow project confirmation, identity, and human-accountability rules. Review requests do not imply external action. For UI/UX changes, name the manual checks that remain and do not publish approval before they are complete.
 
-Open with thanks. Put line-local defects inline and the decision at top level. State head and evidence, keep corrections collaborative, optionally collapse a requested translation, and disclose AI assistance plus human verification.
+Open with thanks. Put line-local defects inline and the overall conclusion at top level. State head and evidence, keep corrections collaborative, optionally collapse a requested translation, and disclose AI assistance plus human verification.

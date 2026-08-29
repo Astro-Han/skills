@@ -56,6 +56,7 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review 
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-reachability --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-partial-facts --reps 4
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-no-statuses --reps 4
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -106,11 +107,35 @@ package only when `SKILL.md` is at most 750 words, the directly loaded package i
 words, and it contains no Chinese text. The accepted package uses 750 + 223 words and meets the
 behavioral decision above; do not trade away its hard decision gates merely to reduce word count.
 
-The plain-language revision removes invented output labels and uses only Approve, Comment, or
-Wait. Its adoption check is deterministic: the banned labels are absent, the context budgets hold,
-and the validator and repository tests pass. No new model A/B was run because the prior paired case
-did not distinguish reachability behavior; its historical percentages must not be rescored as new
-model evidence after changing the rubric.
+The plain-language revision at that point removed longer invented labels but retained
+Approve/Comment/Wait. The later no-status decision below supersedes that output contract. Historical
+percentages must not be rescored as new model evidence after changing the rubric.
+
+### PR-review no-status decision
+
+Compare the frozen three-state skill at `d4ea3b6bc9dc198a43024ae500373b8d0f5567ae`
+with the candidate on four repetitions of two cases: one PR with a real P1 plus a separate manual
+UX check, and one clean exported snapshot whose current PR state is unavailable. This is eight A/B
+pairs and sixteen model runs.
+
+Adopt only if every candidate output avoids Approve/Comment/Wait as an invented review state,
+keeps code findings separate from CI, current-head, human-approval, and manual-acceptance conditions,
+still requires the real P1 to be fixed, does not recommend approval of the stale snapshot, and scores
+no lower overall than the frozen skill. The stale-snapshot case was not used to design the original
+three-state contract, but both cases are now used to validate this revision; they are regression
+evidence rather than a broad holdout.
+
+Two 16-run attempts were invalid. Codex could discover the user-level
+`~/.agents/skills/pr-review` symlink as well as the isolated `pr-review-eval` copy; seven of eight
+frozen-arm runs in the final attempt read the user-level candidate instead of the frozen skill.
+The resulting scores and percentages have no comparative meaning and are not adoption evidence.
+
+The attempted runs still exposed one useful candidate-only failure: conditional approval language
+for an unverified snapshot. The skill now says to report only the snapshot findings and require a
+live refresh, and deterministic English/Chinese tests cover the observed forms. The direct package
+tests and validator pass, and the user confirmed the three-state output was confusing in real use.
+This supports removing the states for that observed workflow, not broad generalization. Keep this
+suite for a fresh paired run after the previously deferred eval-runner isolation fix.
 
 ### PR-review partial-facts decision
 
@@ -126,10 +151,11 @@ generalization. The first execution was invalid because its patch counts and ans
 contradicted the fixture; it is excluded rather than rescored. An intermediate run exposed a
 conditional Approve for an unverified current PR and led to the explicit current-head gate.
 
-On the final `gpt-5.6-luna`/high run, the candidate scored 84/112 assertions (75.0%) versus
+On the historical `gpt-5.6-luna`/high run, the candidate scored 84/112 assertions (75.0%) versus
 71/112 (63.4%) for the frozen skill, with 0/16 runner failures. All eight candidate runs completed
 substantive review without approving unverified current content; all four offline runs avoided
-invented URLs, and all four current-approval runs explicitly used Wait. Some reports still omitted
+invented URLs, and all four current-approval runs explicitly used Wait under the now-superseded
+three-state contract. Some reports still omitted
 numeric diff or production/test split, so this supports the partial-facts boundary only, not overall
 review quality or broad generalization.
 

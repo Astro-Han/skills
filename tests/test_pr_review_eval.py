@@ -51,6 +51,15 @@ class PrReviewEvalTests(unittest.TestCase):
             {"review-offline-pr-patch", "review-exported-snapshot-before-approval"},
         )
 
+    def test_no_status_suite_is_eight_ab_pairs(self):
+        runs = runner.suite_runs("codex", reps=4, suite="pr-review-no-statuses")
+        self.assertEqual(len(runs), 16)
+        self.assertEqual({run["arm"] for run in runs}, {"three_states", "with_skill"})
+        self.assertEqual(
+            {run["eval"] for run in runs},
+            {"review-parallel-authority-ux", "review-exported-snapshot-before-approval"},
+        )
+
     def test_partial_fact_patches_match_their_base_sources(self):
         for fixture in ("prreview-offline-patch", "prreview-stale-approval"):
             subprocess.run(
@@ -90,9 +99,12 @@ class PrReviewEvalTests(unittest.TestCase):
             "coherent entropy",
         ):
             self.assertNotIn(invented_label, skill)
-        self.assertIn("**approve**, **comment**, or **wait**", skill)
-        self.assertIn("missing facts do not block analysis", skill)
-        self.assertIn("**approve** requires proof that the reviewed content is current", skill)
+        self.assertNotIn("approve/comment/wait", skill)
+        self.assertNotIn("**wait**", skill)
+        self.assertIn("name gaps, which do not block analysis", skill)
+        self.assertIn("keep findings separate from merge and publication conditions", skill)
+        self.assertIn("never call it approvable", skill)
+        self.assertIn("**next step**", skill)
 
     def test_holdout_is_separate_from_design_cases(self):
         design = runner.suite_runs("codex", reps=1, suite="pr-review")
@@ -115,17 +127,27 @@ class PrReviewEvalTests(unittest.TestCase):
             "Tests +15/-0", "tests", 15, 0
         ))
 
-    def test_recommendation_parser_reads_heading_then_choice(self):
+    def test_formal_state_parser_distinguishes_state_from_plain_action(self):
         self.assertEqual(
-            grader.recommendation_choice("## Recommendation\n**Wait** — manual UI check\n"),
+            grader.formal_review_state("## Recommendation\n**Wait** — manual UI check\n"),
             "wait",
         )
         self.assertEqual(
-            grader.recommendation_choice("## Recommendation: Approve\n"),
+            grader.formal_review_state("## Recommendation: Approve\n"),
             "approve",
         )
-        self.assertEqual(grader.recommendation_choice("建议\n\n**Wait**\n"), "wait")
-        self.assertEqual(grader.recommendation_choice("结论：Approve\n"), "approve")
+        self.assertEqual(grader.formal_review_state("结论：Approve\n"), "approve")
+        self.assertIsNone(
+            grader.formal_review_state("## Next step\nRefresh the current head before approval.\n")
+        )
+
+    def test_approval_detector_allows_negative_guidance(self):
+        self.assertTrue(grader.recommends_approval("The PR is ready to approve."))
+        self.assertTrue(grader.recommends_approval("代码层面可以批准。"))
+        self.assertTrue(grader.recommends_approval("This snapshot can be approved."))
+        self.assertFalse(grader.recommends_approval("Do not approve before refreshing CI."))
+        self.assertFalse(grader.recommends_approval("当前 PR 不能直接批准。"))
+        self.assertFalse(grader.recommends_approval("不能把这个快照视为可批准的 PR。"))
 
 
 if __name__ == "__main__":

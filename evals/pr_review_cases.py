@@ -6,7 +6,7 @@ PR_REVIEW_CASES = {
         "fixture": "prreview-mismatch",
         "prompt": (
             "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff. "
-            "Decide whether to Approve, Comment, or Wait. "
+            "Give the code-review conclusion and the concrete next step. "
             "Do not modify files or contact anyone."
         ),
         "should_trigger": True,
@@ -22,7 +22,7 @@ PR_REVIEW_CASES = {
             ("outside the configured discovery root", "cross-root", "outside-root", "root 外", "跨 root", "外部 target"),
             ("inside the configured discovery root", "inside-root", "root 内", "内部 target"),
         ),
-        "decision_terms": ("comment", "wait"),
+        "next_step_terms": ("align", "fix", "correct", "update"),
         "forbid_approve": True,
     },
     "review-production-composition": {
@@ -45,7 +45,7 @@ PR_REVIEW_CASES = {
             ("launch_owned", "owned launcher"),
             ("detached fixture", "helper directly", "fixture bypass", "directly calling", "rather than calling", "直接调用", "只覆盖", "未覆盖真实"),
         ),
-        "decision_terms": ("comment",),
+        "next_step_terms": ("fix", "before merge", "owned launcher"),
         "severity": "P1",
         "reach_terms": ("reasonable failure", "recovery", "category 2", "类别 2", "第 2 类", "②", "故障", "恢复"),
         "forbid_approve": True,
@@ -66,7 +66,7 @@ PR_REVIEW_CASES = {
         "split_counts": (5, 2, 13, 2),
         "problem_terms": ("demonstrated", "stale", "preview"),
         "solution_terms": ("retry", "refresh", "cache"),
-        "decision_terms": ("comment", "approve"),
+        "next_step_terms": ("p2", "fix", "non-blocking"),
         "severity": "P2",
         "reach_terms": ("normal user", "正常用户", "category 1", "类别 1", "第 1 类", "①"),
         "forbid_p1": True,
@@ -113,8 +113,7 @@ PR_REVIEW_CASES = {
             ("necessary", "required", "必要"),
             ("single owner", "one owner", "no new authority", "单一 owner", "唯一 owner", "现有生命周期 owner", "没有引入并行 owner"),
         ),
-        "decision_terms": ("approve",),
-        "required_recommendation": "approve",
+        "next_step_terms": ("no finding", "no code finding", "no changes requested", "ready for human review"),
     },
     "review-parallel-authority-ux": {
         "fixture": "prreview-parallel-authority",
@@ -137,8 +136,7 @@ PR_REVIEW_CASES = {
             ("queue", "queued content"),
             ("manual check", "manual acceptance", "ux confirmation"),
         ),
-        "decision_terms": ("wait",),
-        "required_recommendation": "wait",
+        "next_step_terms": ("fix", "before merge", "manual check", "manual acceptance"),
         "severity": "P1",
         "reach_terms": ("reasonable failure", "recovery", "category 2", "类别 2", "第 2 类", "②", "故障", "恢复"),
         "forbid_approve": True,
@@ -163,7 +161,7 @@ PR_REVIEW_CASES = {
             ("three", "3"),
             ("remove", "delete", "collapse", "移除", "删除", "精简", "收缩"),
         ),
-        "decision_terms": ("comment",),
+        "next_step_terms": ("remove", "delete", "collapse"),
         "severity": "P3",
         "forbid_approve": True,
     },
@@ -186,7 +184,7 @@ PR_REVIEW_CASES = {
             ("no user report", "no reproduction", "no observed failure", "user report", "没有用户报告", "无用户报告", "没有复现", "缺少独立"),
             ("test does not prove", "test proves neither", "test does not independently", "new test", "测试不能证明", "测试并不能", "不能证明修复", "自证式测试"),
         ),
-        "decision_terms": ("comment", "wait"),
+        "next_step_terms": ("verify", "reproduce", "evidence"),
         "forbid_approve": True,
     },
     "review-contrived-security": {
@@ -208,7 +206,7 @@ PR_REVIEW_CASES = {
         "required_term_groups": (
             ("category 4", "contrived path", "第 4 类", "类别 4", "④", "构造路径"),
         ),
-        "decision_terms": ("comment", "wait"),
+        "next_step_terms": ("no finding", "dismiss", "withdraw", "close"),
         "forbid_p1": True,
         "forbid_approve": True,
     },
@@ -233,8 +231,7 @@ PR_REVIEW_CASES = {
             ("blocked", "blocks", "rejects", "unreachable", "not reachable", "不可达", "阻断", "拒绝"),
             ("no finding", "not a defect", "p1 does not hold", "p1 is invalid", "false/unproven p1", "p1 should be dismissed", "无 finding", "不是缺陷", "p1 不成立", "不成立", "应撤回"),
         ),
-        "decision_terms": ("wait",),
-        "required_recommendation": "wait",
+        "next_step_terms": ("manual check", "manual acceptance"),
         "forbid_p1": True,
         "forbid_approve": True,
     },
@@ -257,7 +254,7 @@ PR_REVIEW_CASES = {
             ("closeproducer", "producer closes", "shutdown path", "关闭 producer", "关闭路径"),
             ("smallest", "one-line", "no new state", "最小", "没有新增状态"),
         ),
-        "decision_terms": ("comment", "wait"),
+        "next_step_terms": ("refresh", "current pr", "current head"),
         "forbidden_terms": ("https://", "http://"),
         "forbid_approve": True,
     },
@@ -281,8 +278,7 @@ PR_REVIEW_CASES = {
             ("ci", "mergeability", "unresolved thread", "检查", "未解决线程"),
             ("no finding", "no code finding", "no defect", "没有 finding", "未发现问题"),
         ),
-        "decision_terms": ("wait",),
-        "required_recommendation": "wait",
+        "next_step_terms": ("refresh", "before anyone acts", "before approval"),
         "forbid_approve": True,
     },
     "review-live-compatibility-holdout": {
@@ -304,7 +300,7 @@ PR_REVIEW_CASES = {
             ("preserve", "retain", "keep", "保留", "不能删除"),
             ("obligation", "contract", "rolling-upgrade window", "义务", "契约", "滚动升级窗口"),
         ),
-        "decision_terms": ("comment",),
+        "next_step_terms": ("fix", "preserve", "before merge"),
         "severity": "P1",
         "reach_terms": ("normal user", "正常用户", "normal deployment", "category 1", "类别 1", "第 1 类", "正常部署", "①"),
         "forbid_approve": True,
@@ -330,7 +326,7 @@ PR_REVIEW_CASES = {
             ("restart", "recovery", "replay", "重启", "恢复", "重放"),
             ("preserve", "retain", "restore", "保留", "恢复"),
         ),
-        "decision_terms": ("comment",),
+        "next_step_terms": ("fix", "preserve", "restore", "before merge"),
         "severity": "P1",
         "reach_terms": ("recovery", "category 2", "类别 2", "第 2 类", "②", "恢复"),
         "forbid_approve": True,
@@ -357,5 +353,9 @@ HOLDOUT_CASES = (
 REACHABILITY_CASES = ("review-downstream-guard-blocks-path",)
 PARTIAL_FACT_CASES = (
     "review-offline-pr-patch",
+    "review-exported-snapshot-before-approval",
+)
+NO_STATUS_CASES = (
+    "review-parallel-authority-ux",
     "review-exported-snapshot-before-approval",
 )

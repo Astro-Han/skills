@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: "Review a pull request or PR queue from problem value through code correctness. Use for new review, rereview, batch review, or an Approve/Comment/Wait decision. Do not use to implement or respond to feedback, report status, draft or merge, or monitor checks."
+description: "Review a pull request or queue from problem value through code correctness. Use for new review, rereview, batch review, or deciding findings and next steps. Do not use to implement feedback, report status, draft, merge, or monitor checks."
 ---
 
 # PR Review
@@ -9,9 +9,9 @@ First decide if the problem is real and the PR is needed. Stay read-only unless 
 
 ## Identify the reviewed change
 
-Read repository rules. Require a reviewable change and its scope. Prefer the exact head SHA; otherwise identify the patch, snapshot, or checkout and say it may not match the current PR.
+Read repository rules. Identify the reviewed patch, snapshot, or checkout; prefer the exact head SHA and say when it may not match the current PR.
 
-Gather available PR/Issue links, `+A/-D`, files, production/test split, CI, mergeability, and review state. Never invent them. Name gaps; missing facts do not block analysis. Never mix versions.
+Gather available PR/Issue links, `+A/-D`, files, production/test split, CI, mergeability, and review state. Never invent or mix versions; name gaps, which do not block analysis.
 
 ## Check the problem first
 
@@ -19,7 +19,7 @@ Ask first:
 
 > What problem does this PR solve? How does it solve it? Is the problem defined correctly? Do the problem definition and solution follow first principles and Occam's razor?
 
-Seek a report, reproduction, log, or failing check. An Issue helps but is optional; use the PR description or other evidence. A new test proves neither demand nor prior failure. Call the problem **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**. Compare the reported scenario and expected result with PR coverage. Do not approve a different scenario or unknown value.
+Seek a report, reproduction, log, or failing check; an Issue is optional. A new test proves neither demand nor prior failure. Call the problem **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**. Compare the reported scenario and expected result with PR coverage. Do not accept a different scenario or unknown value.
 
 ## Follow the real code path
 
@@ -32,7 +32,7 @@ Explain how it works, where the rule and source of truth belong, and how product
 
 ## Simplify the change
 
-For each substantial change, say why it is needed or remove it. Cover code, tests, owners, stored state, synchronization, paths, contracts, and wrappers. Regression tests must fail on old behavior through the real path, not a bypassed fixture or low-value matrix. Before Approve, every addition must be necessary, correctly owned, and part of the smallest complete solution. Preserve live obligations until evidence proves they ended.
+For each substantial change, justify or remove its code, tests, owners, stored state, synchronization, paths, contracts, and wrappers. Regression tests must fail on old behavior through the real path, not a bypassed fixture or low-value matrix. Before reporting no findings, every addition must be necessary, correctly owned, and part of the smallest complete solution. Preserve live obligations until evidence proves they ended.
 
 > Is this the smallest complete solution? What low-value tests, code, wrappers, states, or old paths can disappear? Can the result converge on one owner without losing required behavior?
 
@@ -58,7 +58,7 @@ Category 4 is normally **No finding**, except for irreversible data loss, privil
 
 Give each finding's category, trigger, consequence, evidence, location, and smallest fix. Merge duplicates; report none.
 
-## Give the decision
+## Give the conclusion
 
 Use this order:
 
@@ -66,9 +66,9 @@ Use this order:
 2. **Problem** — evidence, truth classification, and scenario match.
 3. **Solution** — how it works, who owns it, the production path, what is needed, and what can be removed.
 4. **Findings** — P0–P3 or none.
-5. **Recommendation** — end with exactly one: **Approve**, **Comment**, or **Wait**; state the missing condition.
+5. **Next step** — say plainly what should happen next and why.
 
-Start with Facts. **Approve** requires proof that the reviewed content is current. Without it, finish the review but use **Wait** for a current-PR decision. Other gaps limit only dependent conclusions. For user-visible changes, name remaining manual checks, including Astryx primitives when standard.
+Start with Facts. Never label the conclusion Approve, Comment, or Wait. Keep findings separate from merge and publication conditions: put pending CI, stale head, human approval, or manual acceptance under Next step. If current content is unverified, name the snapshot and require a refresh before action; never call it approvable. For user-visible changes, name manual checks, including Astryx primitives when standard.
 
 For a queue, delegation, rereview, or public review, read [references/queue-and-publication.md](references/queue-and-publication.md) first.
 

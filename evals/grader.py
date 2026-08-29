@@ -322,25 +322,53 @@ def split_reported(text, production_add, production_del, test_add, test_del):
     )
 
 
-def recommendation_choice(text):
+def formal_review_state(text):
+    """Return an invented Approve/Comment/Wait output state, if present."""
     choices = ("approve", "comment", "wait")
-    headings = ("recommendation", "conclusion", "建议", "结论")
+    headings = ("recommendation", "conclusion", "next step", "建议", "结论", "下一步")
     lines = text.lower().splitlines()
     for index, line in enumerate(lines):
-        normalized = line.strip(" #*_-—:`")
+        normalized = line.replace("**", "").strip(" #*_-—:`")
         heading = next((term for term in headings if normalized.startswith(term)), None)
-        if heading is None:
-            continue
-        candidates = [normalized.removeprefix(heading).strip(" :：—-*")]
-        for next_line in lines[index + 1:index + 13]:
-            if next_line.lstrip().startswith("#"):
-                break
-            candidates.append(next_line.strip(" #*_-—:`"))
-        for candidate in candidates:
-            for choice in choices:
-                if candidate.startswith(choice):
-                    return choice
+        candidates = [(normalized, False)] if heading is None else [(
+            normalized.removeprefix(heading).strip(" :：—-*"), True
+        )]
+        if heading is not None:
+            for next_line in lines[index + 1:index + 13]:
+                if next_line.lstrip().startswith("#"):
+                    break
+                candidates.append((next_line.replace("**", "").strip(" #*_-—:`"), True))
+        for candidate, under_heading in candidates:
+            if candidate in choices:
+                return candidate
+            if under_heading:
+                for choice in choices:
+                    if candidate.startswith(choice + " ") or candidate.startswith(choice + " —"):
+                        return choice
     return None
+
+
+def recommends_approval(text):
+    lower = text.lower()
+    if formal_review_state(text) == "approve":
+        return True
+    approval = re.compile(
+        r"\b(?:ready|safe|okay|ok|can|should)\s+(?:to\s+)?approve\b"
+        r"|\b(?:snapshot|code|pr)\s+can\s+be\s+approved\b"
+        r"|\bapprove\s+(?:now|this\s+pr)\b"
+        r"|(?:可以|可|应该|应当|能够|能)\s*(?:直接)?批准"
+    )
+    for match in approval.finditer(lower):
+        clause = lower[max(
+            lower.rfind("\n", 0, match.start()),
+            lower.rfind("。", 0, match.start()),
+            lower.rfind("；", 0, match.start()),
+            lower.rfind(";", 0, match.start()),
+        ) + 1:match.start()]
+        if re.search(r"(?:\bnot\b|cannot|can't|do not|不|不能|不可|不得|无法)[^。；;\n]{0,60}$", clause):
+            continue
+        return True
+    return False
 
 
 def grade_pr_review_case(exp, final, triggered, case):
@@ -356,7 +384,7 @@ def grade_pr_review_case(exp, final, triggered, case):
                    case["head"].lower() in lower, final[:300])
         expect(exp, "Reported the requested CI facts without a review decision",
                all(all(term in lower for term in pair) for pair in case["status_pairs"])
-               and recommendation_choice(final) is None
+               and section_position(lower, "next step", "下一步") is None
                and not re.search(r"(?i)\bP[0-3]\b", final),
                final[:300])
         return
@@ -410,36 +438,36 @@ def grade_pr_review_case(exp, final, triggered, case):
         problem_pos = first_position(lower, tuple(term.lower() for term in case["problem_terms"]))
     if solution_pos is None:
         solution_pos = first_position(lower, tuple(term.lower() for term in case["solution_terms"]))
-    decision_pos = section_position(lower, "recommendation", "建议")
-    if decision_pos is None:
-        decision_pos = first_position(lower, tuple(term.lower() for term in case["decision_terms"]))
-    expect(exp, "Established the problem before solution and recommendation",
-           problem_pos is not None and solution_pos is not None and decision_pos is not None
-           and problem_pos < solution_pos < decision_pos,
-           "positions problem={}, solution={}, decision={}".format(
-               problem_pos, solution_pos, decision_pos))
+    next_step_pos = section_position(lower, "next step", "下一步")
+    if next_step_pos is None:
+        next_step_pos = first_position(lower, tuple(
+            term.lower() for term in case["next_step_terms"]
+        ))
+    expect(exp, "Established the problem before solution and next step",
+           problem_pos is not None and solution_pos is not None and next_step_pos is not None
+           and problem_pos < solution_pos < next_step_pos,
+           "positions problem={}, solution={}, next_step={}".format(
+               problem_pos, solution_pos, next_step_pos))
 
     fact_positions = [lower.find(term) for term in link_facts]
     diff_position = first_position(lower, (case["diff_terms"][0].lower(),))
     if diff_position is None and compact_diff:
         diff_position = compact_diff.start()
     fact_positions.append(diff_position if diff_position is not None else -1)
-    expect(exp, "Placed decision-critical PR, Issue, and diff facts before the recommendation",
-           decision_pos is not None and all(position >= 0 and position < decision_pos
+    expect(exp, "Placed decision-critical PR, Issue, and diff facts before the next step",
+           next_step_pos is not None and all(position >= 0 and position < next_step_pos
                                             for position in fact_positions),
-           "fact positions={}, decision={}".format(fact_positions, decision_pos))
+           "fact positions={}, next_step={}".format(fact_positions, next_step_pos))
 
-    expect(exp, "Recommended the predeclared next action",
-           decision_pos is not None
-           and any(term.lower() in lower[decision_pos:] for term in case["decision_terms"]),
+    expect(exp, "Named the predeclared next step",
+           next_step_pos is not None
+           and any(term.lower() in lower[next_step_pos:] for term in case["next_step_terms"]),
            final[-400:])
-    choice = recommendation_choice(final)
-    if required := case.get("required_recommendation"):
-        expect(exp, "Used the required explicit recommendation",
-               choice == required, "choice={!r}, expected={!r}".format(choice, required))
+    expect(exp, "Did not invent an Approve/Comment/Wait workflow state",
+           formal_review_state(final) is None, final[-400:])
     if case.get("forbid_approve"):
         expect(exp, "Did not recommend approval for an unresolved material gap",
-               choice != "approve",
+               not recommends_approval(final),
                final[-400:])
     if severity := case.get("severity"):
         expect(exp, "Calibrated the finding as {}".format(severity),
