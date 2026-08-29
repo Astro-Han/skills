@@ -143,10 +143,6 @@ def adjudication_before(events, edit_index, comments=("C1", "C2", "C3")):
     return messages[-1][0], text
 
 
-def has_all_comments(text, comments):
-    return all(comment in text for comment in comments)
-
-
 def says_no_finding(text):
     lower = text.lower()
     return any(term in lower for term in ("no finding", "无 finding", "disproved", "不成立"))
@@ -397,7 +393,11 @@ def grade_pr_review_case(exp, final, triggered, case):
     link_facts = tuple(
         case[key].lower() for key in ("pr_url", "issue_url") if case.get(key)
     )
-    verbose_diff = all(term.lower() in lower for term in case["diff_terms"])
+    verbose_terms = (
+        "{} addition{}".format(additions, "" if additions == 1 else "s"),
+        "{} deletion{}".format(deletions, "" if deletions == 1 else "s"),
+    )
+    verbose_diff = all(term in lower for term in verbose_terms)
     compact_diff = re.search(
         r"\+{}\s*/\s*-{}".format(additions, deletions), lower
     )
@@ -450,7 +450,7 @@ def grade_pr_review_case(exp, final, triggered, case):
                problem_pos, solution_pos, next_step_pos))
 
     fact_positions = [lower.find(term) for term in link_facts]
-    diff_position = first_position(lower, (case["diff_terms"][0].lower(),))
+    diff_position = first_position(lower, (verbose_terms[0],))
     if diff_position is None and compact_diff:
         diff_position = compact_diff.start()
     fact_positions.append(diff_position if diff_position is not None else -1)
