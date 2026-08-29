@@ -241,6 +241,8 @@ def suite_runs(provider_name, reps=3, suite="all"):
             review_cases = COMPRESSION_HOLDOUT_CASES
         elif suite == "review-feedback-scope-rebase":
             review_cases = SCOPE_REBASE_CASES
+        elif suite == "review-feedback-scope-regression":
+            review_cases = COMPRESSION_REGRESSION_CASES
         elif suite == "all":
             review_cases = tuple(REVIEW_FEEDBACK_CASES)
         for eval_name in review_cases:
@@ -249,7 +251,8 @@ def suite_runs(provider_name, reps=3, suite="all"):
                          "review-feedback-compression-holdout"):
                 arms = (("full_skill", "git:" + REVIEW_FEEDBACK_FULL_REF),
                         ("compressed_skill", SHIPPED))
-            elif suite == "review-feedback-scope-rebase":
+            elif suite in ("review-feedback-scope-rebase",
+                           "review-feedback-scope-regression"):
                 arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_SCOPE_BASELINE_REF),
                         ("candidate_skill", SHIPPED))
             else:
@@ -416,7 +419,8 @@ def main():
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
                                             "review-feedback-matrix", "review-feedback-compression",
                                             "review-feedback-compression-holdout",
-                                            "review-feedback-scope-rebase"),
+                                            "review-feedback-scope-rebase",
+                                            "review-feedback-scope-regression"),
                         default="all")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")

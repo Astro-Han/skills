@@ -110,6 +110,16 @@ class ReviewFeedbackEvalTests(unittest.TestCase):
         self.assertEqual(case["seed_patch"], "mediathread-pr.patch")
         self.assertTrue((ROOT / "evals" / "seeds" / case["seed_patch"]).is_file())
 
+    def test_scope_regression_pairs_nine_cases_against_frozen_baseline(self):
+        runs = runner.suite_runs("codex", reps=3, suite="review-feedback-scope-regression")
+        self.assertEqual(len(runs), 54)
+        self.assertEqual(len({run["eval"] for run in runs}), 9)
+        self.assertEqual({run["arm"] for run in runs}, {"baseline_skill", "candidate_skill"})
+        self.assertEqual(
+            {run["skill_arm"] for run in runs},
+            {"git:" + runner.REVIEW_FEEDBACK_SCOPE_BASELINE_REF, runner.SHIPPED},
+        )
+
     def test_codex_command_uses_requested_model_and_high_effort(self):
         command = runner.codex_command("gpt-5.6-luna", "prompt", [])
         self.assertIn("gpt-5.6-luna", command)
