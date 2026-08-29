@@ -56,6 +56,19 @@ class PrReviewEvalTests(unittest.TestCase):
         self.assertLessEqual(len(skill.split()), 750)
         self.assertLessEqual(len(skill.split()) + len(reference.split()), 1000)
 
+    def test_skill_uses_plain_review_terms(self):
+        skill = (ROOT / "skills" / "pr-review" / "SKILL.md").read_text().lower()
+        for invented_label in (
+            "human confirmation required",
+            "entropy delta",
+            "witness chain",
+            "decision packet",
+            "production composition",
+            "coherent entropy",
+        ):
+            self.assertNotIn(invented_label, skill)
+        self.assertIn("**approve**, **comment**, or **wait**", skill)
+
     def test_holdout_is_separate_from_design_cases(self):
         design = runner.suite_runs("codex", reps=1, suite="pr-review")
         holdout = runner.suite_runs("codex", reps=1, suite="pr-review-holdout")
@@ -79,17 +92,14 @@ class PrReviewEvalTests(unittest.TestCase):
 
     def test_recommendation_parser_reads_heading_then_choice(self):
         self.assertEqual(
-            grader.recommendation_choice("## Recommendation\n**Human confirmation required**\n"),
-            "human confirmation required",
+            grader.recommendation_choice("## Recommendation\n**Wait** — manual UI check\n"),
+            "wait",
         )
         self.assertEqual(
             grader.recommendation_choice("## Recommendation: Approve\n"),
             "approve",
         )
-        self.assertEqual(
-            grader.recommendation_choice("建议\n\n**Human confirmation required**\n"),
-            "human confirmation required",
-        )
+        self.assertEqual(grader.recommendation_choice("建议\n\n**Wait**\n"), "wait")
 
 
 if __name__ == "__main__":

@@ -35,7 +35,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
-| `prreview-*` | `pr-review` | Eight review cases for value, scope, production composition, authority, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts; one downstream-guard reachability regression. |
+| `prreview-*` | `pr-review` | Eight review cases for value, scope, the real production path, ownership, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts; one downstream-guard reachability regression. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -63,17 +63,17 @@ python3 evals/grader.py                            # scores those runs
 Compare the shipped skill with no installed skill in 48 paired A/B runs: four repetitions of eight
 review requests, two close non-triggers, and two held-out simplification traps. The decision gates
 are: correct invocation in every run; no approval when a material gap remains; PR/Issue/head/diff
-facts and problem value before the recommendation; correct production composition; explicit
-concept-level entropy accounting; preservation of necessary process tests, live compatibility,
-and durable recovery authority; and at least 90% of predeclared report assertions in both design
-and holdout suites.
+facts and problem value before the recommendation; the real production path; a clear account of
+what the PR adds and what can be removed; preservation of necessary process tests, live
+compatibility, and durable recovery state; and at least 90% of predeclared report assertions in
+both design and holdout suites.
 
 The accepted `gpt-5.6-luna`/high run used 96 model executions. On the 10-case design suite the
 candidate scored 406/412 assertions (98.5%) versus 123/412 (29.9%) without the skill. On the two-case
 holdout it scored 111/112 (99.1%) versus 45/112 (40.2%). Invocation was correct in 48/48 candidate
 runs; decision-critical facts and problem-first ordering were 40/40; unresolved material gaps were
-not approved in 32/32 applicable runs; required explicit Approve or Human-confirmation decisions
-were 8/8; and entropy or equivalent complexity deltas were reported in 40/40 reviews. Runner
+not approved in 32/32 applicable runs; required explicit Approve or manual-check decisions were
+8/8; and additions or possible removals were reported in 40/40 reviews. Runner
 failures were 0/96.
 
 This supports adoption, not broad statistical generalization. The answer keys are fixed but
@@ -86,24 +86,30 @@ when changing the skill or extrapolating to another model.
 Compare the frozen pre-revision skill at `3e9300fb74ebbecdcd07aad92c5e97a98457f55a`
 with the shipped skill on four repetitions of the guarded-edit regression. Adopt the revision only
 if every candidate run traces the visible Edit action through the downstream production guard,
-rejects the unsupported P1 instead of grading theoretical loss, and requires human confirmation
+rejects the unsupported P1 instead of grading theoretical loss, and waits for manual checks
 for the actual UI change. This case reproduces the failure that motivated the revision, so it can
-prove regression repair but not generalization; the pre-existing severity, composition, and
+prove regression repair but not generalization; the pre-existing severity, production-path, and
 contrived-path cases remain the supporting non-regression evidence.
 
-On `gpt-5.6-luna`/high, the four-pair source-inspection run scored 54/56 assertions (96.4%) for the
-candidate versus 50/56 (89.3%) for the frozen skill, with 0/8 runner failures. Every candidate run
-traced `ChatTurn` through `beginEditUserMessage`, rejected the unsupported P1, and retained manual
-UI confirmation. Two candidate reports omitted a separate entropy heading; both still reached the
-correct guard and severity decision. The motivating case is not an independent holdout, so this is
-evidence of regression repair only.
+Under the rubric used for that `gpt-5.6-luna`/high run, the four pairs scored 54/56 assertions
+(96.4%) for the candidate versus 50/56 (89.3%) for the frozen skill, with 0/8 runner failures.
+Both arms traced the production guard and rejected the unsupported P1 in 4/4 runs. The score
+difference came from the required manual-check decision, so this run supports more consistent
+output but does not prove a reachability improvement. The motivating case is not an independent
+holdout.
 
 ### PR-review compression decision
 
 The full package is frozen at `538bf102514f54277ea6e829e6785f73d165af31`. Adopt a compressed
 package only when `SKILL.md` is at most 750 words, the directly loaded package is at most 1,000
-words, and it contains no Chinese text. The accepted package uses 750 + 215 words and meets the
+words, and it contains no Chinese text. The accepted package uses 738 + 223 words and meets the
 behavioral decision above; do not trade away its hard decision gates merely to reduce word count.
+
+The plain-language revision removes invented output labels and uses only Approve, Comment, or
+Wait. Its adoption check is deterministic: the banned labels are absent, the context budgets hold,
+and the validator and repository tests pass. No new model A/B was run because the prior paired case
+did not distinguish reachability behavior; its historical percentages must not be rescored as new
+model evidence after changing the rubric.
 
 The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
 skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text

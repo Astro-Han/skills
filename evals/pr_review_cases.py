@@ -6,7 +6,7 @@ PR_REVIEW_CASES = {
         "fixture": "prreview-mismatch",
         "prompt": (
             "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff. "
-            "Decide whether to Approve, Comment, Wait, or require human confirmation. "
+            "Decide whether to Approve, Comment, or Wait. "
             "Do not modify files or contact anyone."
         ),
         "should_trigger": True,
@@ -135,10 +135,10 @@ PR_REVIEW_CASES = {
             ("parallel authority", "second authority", "duplicate authority", "并行 authority", "第二 authority", "双重 authority", "第二个恢复循环", "两个恢复 authority", "host queue authority 重叠"),
             ("non-atomic", "not atomic", "stop then send", "stop→send", "非原子", "原子边界"),
             ("queue", "queued content"),
-            ("manual acceptance", "human confirmation", "ux confirmation"),
+            ("manual check", "manual acceptance", "ux confirmation"),
         ),
-        "decision_terms": ("human confirmation required",),
-        "required_recommendation": "human confirmation required",
+        "decision_terms": ("wait",),
+        "required_recommendation": "wait",
         "severity": "P1",
         "reach_terms": ("reasonable failure", "recovery", "category 2", "类别 2", "第 2 类", "②", "故障", "恢复"),
         "forbid_approve": True,
@@ -233,8 +233,8 @@ PR_REVIEW_CASES = {
             ("blocked", "blocks", "rejects", "unreachable", "not reachable", "不可达", "阻断", "拒绝"),
             ("no finding", "not a defect", "p1 does not hold", "p1 is invalid", "false/unproven p1", "p1 should be dismissed", "无 finding", "不是缺陷", "p1 不成立", "不成立", "应撤回"),
         ),
-        "decision_terms": ("human confirmation required",),
-        "required_recommendation": "human confirmation required",
+        "decision_terms": ("wait",),
+        "required_recommendation": "wait",
         "forbid_p1": True,
         "forbid_approve": True,
     },

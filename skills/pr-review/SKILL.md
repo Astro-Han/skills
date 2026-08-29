@@ -1,85 +1,73 @@
 ---
 name: pr-review
-description: "Review a pull request or PR queue from problem value through code correctness. Use for new review, rereview, batch review, or Approve/Comment recommendation. Do not use to implement or respond to feedback, report status, draft or merge, or monitor checks."
+description: "Review a pull request or PR queue from problem value through code correctness. Use for new review, rereview, batch review, or an Approve/Comment/Wait decision. Do not use to implement or respond to feedback, report status, draft or merge, or monitor checks."
 ---
 
 # PR Review
 
-Judge if the solution deserves to exist first. Remain read-only unless authorized.
+First decide whether the problem is real and the PR is needed. Remain read-only unless authorized.
 
-## Anchor one exact head
+## Review one exact head
 
-Read repository and review rules. Capture:
+Read repository rules. Record clickable PR and Issue links, titles, author, base, exact head SHA, `+A/-D`, changed files, production/test split, exact-head CI, mergeability, reviews, comments, and unresolved threads. Keep facts, conclusions, and gaps separate; never mix heads.
 
-- clickable PR and Issue links, titles, author, base, and exact head SHA;
-- additions, deletions, changed files and paths;
-- exact-head CI, mergeability, reviews, comments, and unresolved threads.
-
-Separate facts, conclusions, and gaps; never mix heads.
-
-## Prove the problem first
+## Check the problem first
 
 Ask first:
 
 > What problem does this PR solve? How does it solve it? Is the problem defined correctly? Do the problem definition and solution follow first principles and Occam's razor?
 
-Seek independent evidence: a report, reproduction, log, or failing check. A new test proves neither demand nor prior failure. Classify the problem as **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**.
+Look outside the patch for a report, reproduction, log, or failing check. A new test proves neither demand nor prior failure. Call the problem **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**. Compare the Issue's setup, inputs, observed and expected results with PR coverage. A different scenario is not a fix. Do not approve unknown value or scope.
 
-Map the Issue's setup, inputs, observed and expected results to coverage. Another scenario is not a fix. Do not approve unknown value or scope.
+## Follow the real code path
 
-## Trace ownership and production composition
+Explain how the change works, where the rule and source of truth belong, and how production calls them. Trace past changed helpers and fixtures. Check whether the PR:
 
-Explain the mechanism, owner, authority, and real composition boundary. Follow production wiring, persistence, and lifecycle beyond changed helpers or fixtures.
+- fixes the rule at one owner or adds copied state, synchronization, another loop, or a second source of truth;
+- uses an existing extension point or adds another implementation, wrapper, state machine, or compatibility path;
+- stays correct through supported interruption, retry, concurrency, restart, and recovery;
+- tests the real path: fixtures do not prove launchers, helpers do not prove callers, and in-process tests do not prove process races.
 
-Check whether the change:
+## Simplify the change
 
-- restores one invariant at its owner or adds parallel authority, mirrored state, synchronization, or another loop;
-- extends an existing seam or adds another wrapper, state machine, compatibility path, or implementation;
-- stays atomic across supported interruption, retry, concurrency, restart, and recovery;
-- is tested through owned production composition: fixtures do not prove launchers, helpers do not prove callers, and in-process tests do not prove process races.
-
-## Minimize coherent entropy
-
-Report diff and production/test split. Account for each substantial region as necessary behavior, necessary evidence, or removable surface. Regression tests must fail on old behavior through production composition, not bypassed fixtures or low-value matrices.
-
-Under **Entropy delta**, state owners, authorities, durable states, synchronization rules, lifecycle paths, contracts, representations, wrappers, and tests added or removed. Before Approve, each addition must be required, owned, and part of the smallest coherent solution; avoidable additions are gaps. Preserve obligations until evidence proves they ended.
+For each substantial change, say why it is needed or what can be removed. Cover code, tests, owners, sources of truth, stored state, synchronization, paths, contracts, representations, and wrappers. A regression test must fail on old behavior through the real path, not a bypassed fixture or low-value matrix. Before Approve, every addition must be necessary, correctly owned, and part of the smallest complete solution. Preserve live obligations until evidence proves they ended.
 
 > Is this the smallest complete solution? What low-value tests, code, wrappers, states, or old paths can disappear? Can the result converge on one owner without losing required behavior?
 
-Judge concepts, not lines: a necessary process regression can outweigh a tiny duplicate authority.
+Judge concepts, not lines. A process test can be necessary; a large fixture matrix may not be.
 
-## Prove reachable findings
+## Report only real findings
 
-Before P0–P3, prove a witness chain: supported entry → required state → production guards and composition → observable consequence. Trace beyond changed code. An unproven link or blocking guard means an evidence gap or **No finding**.
+Before P0–P3, show the concrete path from a supported entry through production checks to an observable consequence. If a link is unproven or a guard blocks it, record an evidence gap or **No finding**.
 
-Classify the proven chain:
+Classify the path:
 
 1. normal user or supported operation;
 2. reasonable failure, reconnect, concurrency, or recovery;
-3. attacker-controlled trust boundary;
+3. attacker-controlled input or trust boundary;
 4. several unsupported premises combined.
 
-Crashes, retries, races, restarts, and recovery are category 2. Category 4 is normally **No finding**, except for irreversible data loss, privilege breach, core-authority destruction, or broad outage. Severity follows the reachable consequence's breadth and recoverability, never its theoretical maximum. Low probability does not erase proof; possibility is not proof.
+Category 4 is normally **No finding**, except for irreversible data loss, privilege breach, loss of a core source of truth, or broad outage. Grade the reachable consequence and its recoverability, never the worst imaginable result. Low probability does not erase proof; possibility is not proof.
 
 - **P0** — blocks release.
-- **P1** — must be fixed before merge: reachable security, durable-state, data-loss, money, sustained-outage, or broadly unusable core-workflow failure.
+- **P1** — must be fixed before merge: reachable security exposure, data loss, money movement, sustained outage, wrong committed state, or a broadly unusable core workflow.
 - **P2** — bounded or recoverable wrong behavior; normally non-blocking.
 - **P3** — minor or avoidable complexity with no meaningful wrong outcome.
 
-Each finding states its category, witness chain, consequence, evidence, location, and smallest correction. Merge duplicates; state when none remain.
+For each finding, give its category, trigger, consequence, evidence, location, and smallest correction. Merge duplicates; say when none remain.
 
-## Deliver the decision packet
+## Give the decision
 
 Use this order:
 
-1. **Facts** — copy exact clickable PR/Issue URLs, head SHA, numeric `+A/-D`, file count, production/test split, CI, mergeability, and review state.
+1. **Facts** — PR/Issue links, head, diff, CI, mergeability, and review state.
 2. **Problem** — evidence, truth classification, and scenario match.
-3. **Solution and entropy delta** — mechanism, owner, production composition, necessary additions, and removable surface.
+3. **Solution** — how it works, who owns it, the production path, what is needed, and what can be removed.
 4. **Findings** — P0–P3 or none.
-5. **Recommendation** — begin with exactly one: **Approve**, **Comment**, **Wait**, or **Human confirmation required**; state any missing condition.
+5. **Recommendation** — begin with exactly one: **Approve**, **Comment**, or **Wait**; state the missing condition.
 
-Facts come first; never reveal the recommendation earlier. For user-visible changes, use **Human confirmation required** until the manual acceptance path and current design primitives, including Astryx when authoritative, are verified.
+Facts come first. For user-visible changes, use **Wait** and name the remaining manual checks, including Astryx primitives when they are the project standard.
 
 For a queue, delegation, rereview, or public review, read [references/queue-and-publication.md](references/queue-and-publication.md) first.
 
-Done means the packet proves value and scope at one exact head, traces production ownership, accounts for every diff region and avoidable concept, calibrates findings, and preserves human responsibility.
+Done means the review proves value and scope at one head, follows real code, accounts for substantial changes and removals, calibrates findings, and preserves human responsibility.

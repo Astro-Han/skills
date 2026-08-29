@@ -10,7 +10,7 @@ A changed head alone does not justify rereview. Rereview when changes affect pri
 
 ## Delegate proportionally
 
-When delegation is allowed and useful, split a complex PR by decision angle: value, authority, concurrency, production composition, tests/simplification, or UI/UX. Give raw facts and bounded questions without an expected verdict.
+When delegation is allowed and useful, split a complex PR by decision angle: value, ownership, concurrency, production path, tests and removable code, or UI/UX. Give raw facts and bounded questions without an expected verdict.
 
 The main reviewer cross-checks claims, deduplicates findings, calibrates severity, and resolves conflicts. Do not delegate small PRs merely to create activity.
 
@@ -18,6 +18,6 @@ The main reviewer cross-checks claims, deduplicates findings, calibrates severit
 
 Before Comment, Approve, Request changes, or merge recommendation, refresh exact head, its CI, mergeability, and unresolved threads. If head changed, decide whether analysis remains valid.
 
-Follow project confirmation, identity, and human-accountability rules. Review requests do not imply external action. UI/UX changes wait for named manual acceptance.
+Follow project confirmation, identity, and human-accountability rules. Review requests do not imply external action. For UI/UX changes, use **Wait** and name the manual checks that remain.
 
 Open with thanks. Put line-local defects inline and the decision at top level. State head and evidence, keep corrections collaborative, optionally collapse a requested translation, and disclose AI assistance plus human verification.

@@ -323,7 +323,7 @@ def split_reported(text, production_add, production_del, test_add, test_del):
 
 
 def recommendation_choice(text):
-    choices = ("human confirmation required", "approve", "comment", "wait")
+    choices = ("approve", "comment", "wait")
     headings = ("recommendation", "建议")
     lines = text.lower().splitlines()
     for index, line in enumerate(lines):
@@ -379,9 +379,14 @@ def grade_pr_review_case(exp, final, triggered, case):
            split_reported(lower, production_add, production_del, test_add, test_del),
            final[:500])
 
-    expect(exp, "Reported a concept-level entropy delta",
-           any(term in lower for term in ("entropy", "complexity", "熵", "复杂度")) and any(term in lower for term in (
-               "authority", "owner", "state", "lifecycle", "contract", "wrapper", "test"
+    expect(exp, "Reported what the change adds and what can be removed",
+           any(term in lower for term in (
+               "add", "remove", "delete", "keep", "preserve", "necessary", "required",
+               "unnecessary", "nothing to remove", "增加", "新增", "移除", "删除", "保留",
+               "必要", "无需"
+           )) and any(term in lower for term in (
+               "source of truth", "owner", "state", "lifecycle", "contract", "wrapper",
+               "test", "path", "loop", "数据源", "状态", "路径", "测试", "循环"
            )), final[-700:])
 
     for index, terms in enumerate(case.get("required_term_groups", ())):
