@@ -238,6 +238,53 @@ PR_REVIEW_CASES = {
         "forbid_p1": True,
         "forbid_approve": True,
     },
+    "review-offline-pr-patch": {
+        "fixture": "prreview-offline-patch",
+        "prompt": (
+            "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff. "
+            "Recommend the next action. Do not modify files or contact anyone."
+        ),
+        "should_trigger": True,
+        "diff_terms": ("10 additions", "1 deletion"),
+        "diff_counts": (10, 1),
+        "split_counts": (1, 1, 9, 0),
+        "problem_terms": ("demonstrated", "reproduction", "single", "queued"),
+        "solution_terms": ("pending.length", "flush", "buffer"),
+        "required_term_groups": (
+            ("provided patch", "supplied patch", "attached patch", "offline", "exported patch", "提供的 patch", "离线", "导出的 patch"),
+            ("head sha", "current head", "not current", "unavailable", "无法确认", "不可用", "未知"),
+            ("ci", "mergeability"),
+            ("closeproducer", "producer closes", "shutdown path", "关闭 producer", "关闭路径"),
+            ("smallest", "one-line", "no new state", "最小", "没有新增状态"),
+        ),
+        "decision_terms": ("comment", "wait"),
+        "forbidden_terms": ("https://", "http://"),
+        "forbid_approve": True,
+    },
+    "review-exported-snapshot-before-approval": {
+        "fixture": "prreview-stale-approval",
+        "prompt": (
+            "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff and decide "
+            "whether the current PR can be approved. Do not modify files or contact anyone."
+        ),
+        "should_trigger": True,
+        "pr_url": "https://example.test/pulls/612",
+        "head": "6120beef",
+        "diff_terms": ("5 additions", "1 deletion"),
+        "diff_counts": (5, 1),
+        "split_counts": (1, 1, 4, 0),
+        "problem_terms": ("demonstrated", "reproduc", "zero", "timeout"),
+        "solution_terms": ("nullish", "??", "timeoutms"),
+        "required_term_groups": (
+            ("reviewed snapshot", "exported snapshot", "6120beef"),
+            ("current head", "may have advanced", "refresh", "当前 head", "可能已变化", "刷新"),
+            ("ci", "mergeability", "unresolved thread", "检查", "未解决线程"),
+            ("no finding", "no code finding", "no defect", "没有 finding", "未发现问题"),
+        ),
+        "decision_terms": ("wait",),
+        "required_recommendation": "wait",
+        "forbid_approve": True,
+    },
     "review-live-compatibility-holdout": {
         "fixture": "prreview-compatibility",
         "prompt": (
@@ -308,3 +355,7 @@ HOLDOUT_CASES = (
     "review-durable-ledger-holdout",
 )
 REACHABILITY_CASES = ("review-downstream-guard-blocks-path",)
+PARTIAL_FACT_CASES = (
+    "review-offline-pr-patch",
+    "review-exported-snapshot-before-approval",
+)

@@ -1,0 +1,21 @@
+diff --git a/src/settings.ts b/src/settings.ts
+--- a/src/settings.ts
++++ b/src/settings.ts
+@@ -1,4 +1,4 @@
+ export function loadSettings(input: {timeoutMs?: number | null}) {
+-  const timeoutMs = input.timeoutMs || 30_000;
++  const timeoutMs = input.timeoutMs ?? 30_000;
+   return {...input, timeoutMs};
+ }
+
+diff --git a/tests/settings.test.ts b/tests/settings.test.ts
+--- a/tests/settings.test.ts
++++ b/tests/settings.test.ts
+@@ -3,3 +3,7 @@ import {loadSettings} from "../src/settings";
+ it("defaults a missing timeout", () => {
+   expect(loadSettings({}).timeoutMs).toBe(30_000);
+ });
++
++it("preserves an explicit zero timeout", () => {
++  expect(loadSettings({timeoutMs: 0}).timeoutMs).toBe(0);
++});

@@ -324,18 +324,18 @@ def split_reported(text, production_add, production_del, test_add, test_del):
 
 def recommendation_choice(text):
     choices = ("approve", "comment", "wait")
-    headings = ("recommendation", "建议")
+    headings = ("recommendation", "conclusion", "建议", "结论")
     lines = text.lower().splitlines()
     for index, line in enumerate(lines):
         normalized = line.strip(" #*_-—:`")
         heading = next((term for term in headings if normalized.startswith(term)), None)
         if heading is None:
             continue
-        candidates = [normalized.removeprefix(heading).strip(" :—-*")]
-        candidates.extend(
-            lines[next_index].strip(" #*_-—:`")
-            for next_index in range(index + 1, min(index + 4, len(lines)))
-        )
+        candidates = [normalized.removeprefix(heading).strip(" :：—-*")]
+        for next_line in lines[index + 1:index + 13]:
+            if next_line.lstrip().startswith("#"):
+                break
+            candidates.append(next_line.strip(" #*_-—:`"))
         for candidate in candidates:
             for choice in choices:
                 if candidate.startswith(choice):
@@ -361,17 +361,20 @@ def grade_pr_review_case(exp, final, triggered, case):
                final[:300])
         return
 
-    expect(exp, "Reported the exact reviewed head",
-           case["head"].lower() in lower, final[:300])
+    if head := case.get("head"):
+        expect(exp, "Reported the exact reviewed head",
+               head.lower() in lower, final[:300])
 
     additions, deletions = case["diff_counts"]
-    link_facts = (case["pr_url"].lower(), case["issue_url"].lower())
+    link_facts = tuple(
+        case[key].lower() for key in ("pr_url", "issue_url") if case.get(key)
+    )
     verbose_diff = all(term.lower() in lower for term in case["diff_terms"])
     compact_diff = re.search(
         r"\+{}\s*/\s*-{}".format(additions, deletions), lower
     )
     facts_ok = all(term in lower for term in link_facts) and (verbose_diff or bool(compact_diff))
-    expect(exp, "Reported PR, Issue, head, and diff facts",
+    expect(exp, "Reported the available PR facts and diff",
            facts_ok, final[:500])
 
     production_add, production_del, test_add, test_del = case["split_counts"]
@@ -393,6 +396,11 @@ def grade_pr_review_case(exp, final, triggered, case):
         expect(exp, "Covered case-specific review obligation {}".format(index + 1),
                any(term.lower() in lower for term in terms),
                "expected one of {}; {}".format(terms, final[-700:]))
+
+    if forbidden_terms := case.get("forbidden_terms"):
+        expect(exp, "Did not invent unavailable live facts",
+               not any(term.lower() in lower for term in forbidden_terms),
+               "forbidden terms={}; {}".format(forbidden_terms, final[:500]))
 
     problem_pos = section_position(lower, "problem", "问题")
     solution_pos = section_position(lower, "solution", "解法")

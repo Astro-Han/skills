@@ -1,5 +1,6 @@
 import importlib.util
 import re
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -41,6 +42,28 @@ class PrReviewEvalTests(unittest.TestCase):
         self.assertEqual({run["arm"] for run in runs}, {"pre_reachability", "with_skill"})
         self.assertEqual({run["eval"] for run in runs}, {"review-downstream-guard-blocks-path"})
 
+    def test_partial_facts_suite_compares_frozen_and_shipped_skills(self):
+        runs = runner.suite_runs("codex", reps=4, suite="pr-review-partial-facts")
+        self.assertEqual(len(runs), 16)
+        self.assertEqual({run["arm"] for run in runs}, {"complete_facts", "with_skill"})
+        self.assertEqual(
+            {run["eval"] for run in runs},
+            {"review-offline-pr-patch", "review-exported-snapshot-before-approval"},
+        )
+
+    def test_partial_fact_patches_match_their_base_sources(self):
+        for fixture in ("prreview-offline-patch", "prreview-stale-approval"):
+            subprocess.run(
+                [
+                    "git", "apply", "--check", "--directory=evals/fixtures/" + fixture,
+                    "evals/fixtures/" + fixture + "/PATCH.diff",
+                ],
+                cwd=ROOT,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
     def test_matrix_has_declared_trigger_boundary(self):
         design_cases = [runner.PR_REVIEW_CASES[name] for name in runner.PR_REVIEW_DESIGN_CASES]
         self.assertEqual(sum(case["should_trigger"] for case in design_cases), 8)
@@ -68,6 +91,8 @@ class PrReviewEvalTests(unittest.TestCase):
         ):
             self.assertNotIn(invented_label, skill)
         self.assertIn("**approve**, **comment**, or **wait**", skill)
+        self.assertIn("missing facts do not block analysis", skill)
+        self.assertIn("**approve** requires proof that the reviewed content is current", skill)
 
     def test_holdout_is_separate_from_design_cases(self):
         design = runner.suite_runs("codex", reps=1, suite="pr-review")
@@ -100,6 +125,7 @@ class PrReviewEvalTests(unittest.TestCase):
             "approve",
         )
         self.assertEqual(grader.recommendation_choice("建议\n\n**Wait**\n"), "wait")
+        self.assertEqual(grader.recommendation_choice("结论：Approve\n"), "approve")
 
 
 if __name__ == "__main__":

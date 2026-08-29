@@ -29,6 +29,7 @@ from review_feedback_cases import (
 from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
+    PARTIAL_FACT_CASES as PR_REVIEW_PARTIAL_FACT_CASES,
     PR_REVIEW_CASES,
     REACHABILITY_CASES as PR_REVIEW_REACHABILITY_CASES,
 )
@@ -43,6 +44,7 @@ CONCURRENCY = 6
 SHIPPED = "shipped"
 REVIEW_FEEDBACK_FULL_REF = "0685def7c43dc8a3f16944bc3804c1871583f504"
 PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
+PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
 
 PROMPTS = {
     "shared-sections": (
@@ -189,16 +191,25 @@ PROVIDERS = {
 
 def suite_runs(provider_name, reps=3, suite="all"):
     runs = []
+    pr_review_suites = {
+        "pr-review": PR_REVIEW_DESIGN_CASES,
+        "pr-review-holdout": PR_REVIEW_HOLDOUT_CASES,
+        "pr-review-reachability": PR_REVIEW_REACHABILITY_CASES,
+        "pr-review-partial-facts": PR_REVIEW_PARTIAL_FACT_CASES,
+    }
     for rep in range(1, reps + 1):
-        if suite in ("pr-review", "pr-review-holdout", "pr-review-reachability"):
-            cases = (PR_REVIEW_DESIGN_CASES if suite == "pr-review" else
-                     PR_REVIEW_HOLDOUT_CASES if suite == "pr-review-holdout" else
-                     PR_REVIEW_REACHABILITY_CASES)
+        if suite in pr_review_suites:
+            cases = pr_review_suites[suite]
             for eval_name in cases:
                 fixture = PR_REVIEW_CASES[eval_name]["fixture"]
-                arms = (("pre_reachability", "git:" + PR_REVIEW_PRE_REACHABILITY_REF),
-                        ("with_skill", SHIPPED)) if suite == "pr-review-reachability" else (
-                            ("without_skill", None), ("with_skill", SHIPPED))
+                if suite == "pr-review-reachability":
+                    arms = (("pre_reachability", "git:" + PR_REVIEW_PRE_REACHABILITY_REF),
+                            ("with_skill", SHIPPED))
+                elif suite == "pr-review-partial-facts":
+                    arms = (("complete_facts", "git:" + PR_REVIEW_COMPLETE_FACTS_REF),
+                            ("with_skill", SHIPPED))
+                else:
+                    arms = (("without_skill", None), ("with_skill", SHIPPED))
                 for arm, skill_arm in arms:
                     runs.append({"workspace": "pr-review-workspace",
                                  "eval": eval_name, "rep": rep,
@@ -371,7 +382,7 @@ def main():
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--suite", choices=("all", "pr-review", "pr-review-holdout",
-                                            "pr-review-reachability",
+                                            "pr-review-reachability", "pr-review-partial-facts",
                                             "review-feedback", "review-feedback-holdout",
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
                                             "review-feedback-matrix", "review-feedback-compression",

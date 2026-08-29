@@ -35,7 +35,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
-| `prreview-*` | `pr-review` | Eight review cases for value, scope, the real production path, ownership, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts; one downstream-guard reachability regression. |
+| `prreview-*` | `pr-review` | Review cases for value, scope, real production paths, ownership, tests, simplification, UX, severity, partial live facts, close non-triggers, and holdouts. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -55,6 +55,7 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-fee
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-reachability --reps 4
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-partial-facts --reps 4
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -102,7 +103,7 @@ holdout.
 
 The full package is frozen at `538bf102514f54277ea6e829e6785f73d165af31`. Adopt a compressed
 package only when `SKILL.md` is at most 750 words, the directly loaded package is at most 1,000
-words, and it contains no Chinese text. The accepted package uses 738 + 223 words and meets the
+words, and it contains no Chinese text. The accepted package uses 750 + 223 words and meets the
 behavioral decision above; do not trade away its hard decision gates merely to reduce word count.
 
 The plain-language revision removes invented output labels and uses only Approve, Comment, or
@@ -110,6 +111,27 @@ Wait. Its adoption check is deterministic: the banned labels are absent, the con
 and the validator and repository tests pass. No new model A/B was run because the prior paired case
 did not distinguish reachability behavior; its historical percentages must not be rescored as new
 model evidence after changing the rubric.
+
+### PR-review partial-facts decision
+
+Compare the frozen complete-facts wording at `72f6f3472fafaa798b5e651fb53f7547c7966749`
+with the candidate on four repetitions of two cases: an offline PR patch and an exported snapshot
+whose current approval state cannot be refreshed. Adopt only if every candidate run completes a
+substantive review without inventing missing facts or approving unverified content, all four
+current-approval runs use Wait, and the candidate scores no lower overall than the frozen skill.
+
+These cases test the revised boundary directly. The exported-snapshot case was held out from the
+exact wording edit, but both cases were authored for this decision, so they do not establish broad
+generalization. The first execution was invalid because its patch counts and answer key
+contradicted the fixture; it is excluded rather than rescored. An intermediate run exposed a
+conditional Approve for an unverified current PR and led to the explicit current-head gate.
+
+On the final `gpt-5.6-luna`/high run, the candidate scored 84/112 assertions (75.0%) versus
+71/112 (63.4%) for the frozen skill, with 0/16 runner failures. All eight candidate runs completed
+substantive review without approving unverified current content; all four offline runs avoided
+invented URLs, and all four current-approval runs explicitly used Wait. Some reports still omitted
+numeric diff or production/test split, so this supports the partial-facts boundary only, not overall
+review quality or broad generalization.
 
 The `with_skill` arm reads `skills/<name>/` directly, so an eval always measures the shipped
 skill. `evals/baselines/` holds frozen older variants to compare against — the only skill text
