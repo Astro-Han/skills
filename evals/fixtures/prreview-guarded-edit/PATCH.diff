@@ -1,0 +1,20 @@
+diff --git a/message.ts b/message.ts
+@@
+ export interface UserMessage {
++  directoryReferences?: DirectoryReference[];
++  displayText?: string;
+ }
+
+diff --git a/directory-context.ts b/directory-context.ts
+@@
++  return {...message, displayText: message.text, text: message.text + listing};
+
+diff --git a/chat-turn.tsx b/chat-turn.tsx
+@@
+ const canEdit = !turn.attachments?.length && !turn.quote;
+
+diff --git a/tests/revision-actions.test.ts b/tests/revision-actions.test.ts
+@@
++it("blocks editing expanded context", () => {
++  expect(beginEditUserMessage({text: "prompt + listing", displayText: "prompt"}).ok).toBe(false);
++});

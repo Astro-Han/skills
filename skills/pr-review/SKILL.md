@@ -1,11 +1,11 @@
 ---
 name: pr-review
-description: "Review one pull request or a PR queue from problem value through code correctness. Use for a new review, rereview, batch review, or Approve/Comment recommendation. Do not use to implement or respond to feedback, report status only, draft or merge a PR, or monitor checks."
+description: "Review a pull request or PR queue from problem value through code correctness. Use for new review, rereview, batch review, or Approve/Comment recommendation. Do not use to implement or respond to feedback, report status, draft or merge, or monitor checks."
 ---
 
 # PR Review
 
-Judge whether the proposed solution deserves to exist before checking its code. Remain read-only unless authorized.
+Judge if the solution deserves to exist first. Remain read-only unless authorized.
 
 ## Anchor one exact head
 
@@ -23,13 +23,13 @@ Ask first:
 
 > What problem does this PR solve? How does it solve it? Is the problem defined correctly? Do the problem definition and solution follow first principles and Occam's razor?
 
-Seek evidence independent of the patch: a report, reproduction, log, or real failing check. A new test proves neither demand nor prior failure. Classify the problem as **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**.
+Seek independent evidence: a report, reproduction, log, or failing check. A new test proves neither demand nor prior failure. Classify the problem as **demonstrated**, **plausible but unverified**, **disproved**, or **mismatched**.
 
-Map the Issue's setup, inputs, observed and expected results to PR coverage. Another scenario is not a fix. Do not approve with value or scope unknown.
+Map the Issue's setup, inputs, observed and expected results to coverage. Another scenario is not a fix. Do not approve unknown value or scope.
 
 ## Trace ownership and production composition
 
-Explain the mechanism, natural owner, authoritative state, and real composition boundary. Follow production wiring, persistence, and lifecycle ownership beyond changed helpers or fixtures.
+Explain the mechanism, owner, authority, and real composition boundary. Follow production wiring, persistence, and lifecycle beyond changed helpers or fixtures.
 
 Check whether the change:
 
@@ -40,33 +40,33 @@ Check whether the change:
 
 ## Minimize coherent entropy
 
-Report total diff and production/test split. Account for every substantial region as necessary behavior, necessary evidence, or removable surface. A regression test must fail on old behavior through production composition, not a bypassed fixture or low-value matrix.
+Report diff and production/test split. Account for each substantial region as necessary behavior, necessary evidence, or removable surface. Regression tests must fail on old behavior through production composition, not bypassed fixtures or low-value matrices.
 
-In the decision packet, use an **Entropy delta** subsection to state owners, authorities, durable states, synchronization rules, lifecycle paths, contracts, representations, wrappers, and tests added or removed. Before Approve, prove each addition is required, correctly owned, and part of the smallest coherent solution; avoidable additions are review gaps. Preserve live obligations until evidence proves they ended.
+Under **Entropy delta**, state owners, authorities, durable states, synchronization rules, lifecycle paths, contracts, representations, wrappers, and tests added or removed. Before Approve, each addition must be required, owned, and part of the smallest coherent solution; avoidable additions are gaps. Preserve obligations until evidence proves they ended.
 
 > Is this the smallest complete solution? What low-value tests, code, wrappers, states, or old paths can disappear? Can the result converge on one owner without losing required behavior?
 
 Judge concepts, not lines: a necessary process regression can outweigh a tiny duplicate authority.
 
-## Report only reachable findings
+## Prove reachable findings
 
-Classify the triggering path first:
+Before P0–P3, prove a witness chain: supported entry → required state → production guards and composition → observable consequence. Trace beyond changed code. An unproven link or blocking guard means an evidence gap or **No finding**.
 
-1. normal user or supported operational path;
-2. reasonable failure, reconnect, concurrency, or recovery path;
+Classify the proven chain:
+
+1. normal user or supported operation;
+2. reasonable failure, reconnect, concurrency, or recovery;
 3. attacker-controlled trust boundary;
-4. contrived path requiring several unsupported premises.
+4. several unsupported premises combined.
 
-Crashes, disconnects, retries, races, partial writes, restarts, and recovery are category 2. Category 4 is normally **No finding** unless it risks irreversible data loss, privilege breach, core-authority destruction, or broad outage.
+Crashes, retries, races, restarts, and recovery are category 2. Category 4 is normally **No finding**, except for irreversible data loss, privilege breach, core-authority destruction, or broad outage. Severity follows the reachable consequence's breadth and recoverability, never its theoretical maximum. Low probability does not erase proof; possibility is not proof.
 
 - **P0** — blocks release.
 - **P1** — must be fixed before merge: reachable security, durable-state, data-loss, money, sustained-outage, or broadly unusable core-workflow failure.
-- **P2** — bounded or recoverable wrong behavior, including user-visible state; normally non-blocking.
-- **P3** — minor and deferrable, with no meaningful wrong outcome.
+- **P2** — bounded or recoverable wrong behavior; normally non-blocking.
+- **P3** — minor or avoidable complexity with no meaningful wrong outcome.
 
-Avoidable complexity without a wrong outcome is P3 unless project policy makes it blocking.
-
-Each finding states its category, condition, consequence, evidence, location, and smallest correction. Merge duplicates by cause; state when none remain.
+Each finding states its category, witness chain, consequence, evidence, location, and smallest correction. Merge duplicates; state when none remain.
 
 ## Deliver the decision packet
 

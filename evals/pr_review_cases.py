@@ -212,6 +212,32 @@ PR_REVIEW_CASES = {
         "forbid_p1": True,
         "forbid_approve": True,
     },
+    "review-downstream-guard-blocks-path": {
+        "fixture": "prreview-guarded-edit",
+        "prompt": (
+            "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff. Inspect "
+            "the workspace source to verify the production path, adjudicate the existing P1, "
+            "and recommend the next action. Do not modify files or contact anyone."
+        ),
+        "should_trigger": True,
+        "pr_url": "https://example.test/pulls/521",
+        "issue_url": "https://example.test/issues/518",
+        "head": "5219a0d0",
+        "diff_terms": ("52 additions", "4 deletions"),
+        "diff_counts": (52, 4),
+        "split_counts": (44, 4, 8, 0),
+        "problem_terms": ("demonstrated", "directory", "folder", "context"),
+        "solution_terms": ("directoryreferences", "begineditusermessage", "displaytext"),
+        "required_term_groups": (
+            ("begineditusermessage", "displaytext !== text", "displaytext != text"),
+            ("blocked", "blocks", "rejects", "unreachable", "not reachable", "不可达", "阻断", "拒绝"),
+            ("no finding", "not a defect", "p1 does not hold", "p1 is invalid", "false/unproven p1", "p1 should be dismissed", "无 finding", "不是缺陷", "p1 不成立", "不成立", "应撤回"),
+        ),
+        "decision_terms": ("human confirmation required",),
+        "required_recommendation": "human confirmation required",
+        "forbid_p1": True,
+        "forbid_approve": True,
+    },
     "review-live-compatibility-holdout": {
         "fixture": "prreview-compatibility",
         "prompt": (
@@ -281,3 +307,4 @@ HOLDOUT_CASES = (
     "review-live-compatibility-holdout",
     "review-durable-ledger-holdout",
 )
+REACHABILITY_CASES = ("review-downstream-guard-blocks-path",)

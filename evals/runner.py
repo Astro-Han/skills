@@ -30,6 +30,7 @@ from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
     PR_REVIEW_CASES,
+    REACHABILITY_CASES as PR_REVIEW_REACHABILITY_CASES,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -41,6 +42,7 @@ CONCURRENCY = 6
 # are the only skill text this directory owns a copy of.
 SHIPPED = "shipped"
 REVIEW_FEEDBACK_FULL_REF = "0685def7c43dc8a3f16944bc3804c1871583f504"
+PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
 
 PROMPTS = {
     "shared-sections": (
@@ -188,12 +190,16 @@ PROVIDERS = {
 def suite_runs(provider_name, reps=3, suite="all"):
     runs = []
     for rep in range(1, reps + 1):
-        if suite in ("pr-review", "pr-review-holdout"):
-            cases = (PR_REVIEW_DESIGN_CASES if suite == "pr-review"
-                     else PR_REVIEW_HOLDOUT_CASES)
+        if suite in ("pr-review", "pr-review-holdout", "pr-review-reachability"):
+            cases = (PR_REVIEW_DESIGN_CASES if suite == "pr-review" else
+                     PR_REVIEW_HOLDOUT_CASES if suite == "pr-review-holdout" else
+                     PR_REVIEW_REACHABILITY_CASES)
             for eval_name in cases:
                 fixture = PR_REVIEW_CASES[eval_name]["fixture"]
-                for arm, skill_arm in (("without_skill", None), ("with_skill", SHIPPED)):
+                arms = (("pre_reachability", "git:" + PR_REVIEW_PRE_REACHABILITY_REF),
+                        ("with_skill", SHIPPED)) if suite == "pr-review-reachability" else (
+                            ("without_skill", None), ("with_skill", SHIPPED))
+                for arm, skill_arm in arms:
                     runs.append({"workspace": "pr-review-workspace",
                                  "eval": eval_name, "rep": rep,
                                  "arm": arm, "fixture": fixture,
@@ -365,6 +371,7 @@ def main():
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
     parser.add_argument("--suite", choices=("all", "pr-review", "pr-review-holdout",
+                                            "pr-review-reachability",
                                             "review-feedback", "review-feedback-holdout",
                                             "review-feedback-second-holdout", "review-feedback-final-holdout",
                                             "review-feedback-matrix", "review-feedback-compression",

@@ -35,6 +35,12 @@ class PrReviewEvalTests(unittest.TestCase):
         self.assertEqual(len(runs) // 2, 48)
         self.assertEqual(len({run["eval"] for run in runs}), 12)
 
+    def test_reachability_regression_compares_frozen_and_shipped_skills(self):
+        runs = runner.suite_runs("codex", reps=4, suite="pr-review-reachability")
+        self.assertEqual(len(runs), 8)
+        self.assertEqual({run["arm"] for run in runs}, {"pre_reachability", "with_skill"})
+        self.assertEqual({run["eval"] for run in runs}, {"review-downstream-guard-blocks-path"})
+
     def test_matrix_has_declared_trigger_boundary(self):
         design_cases = [runner.PR_REVIEW_CASES[name] for name in runner.PR_REVIEW_DESIGN_CASES]
         self.assertEqual(sum(case["should_trigger"] for case in design_cases), 8)
@@ -79,6 +85,10 @@ class PrReviewEvalTests(unittest.TestCase):
         self.assertEqual(
             grader.recommendation_choice("## Recommendation: Approve\n"),
             "approve",
+        )
+        self.assertEqual(
+            grader.recommendation_choice("建议\n\n**Human confirmation required**\n"),
+            "human confirmation required",
         )
 
 

@@ -35,7 +35,7 @@ library: its value is the specific mistakes an agent can make in it.
 | `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 | `transferlog` | `review-feedback` compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | `review-feedback` compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
-| `prreview-*` | `pr-review` | Eight review cases for value, scope, production composition, authority, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts for live compatibility and durable recovery authority. |
+| `prreview-*` | `pr-review` | Eight review cases for value, scope, production composition, authority, necessary tests, removable matrices, UX, and severity; two close non-triggers; two simplification-trap holdouts; one downstream-guard reachability regression. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -54,6 +54,7 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-fee
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-compression-holdout --reps 5
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review --reps 4
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-holdout --reps 4
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite pr-review-reachability --reps 4
 python3 evals/grader.py                            # scores those runs
 ```
 
@@ -79,6 +80,23 @@ This supports adoption, not broad statistical generalization. The answer keys ar
 inspectable by the author, grading is phrase-based free-text evaluation, fixtures do not exercise a
 live GitHub API, and only one model/reasoning configuration was tested. Keep those limits explicit
 when changing the skill or extrapolating to another model.
+
+### PR-review reachability decision
+
+Compare the frozen pre-revision skill at `3e9300fb74ebbecdcd07aad92c5e97a98457f55a`
+with the shipped skill on four repetitions of the guarded-edit regression. Adopt the revision only
+if every candidate run traces the visible Edit action through the downstream production guard,
+rejects the unsupported P1 instead of grading theoretical loss, and requires human confirmation
+for the actual UI change. This case reproduces the failure that motivated the revision, so it can
+prove regression repair but not generalization; the pre-existing severity, composition, and
+contrived-path cases remain the supporting non-regression evidence.
+
+On `gpt-5.6-luna`/high, the four-pair source-inspection run scored 54/56 assertions (96.4%) for the
+candidate versus 50/56 (89.3%) for the frozen skill, with 0/8 runner failures. Every candidate run
+traced `ChatTurn` through `beginEditUserMessage`, rejected the unsupported P1, and retained manual
+UI confirmation. Two candidate reports omitted a separate entropy heading; both still reached the
+correct guard and severity decision. The motivating case is not an independent holdout, so this is
+evidence of regression repair only.
 
 ### PR-review compression decision
 

@@ -324,12 +324,14 @@ def split_reported(text, production_add, production_del, test_add, test_del):
 
 def recommendation_choice(text):
     choices = ("human confirmation required", "approve", "comment", "wait")
+    headings = ("recommendation", "建议")
     lines = text.lower().splitlines()
     for index, line in enumerate(lines):
         normalized = line.strip(" #*_-—:`")
-        if not normalized.startswith("recommendation"):
+        heading = next((term for term in headings if normalized.startswith(term)), None)
+        if heading is None:
             continue
-        candidates = [normalized.removeprefix("recommendation").strip(" :—-*")]
+        candidates = [normalized.removeprefix(heading).strip(" :—-*")]
         candidates.extend(
             lines[next_index].strip(" #*_-—:`")
             for next_index in range(index + 1, min(index + 4, len(lines)))
@@ -434,7 +436,8 @@ def grade_pr_review_case(exp, final, triggered, case):
                "p1" not in lower or any(term in lower for term in (
                    "not p1", "不是 p1", "p1 不成立", "p1不成立", "p1 is overstated",
                    "reject the p1", "withdraw", "撤回", "降为 p2", "降级", "p1 → p2",
-                   "不成立", "不应定为 p1"
+                   "不成立", "不应定为 p1", "disproved", "invalid", "should be closed",
+                   "should be dismissed", "false/unproven p1"
                )),
                final[-500:])
     if reach_terms := case.get("reach_terms"):
