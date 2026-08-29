@@ -87,3 +87,26 @@ model output is opened, then reconcile evidence against the historical repositor
 finding needs a reachable trigger, consequence, reproduction, code evidence, and calibrated
 severity. A plausible but invalid P1/P2 belongs under `invalid_findings_to_watch`; it is not silently
 discarded. Keep completed keys and reviewer identities outside the executor workspace.
+
+## First paired execution
+
+The `real-luna-high-v1` execution completed all 24 model calls without runner failures. The
+candidate loaded only the isolated Skill in 12/12 runs, the baseline loaded it in 0/12, and neither
+arm could see the user-level Skill. Two independent reviewers completed and reconciled the gold
+before any model output was opened, then independently scored randomized A/B outputs. The verified
+gold contained three required findings: two P1 and one P2.
+
+| Metric | With Skill | Without Skill | Paired result |
+| --- | ---: | ---: | --- |
+| Required finding recall | 2/3 | 2/3 | no difference |
+| Responses with unsupported P1/P2 | 6/12 | 8/12 | 2 wins, 0 losses, 10 ties |
+| Unsupported P1/P2 claims | 8 | 14 | 4 wins, 0 losses, 8 ties |
+| Decision-ready reviews | 5/12 | 2/12 | 3 wins, 0 losses, 9 ties |
+
+This run supports a narrower claim: the Skill reduced unsupported high-severity claims and produced
+more reviews that were ready to drive a decision. It did not improve recall; both arms found the
+same two findings and missed the same authentic-checkpoint replay defect. Twelve deliberately
+stratified PRs, one execution per arm, and one model configuration are not enough to advertise a
+stable percentage improvement. Preserve these raw counts and run a new independent sample before
+making a public effect-size claim. The machine-readable record is
+[`results/real-luna-high-v1.json`](results/real-luna-high-v1.json).

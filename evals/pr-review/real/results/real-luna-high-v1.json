@@ -1,0 +1,84 @@
+{
+  "iteration": "real-luna-high-v1",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "cases": 12,
+  "paired_model_runs": 24,
+  "runner_failures": 0,
+  "skill_isolation": {
+    "candidate_loaded_isolated_skill": "12/12",
+    "baseline_loaded_isolated_skill": "0/12",
+    "user_level_skill_visible": "0/24"
+  },
+  "gold": {
+    "independent_reviewers": 2,
+    "cases_verified": "12/12",
+    "required_findings": {
+      "P0": 0,
+      "P1": 2,
+      "P2": 1,
+      "P3": 0,
+      "total": 3
+    }
+  },
+  "metrics": {
+    "validated_decision_critical_finding_recall": {
+      "with_skill": "2/3",
+      "without_skill": "2/3",
+      "difference_percentage_points": 0.0
+    },
+    "responses_with_unsupported_p1_p2": {
+      "with_skill": "6/12",
+      "without_skill": "8/12",
+      "difference_percentage_points": -16.7,
+      "paired_outcomes": {
+        "with_skill_better": 2,
+        "without_skill_better": 0,
+        "ties": 10
+      }
+    },
+    "unsupported_p1_p2_claims": {
+      "with_skill": 8,
+      "without_skill": 14,
+      "paired_outcomes": {
+        "with_skill_better": 4,
+        "without_skill_better": 0,
+        "ties": 8
+      }
+    },
+    "decision_ready_reviews": {
+      "with_skill": "5/12",
+      "without_skill": "2/12",
+      "difference_percentage_points": 25.0,
+      "paired_outcomes": {
+        "with_skill_better": 3,
+        "without_skill_better": 0,
+        "ties": 9
+      }
+    }
+  },
+  "secondary_pass_counts": {
+    "problem_and_scenario_match": {
+      "with_skill": "11/12",
+      "without_skill": "11/12"
+    },
+    "production_owner_match": {
+      "with_skill": "12/12",
+      "without_skill": "12/12"
+    },
+    "simplification_and_test_judgment_match": {
+      "with_skill": "5/12",
+      "without_skill": "4/12"
+    },
+    "reachability_and_severity_match": {
+      "with_skill": "5/12",
+      "without_skill": "3/12"
+    },
+    "recommendation_match": {
+      "with_skill": "5/12",
+      "without_skill": "4/12"
+    }
+  },
+  "decision": "The run supports fewer unsupported high-severity claims and more decision-ready reviews. It does not show higher required-finding recall. Treat the effect sizes as exploratory because this is one paired run over twelve deliberately stratified PRs with one model configuration.",
+  "public_claim": "Do not claim a stable percentage improvement from this run alone."
+}
