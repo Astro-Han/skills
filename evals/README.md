@@ -24,6 +24,8 @@ library: its value is the specific mistakes an agent can make in it.
 | `pricer` | `debug` | Order-dependent coupon totals — diagnosis only, the fix needs a product decision. |
 | `reportlib` | `debug` | Shared mutable section state leaking between reports. |
 | `feedhub` | `simplify-audit` | Seven removable concepts, four traps that must survive, and one open product question that must be escalated rather than deleted. Answer key: [`feedhub.md`](fixtures/feedhub.md). |
+| `quoteview` | `review-feedback` | Two local-patch suggestions with one domain-owner cause, plus one false finding and a nonstandard severity scale. |
+| `seatmap` | `review-feedback` holdout | Two synchronization suggestions caused by mirrored state, plus one false zero-capacity finding. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -33,6 +35,8 @@ traps and the open question are what separate judgment from enthusiasm.
 ```bash
 python3 evals/runner.py --dry-run                  # list the planned runs, no model calls
 python3 evals/runner.py --provider pi --reps 1     # writes evals/<skill>-workspace/iteration-1/...
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback --reps 3
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-holdout --reps 3
 python3 evals/grader.py                            # scores those runs
 ```
 

@@ -26,6 +26,28 @@ CONCURRENCY = 6
 SHIPPED = "shipped"
 
 PROMPTS = {
+    "adjudicate-before-edit": (
+        "Use the review-feedback skill at "
+        "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
+        "Please address all of it and make the needed changes.\n\n"
+        "- C1 (F1): `quoteview.api.preview` must reject non-positive quantities before "
+        "constructing a line item. Add the guard there.\n"
+        "- C2 (F1): `quoteview.importer.preview_row` has the same bug. Add a second guard "
+        "there so CSV previews are safe.\n"
+        "- C3 (F2): `Quote.total()` crashes for an empty quote because `sum()` has no "
+        "initial value. Add an empty-list special case."
+    ),
+    "remove-mirrored-state": (
+        "Use the review-feedback skill at "
+        "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
+        "Please address all of it and make the needed changes.\n\n"
+        "- H1 (F1): `BookingService.reserve` updates `SeatStore` but not the availability "
+        "cache. Call `availability.remember(seat_id)` after every reservation.\n"
+        "- H2 (F1): `BookingService.cancel` also leaves the cache stale. Call "
+        "`availability.forget(seat_id)` after every cancellation.\n"
+        "- H3 (F2): `Availability.available_count(0)` divides by zero. Add a special case "
+        "that returns zero before the calculation."
+    ),
     "shared-sections": (
         "Our export job builds several monthly reports in one process. Bug report from "
         "ops: the second report also contains all the sections that were added to the "
@@ -105,6 +127,34 @@ def pi_parse(events):
     return final, tokens
 
 
+def codex_command(model, prompt, skill_args):
+    command = [
+        "codex", "exec", "-s", "workspace-write",
+        "-c", 'model_reasoning_effort="high"', "--json", "--ephemeral",
+    ]
+    if model:
+        command.extend(["--model", model])
+    return [*command, *skill_args, prompt]
+
+
+def codex_install(work, arm_dir, skill_name):
+    shutil.copytree(arm_dir, work / ".agents" / "skills" / skill_name)
+    return []
+
+
+def codex_parse(events):
+    final, tokens = "", 0
+    for event in events:
+        if event.get("type") == "item.completed":
+            item = event.get("item") or {}
+            if item.get("type") == "agent_message" and item.get("text"):
+                final = item["text"]
+        elif event.get("type") == "turn.completed":
+            usage = event.get("usage") or {}
+            tokens = sum(usage.get(key, 0) for key in ("input_tokens", "output_tokens"))
+    return final, tokens
+
+
 def keep_all(line):
     return True
 
@@ -126,6 +176,8 @@ class Provider:
 
 
 PROVIDERS = {
+    "codex": Provider("codex", "gpt-5.6-luna", 1200,
+                      codex_command, codex_install, keep_all, codex_parse, False),
     "claude": Provider("claude", "claude-haiku-4-5-20251001", 900,
                        claude_command, claude_install, keep_all, claude_parse, True),
     "pi": Provider("pi", "ollama-cloud/deepseek-v4-flash", 1200,
@@ -136,9 +188,23 @@ PROVIDERS = {
 # --- suites ----------------------------------------------------------------
 
 
-def suite_runs(provider_name, reps=3):
+def suite_runs(provider_name, reps=3, suite="all"):
     runs = []
     for rep in range(1, reps + 1):
+        if suite in ("all", "review-feedback", "review-feedback-holdout"):
+            eval_name = ("remove-mirrored-state" if suite == "review-feedback-holdout"
+                         else "adjudicate-before-edit")
+            fixture = "seatmap" if suite == "review-feedback-holdout" else "quoteview"
+            for arm, skill_arm in (("old_skill", "review-feedback-old"),
+                                   ("with_skill", SHIPPED)):
+                runs.append({"workspace": "review-feedback-workspace",
+                             "eval": eval_name, "rep": rep,
+                             "arm": arm, "fixture": fixture,
+                             "skill_arm": skill_arm,
+                             "skill_name": "review-feedback",
+                             "installed_skill_name": "review-feedback-eval"})
+        if suite in ("review-feedback", "review-feedback-holdout") or provider_name == "codex":
+            continue
         if provider_name == "claude":
             for eval_name, fixture in (("shared-sections", "reportlib"),
                                        ("diagnose-only", "pricer")):
@@ -169,7 +235,8 @@ def prepare(provider, spec, iteration):
     if rundir.exists():
         shutil.rmtree(rundir)
     rundir.mkdir(parents=True)
-    shutil.copytree(ROOT / "fixtures" / spec["fixture"], work)
+    shutil.copytree(ROOT / "fixtures" / spec["fixture"], work,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for cmd in (["git", "init", "-q"], ["git", "add", "-A"],
                 ["git", "-c", "user.email=e@e.co", "-c", "user.name=eval",
                  "commit", "-qm", "fixture"]):
@@ -178,7 +245,8 @@ def prepare(provider, spec, iteration):
     if spec["skill_arm"]:
         arm_dir = (SKILLS / spec["skill_name"] if spec["skill_arm"] == SHIPPED
                    else ROOT / "baselines" / spec["skill_arm"])
-        skill_args = provider.install_skill(work, arm_dir, spec["skill_name"])
+        installed_name = spec.get("installed_skill_name", spec["skill_name"])
+        skill_args = provider.install_skill(work, arm_dir, installed_name)
     return rundir, work, skill_args
 
 
@@ -210,6 +278,7 @@ def finalize(provider, rundir, work, status, duration):
     """Provider-independent: collect the diff, the tests, and the run's numbers."""
     if provider.strip_dotclaude:
         shutil.rmtree(work / ".claude", ignore_errors=True)
+    shutil.rmtree(work / ".agents", ignore_errors=True)
     subprocess.run(["git", "add", "-A"], cwd=work, capture_output=True)
     diff = subprocess.run(["git", "diff", "--cached"], cwd=work,
                           capture_output=True, text=True).stdout
@@ -256,6 +325,8 @@ def main():
     parser.add_argument("--iteration", default="iteration-1",
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
+    parser.add_argument("--suite", choices=("all", "review-feedback", "review-feedback-holdout"),
+                        default="all")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")
     args = parser.parse_args()
@@ -265,7 +336,7 @@ def main():
         provider = Provider(provider.name, args.model, provider.timeout_s,
                             provider.command, provider.install_skill,
                             provider.keep_line, provider.parse, provider.strip_dotclaude)
-    runs = suite_runs(provider.name, args.reps)
+    runs = suite_runs(provider.name, args.reps, args.suite)
 
     if args.dry_run:
         for spec in runs:

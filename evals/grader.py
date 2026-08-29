@@ -37,6 +37,8 @@ def load_events_pi(transcript):
                 elif c.get("type") == "text":
                     texts.append(c.get("text", ""))
             if texts:
+                events.append({"id": None, "name": "AssistantText",
+                               "input": {"text": "\n".join(texts)}, "result": ""})
                 final = "\n".join(texts)
         elif t == "tool_execution_end":
             content = e.get("result", {}).get("content", [])
@@ -47,9 +49,38 @@ def load_events_pi(transcript):
     return events, final
 
 
+def load_events_codex(transcript):
+    events, final = [], ""
+    for line in transcript.read_text().splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") != "item.completed":
+            continue
+        item = event.get("item") or {}
+        kind = item.get("type")
+        if kind == "agent_message" and item.get("text"):
+            final = item["text"]
+            events.append({"id": item.get("id"), "name": "AssistantText",
+                           "input": {"text": item["text"]}, "result": ""})
+        elif kind == "command_execution":
+            events.append({"id": item.get("id"), "name": "Bash",
+                           "input": {"command": item.get("command", "")},
+                           "result": item.get("aggregated_output", "")})
+        elif kind == "file_change":
+            for change in item.get("changes") or []:
+                events.append({"id": item.get("id"), "name": "Edit",
+                               "input": {"file_path": change.get("path", "")},
+                               "result": change.get("kind", "")})
+    return events, final
+
+
 def load_events(transcript):
     """Return ordered [(name, input, result_text)] for tool calls, plus final text."""
     first = transcript.read_text().split("\n", 1)[0]
+    if '"type":"thread.started"' in first or '"type": "thread.started"' in first:
+        return load_events_codex(transcript)
     if '"type":"session"' in first or '"type": "session"' in first:
         return load_events_pi(transcript)
     events, results, final = [], {}, ""
@@ -59,10 +90,16 @@ def load_events(transcript):
         except json.JSONDecodeError:
             continue
         if e.get("type") == "assistant":
+            texts = []
             for c in e["message"].get("content", []):
                 if isinstance(c, dict) and c.get("type") == "tool_use":
                     events.append({"id": c.get("id"), "name": c["name"],
                                    "input": c.get("input") or {}, "result": ""})
+                elif isinstance(c, dict) and c.get("type") == "text" and c.get("text"):
+                    texts.append(c["text"])
+            if texts:
+                events.append({"id": None, "name": "AssistantText",
+                               "input": {"text": "\n".join(texts)}, "result": ""})
         elif e.get("type") == "user":
             for c in e["message"].get("content", []) if isinstance(e["message"].get("content"), list) else []:
                 if isinstance(c, dict) and c.get("type") == "tool_result":
@@ -84,6 +121,32 @@ def first_edit(events, path_sub):
             if re.search(r"(>>?|tee)\s*\S*" + re.escape(path_sub.split("/")[-1]), cmd):
                 return i
     return None
+
+
+def first_production_edit(events, paths):
+    edits = [index for path in paths if (index := first_edit(events, path)) is not None]
+    return min(edits) if edits else None
+
+
+def adjudication_before(events, edit_index, comments=("C1", "C2", "C3")):
+    messages = [
+        (i, str(event["input"].get("text", "")))
+        for i, event in enumerate(events[:edit_index])
+        if event["name"] == "AssistantText"
+    ]
+    text = "\n".join(message for _, message in messages)
+    if not messages or not all(comment in text for comment in comments):
+        return None, text
+    return messages[-1][0], text
+
+
+def has_all_comments(text, comments):
+    return all(comment in text for comment in comments)
+
+
+def says_no_finding(text):
+    lower = text.lower()
+    return any(term in lower for term in ("no finding", "无 finding", "disproved", "不成立"))
 
 
 def bash_runs(events, pred):
@@ -141,7 +204,12 @@ def grade_run(rundir, eval_name):
     work = rundir / "work"
     files = diff_files(diff)
     exp = []
-    triggered = any(ev["name"] == "Skill" for ev in events)
+    triggered = any(
+        ev["name"] == "Skill"
+        or (ev["name"] == "Bash"
+            and "review-feedback-eval/SKILL.md" in str(ev["input"].get("command", "")))
+        for ev in events
+    )
     finallower = final.lower()
 
     if eval_name == "shared-sections":
@@ -215,6 +283,82 @@ def grade_run(rundir, eval_name):
             expect(exp, "Fix stayed minimal (few added implementation lines)",
                    len(added_lines(diff, "cartlib/cart.py")) <= 6,
                    "{} added lines in cart.py".format(len(added_lines(diff, "cartlib/cart.py"))))
+
+    elif eval_name == "adjudicate-before-edit":
+        src_edit = first_production_edit(events, (
+            "quoteview/api.py", "quoteview/importer.py",
+            "quoteview/model.py", "quoteview/quote.py",
+        ))
+        ledger_index, ledger = adjudication_before(events, src_edit or len(events))
+        ledger_lower = ledger.lower()
+        expect(exp, "Loaded the isolated review-feedback eval arm",
+               triggered, "local eval skill loaded: {}".format(triggered))
+        expect(exp, "Published a complete P0-P3 ledger before editing production code",
+               ledger_index is not None and src_edit is not None and ledger_index < src_edit
+               and "p2" in ledger_lower and says_no_finding(ledger),
+               "ledger idx {}, first source edit idx {}".format(ledger_index, src_edit))
+        expect(exp, "Grouped C1 and C2 under LineItem's validity invariant and owner",
+               all(term in ledger_lower for term in ("c1", "c2", "lineitem"))
+               and any(term in ledger_lower for term in ("invalid state", "validity", "quantity")),
+               ledger[:300])
+        expect(exp, "Reclassified the bounded preview defect as P2",
+               "p2" in ledger_lower, ledger[:300])
+        expect(exp, "Rejected C3 as No finding using Python sum semantics",
+               "c3" in ledger_lower and says_no_finding(ledger) and "sum" in ledger_lower,
+               ledger[:300])
+        expect(exp, "Fixed validity once at the LineItem owner",
+               "quoteview/model.py" in files
+               and not files.intersection({"quoteview/api.py", "quoteview/importer.py"}),
+               "changed: {}".format(sorted(files)))
+        expect(exp, "Did not patch the already-correct empty Quote path",
+               "quoteview/quote.py" not in files,
+               "changed: {}".format(sorted(files)))
+        ok, ev = acceptance(work, "accept_review_feedback.py")
+        expect(exp, "Acceptance: every producer rejects invalid LineItems at the owner", ok, ev)
+        expect(exp, "Existing suite green at the end", tests_green, "")
+
+    elif eval_name == "remove-mirrored-state":
+        src_edit = first_production_edit(events, (
+            "seatmap/availability.py", "seatmap/service.py", "seatmap/store.py",
+        ))
+        ledger_index, ledger = adjudication_before(
+            events, src_edit or len(events), comments=("H1", "H2", "H3")
+        )
+        ledger_lower = ledger.lower()
+        availability_source = (work / "seatmap" / "availability.py").read_text()
+        expect(exp, "Loaded the isolated review-feedback eval arm",
+               triggered, "local eval skill loaded: {}".format(triggered))
+        expect(exp, "Published a complete P0-P3 ledger before editing production code",
+               ledger_index is not None and src_edit is not None and ledger_index < src_edit
+               and has_all_comments(ledger, ("H1", "H2", "H3"))
+               and "p2" in ledger_lower
+               and says_no_finding(ledger),
+               "ledger idx {}, first source edit idx {}".format(ledger_index, src_edit))
+        expect(exp, "Grouped H1 and H2 as one mirrored-state authority defect",
+               all(term in ledger_lower for term in ("h1", "h2", "seatstore"))
+               and any(term in ledger_lower for term in ("mirror", "authority", "source of truth", "权威")),
+               ledger[:300])
+        expect(exp, "Reclassified the bounded preview defect as P2",
+               "p2" in ledger_lower, ledger[:300])
+        expect(exp, "Rejected H3 as No finding using range and sum semantics",
+               "h3" in ledger_lower
+               and says_no_finding(ledger)
+               and "range" in ledger_lower and "sum" in ledger_lower,
+               ledger[:300])
+        expect(exp, "Removed the mirrored cache at the Availability projection",
+               "seatmap/availability.py" in files
+               and "seatmap/service.py" not in files
+               and "seatmap/store.py" not in files
+               and "_reserved_cache" not in availability_source
+               and "def remember" not in availability_source
+               and "def forget" not in availability_source,
+               "changed: {}".format(sorted(files)))
+        expect(exp, "Did not add the proposed zero-capacity special case",
+               "if capacity" not in availability_source,
+               availability_source[:300])
+        ok, ev = acceptance(work, "accept_review_feedback_holdout.py")
+        expect(exp, "Acceptance: the projection follows direct and service writes", ok, ev)
+        expect(exp, "Existing suite green at the end", tests_green, "")
 
     return {"expectations": exp, "skill_triggered": triggered}
 
