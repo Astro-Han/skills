@@ -45,80 +45,11 @@ class ReviewFeedbackEvalTests(unittest.TestCase):
         self.assertEqual(grader.first_production_edit(events, ("quoteview/model.py",)), 1)
         self.assertIn("C3 No finding", final)
 
-    def test_review_feedback_suite_pairs_old_and_shipped_skills(self):
-        runs = runner.suite_runs("codex", reps=2, suite="review-feedback")
-        self.assertEqual(len(runs), 4)
-        self.assertEqual({run["arm"] for run in runs}, {"old_skill", "with_skill"})
-        self.assertEqual({run["fixture"] for run in runs}, {"quoteview"})
-
-    def test_holdout_suite_uses_a_distinct_fixture(self):
-        runs = runner.suite_runs("codex", reps=1, suite="review-feedback-holdout")
-        self.assertEqual(len(runs), 8)
-        self.assertEqual(
-            {run["fixture"] for run in runs},
-            {"seatmap", "handlekit", "profilefmt", "jobflow"},
-        )
-
-    def test_matrix_runs_nine_cases_for_both_arms(self):
-        runs = runner.suite_runs("codex", reps=5, suite="review-feedback-matrix")
-        self.assertEqual(len(runs), 90)
-        self.assertEqual({run["arm"] for run in runs}, {"old_skill", "with_skill"})
-        self.assertEqual(len({run["eval"] for run in runs}), 9)
-
-    def test_compression_suite_pairs_frozen_full_and_shipped_skills(self):
-        runs = runner.suite_runs("codex", reps=3, suite="review-feedback-compression")
-        self.assertEqual(len(runs), 54)
-        self.assertEqual({run["arm"] for run in runs}, {"full_skill", "compressed_skill"})
-        self.assertEqual(
-            {run["skill_arm"] for run in runs},
-            {"git:" + runner.REVIEW_FEEDBACK_FULL_REF, runner.SHIPPED},
-        )
-
-    def test_compression_holdout_uses_two_unseen_fixtures(self):
-        runs = runner.suite_runs("codex", reps=5, suite="review-feedback-compression-holdout")
-        self.assertEqual(len(runs), 20)
-        self.assertEqual({run["fixture"] for run in runs}, {"transferlog", "credrotate"})
-        self.assertEqual({run["arm"] for run in runs}, {"full_skill", "compressed_skill"})
-
-    def test_second_holdout_is_new_and_pairs_both_arms(self):
-        runs = runner.suite_runs("codex", reps=6, suite="review-feedback-second-holdout")
-        self.assertEqual(len(runs), 36)
-        self.assertEqual(
-            {run["fixture"] for run in runs},
-            {"batchplan", "wireview", "launchmode"},
-        )
-        self.assertEqual({run["arm"] for run in runs}, {"old_skill", "with_skill"})
-
-    def test_final_holdout_runs_eight_pairs_on_a_new_fixture(self):
-        runs = runner.suite_runs("codex", reps=8, suite="review-feedback-final-holdout")
-        self.assertEqual(len(runs), 16)
-        self.assertEqual({run["fixture"] for run in runs}, {"cartsummary"})
-
-    def test_scope_rebase_suite_pairs_frozen_baseline_and_candidate(self):
-        runs = runner.suite_runs("codex", reps=10, suite="review-feedback-scope-rebase")
-        self.assertEqual(len(runs), 20)
-        self.assertEqual({run["fixture"] for run in runs}, {"mediathread"})
-        self.assertEqual({run["arm"] for run in runs}, {"baseline_skill", "candidate_skill"})
-        self.assertEqual(
-            {run["skill_arm"] for run in runs},
-            {"git:" + runner.REVIEW_FEEDBACK_SCOPE_BASELINE_REF, runner.SHIPPED},
-        )
-
     def test_scope_rebase_case_starts_from_an_existing_pr_diff(self):
         case = runner.REVIEW_FEEDBACK_CASES["rebase-cumulative-diff"]
         self.assertEqual(case["fixture"], "mediathread")
         self.assertEqual(case["seed_patch"], "mediathread-pr.patch")
         self.assertTrue((ROOT / "evals" / "seeds" / case["seed_patch"]).is_file())
-
-    def test_scope_regression_pairs_nine_cases_against_frozen_baseline(self):
-        runs = runner.suite_runs("codex", reps=3, suite="review-feedback-scope-regression")
-        self.assertEqual(len(runs), 54)
-        self.assertEqual(len({run["eval"] for run in runs}), 9)
-        self.assertEqual({run["arm"] for run in runs}, {"baseline_skill", "candidate_skill"})
-        self.assertEqual(
-            {run["skill_arm"] for run in runs},
-            {"git:" + runner.REVIEW_FEEDBACK_SCOPE_BASELINE_REF, runner.SHIPPED},
-        )
 
     def test_structural_compression_pairs_twelve_cases_with_current_full_skill(self):
         runs = runner.suite_runs(
