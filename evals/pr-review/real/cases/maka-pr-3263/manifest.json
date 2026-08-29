@@ -1,0 +1,101 @@
+{
+  "additions": 4,
+  "author": "chihumyum",
+  "base_sha": "fd16fefe55f148c6953c1136e38cc491e799cb71",
+  "body": "## Summary\r\n\r\nThe right-side Side Chat composer clipped the elevation painted by Astryx's\r\ninner `ChatComposer` body, leaving the white composer visually unbounded against\r\nthe white workbar surface.\r\n\r\nThis change removes the side-only wrapper clipping and redundant wrapper radius\r\nwhile preserving the compact Side Chat radius token. It also adds an Electron\r\nE2E assertion for the overflow contract that keeps the inner elevation visible.\r\n\r\n## Visual evidence\r\n\r\n### Before\r\n\r\n<img width=\"1894\" height=\"232\" alt=\"before\" src=\"https://github.com/user-attachments/assets/2156eb43-51a0-4053-a649-bf34824d5c8f\" />\r\n\r\n\r\n### After\r\n\r\n<img width=\"1003\" height=\"289\" alt=\"after\" src=\"https://github.com/user-attachments/assets/2c703a38-4145-4199-a4db-eba045e60889\" />\r\n\r\n\r\n## Verification\r\n\r\n- `npm run format:check`\r\n- `npm run lint`\r\n- `npm run build`\r\n- `npm run typecheck`\r\n- `npx knip --workspace apps/desktop`\r\n- `npx knip --workspace packages/ui`\r\n- `npm --workspace @maka/desktop run e2e -- session-workbar.spec.ts` (3 passed)\r\n- `git diff --check`\r\n\r\n\r\n## AI use\r\n\r\nSelect exactly one:\r\n\r\n- [ ] No generative tool made a substantive contribution\r\n- [x] Generative tooling made a substantive contribution\r\n\r\nTool(s) and scope: Codex diagnosed and implemented the scoped CSS fix, added the\r\nregression assertion, ran validation, and prepared this pull request.\r\n\r\n## Checklist\r\n\r\n- [x] Tests cover the change and fail without it\r\n- [x] Lint, format, typecheck and the affected suites pass locally\r\n\r\nDoes this PR entail a change in behavior?\r\n\r\n- [x] Yes \u2014 described under Summary above\r\n- [ ] No\r\n",
+  "captured_at": "2026-08-29T17:22:27+00:00",
+  "case_id": "maka-pr-3263",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "astryx_surface",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "fd16fefe55f148c6953c1136e38cc491e799cb71",
+  "deletions": 3,
+  "files": [
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/e2e/session-workbar.spec.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "apps/desktop/src/renderer/styles/quote-side-panel.css"
+    }
+  ],
+  "head_sha": "3d719db8f822bc924e58e4737801f71327cdd1bf",
+  "issues": [],
+  "patch_sha256": "c72cdd4163ae4f5ba4207f4a63b09cc2f85bf2979b280db1d8ed184a40a80c1c",
+  "pr_number": 3263,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(desktop): preserve side chat composer elevation",
+  "url": "https://github.com/apache/maka/pull/3263"
+}

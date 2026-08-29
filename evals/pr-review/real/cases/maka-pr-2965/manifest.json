@@ -1,0 +1,449 @@
+{
+  "additions": 558,
+  "author": "Joob1n",
+  "base_sha": "26817cb7b671c52b83d2d9cffad4e4627bbf6121",
+  "body": "## Summary\n\nThe Claude subscription path authenticated as the Claude Code client and\nshaped every request to look like that client: its `client_id`, its\n`User-Agent`, a `You are Claude Code` system block injected ahead of the\ncaller's own prompt, and a synthesized `x-anthropic-billing-header`. The\nmodule that assembled it was named for what it did \u2014\n`subscription-cloaked-request`.\n\nRemoved, in the order a request met them:\n\n| Removed | Effect |\n|---|---|\n| OAuth login contract | No authorize URL carries that client id |\n| Login provider in the wire enum | A Client asking to start one is refused by the protocol, not a later guard |\n| Paste-code presentation flow | Served no other provider |\n| `subscription-cloaked-request.ts` | The request cloak itself |\n| `claudeSubscriptionHeaders` | The user agent and `claude-code-*` betas |\n| `claude-subscription-usage.ts` | Read quota under the same identity |\n| Runtime adapter (now `unavailable`) | No Session can send with it, and the pickers filter it out of selection |\n| Credential refresh | A stored token is inert |\n\n`connection.test` also stopped reporting a resolved token as a verified\nconnection. That shortcut is why a workspace could show \"Claude OAuth \u5df2\u767b\u5f55\"\non a connection that could not answer a single turn.\n\nCallers keep Claude models through an Anthropic API key connection.\n\n## Why the provider type stays registered\n\n`connection-catalog.json` decodes its connections with a plain `map`, and\n`decodeProviderType` throws on an unregistered type. Removing the type would\ntherefore not skip one entry \u2014 it would fail the whole document, and a\nworkspace that ever signed in would lose **every other connection with it**\n(API keys, Codex, Copilot).\n\nSo the type stays registered and unwired. `gemini-cli` already models exactly\nthis shape: registered, `runtimeAdapter: unavailable`, not offered as a usable\nmodel.\n\nThe settings row stays for the same reason, now carrying what happened and\nwhere to go instead. A row that simply disappears leaves an affected user to\nwork out on their own why their model stopped answering \u2014 which is the failure\nmode this change is trying not to create.\n\n## Verification\n\n`lint`, `format:check`, `build`, `typecheck`, `knip` (desktop + ui) and\n`astryx:theme` pass.\n\n| suite | result |\n|---|---|\n| `@maka/core` | 538 / 538 |\n| `@maka/storage` | 769 / 769 |\n| `@maka/runtime-host` | 890 / 890 |\n| `@maka/desktop` | 790 / 790 |\n| `@maka/runtime` | 2769 pass, 5 fail |\n\nThose 5 runtime failures are file-tool path containment and Grep sandbox\ntests. I ran the suite on this branch and on a clean tree and diffed the\nfailing test names: **identical sets, no new failure**.\n\nThat diff earned its keep. A first pass showed one extra failure \u2014\n`OpenCode connection probes follow each selected model protocol` \u2014 because\nremoving the `claude-subscription` case from `testConnectionModel` had also\ntaken the `anthropic` case's return statement, silently routing every\nAnthropic API key connection test at `/chat/completions`. Fixed here.\n\nTests whose subject was the removed behavior are gone (the cloak shape, the\nalways-verified test shortcut, the paste-code presentation). Tests that used\nthis provider only as a convenient OAuth fixture now run on `openai-codex`.\nOne in `provider-auth` was dropped outright: it asserted the behavior of a\nwired OAuth provider with fallback-only discovery, and after this change the\nregistry has no such provider.\n\n## Retirement is now an explicit registry fact\n\nA retired provider and an unwired preview provider look identical from\n`runtimeAdapter: 'unavailable'`, but only one of them was ever available to a\nuser. The registry entry carries `retired: true` and `isRetiredProvider()`\nreads it, so the connection detail page and `deriveProviderAuthContract` can\ntell \"this was taken away\" from \"this has not arrived yet\". Without it the\ndetail page told these users to go reauthorize \u2014 an instruction whose only\ndestination is the retirement notice \u2014 and the auth sheet read\n`\u8d26\u53f7\u767b\u5f55\u9884\u89c8`.\n\n`ProviderAuthState` gains `retired` and `ProviderAuthSetupMode` gains\n`oauth_retired`. Both are exhaustively switched, so the compiler named every\nsurface that had to answer for the new state.\n\n## Compatibility\n\n`RUNTIME_HOST_COMPATIBILITY_EPOCH` goes 19 \u2192 20. Narrowing\n`OAUTH_LOGIN_PROVIDERS` is a decode change in the new-Client-against-old-Host\ndirection \u2014 a `claude-subscription` projection from an older Host now throws\n`invalidProtocolFrame` where it used to decode. This repo bumps for that class\n(#2633, #2625).\n\n`oauth.account.usage.fetch` stays on the wire and answers\n`unsupported_provider` unconditionally, reading no state. The\n`request_authorization_code` presentation chain is unreachable after the epoch\nbump but is left in place; removing it is a second protocol narrowing and is\nclearer as its own change.\n\n## Testing\n\nEach line that enforces the retirement is pinned by an assertion that was\nmutation-checked against the revert it is meant to catch:\n\n| Pinned | Reverting it |\n|---|---|\n| `runtimeAdapter.kind === 'unavailable'`, `isWiredOAuthProvider === false` | `provider-catalog-contract` fails |\n| `retired: true` on the registry entry | `provider-catalog-contract` fails |\n| A retired connection cannot begin an interactive login | `runtime-policy-stores` fails once both gates are removed |\n| `oauth.account.usage.fetch`'s constant reason | `oauth-coordinator` fails |\n| Commit excludes overlapping backend activations | `oauth-coordinator` fails |\n\nThe last one is re-landed from the Claude fixture this PR removed \u2014 what it\nasserts is provider-agnostic (`oauth-coordinator.ts` wraps every commit in\n`#activation.runMutation`), so it now runs on Codex.\n\nNote on the storage row: removing `'claude-subscription'` from\n`isInteractiveOAuthLoginProvider` *alone* leaves the suite green, because\n`deriveProviderAuthContract` now refuses independently. The assertion pins the\nend-to-end verdict rather than either gate.\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck, the full test suite and the Storybook smoke pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary above\n- [ ] No\n",
+  "captured_at": "2026-08-29T17:22:18+00:00",
+  "case_id": "maka-pr-2965",
+  "changed_files": 60,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "audit",
+      "status": "COMPLETED",
+      "workflowName": "Dependency audit"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "d29569d250e92a124eb9e6544501a28b7c821c5a",
+  "deletions": 2509,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "README.md"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "README.zh-CN.md"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "SECURITY.md"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/src/main/__tests__/chat-readiness.test.ts"
+    },
+    {
+      "additions": 9,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/main/oauth-connection-identities.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "apps/desktop/src/main/runtime-host-oauth-ipc-main.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "apps/desktop/src/preload/bridge-contract.d.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 47,
+      "path": "apps/desktop/src/preload/preload.ts"
+    },
+    {
+      "additions": 18,
+      "changeType": "MODIFIED",
+      "deletions": 38,
+      "path": "apps/desktop/src/renderer/locales/settings-provider-copy.ts"
+    },
+    {
+      "additions": 9,
+      "changeType": "MODIFIED",
+      "deletions": 482,
+      "path": "apps/desktop/src/renderer/settings/claude-subscription-card.tsx"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/settings/provider-connection-detail.tsx"
+    },
+    {
+      "additions": 45,
+      "changeType": "MODIFIED",
+      "deletions": 43,
+      "path": "apps/desktop/src/renderer/settings/provider-oauth-section.tsx"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "apps/desktop/src/renderer/settings/use-connection-detail.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "apps/desktop/stories/settings/provider-settings.stories.tsx"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": "apps/desktop/stories/settings/settings-pages.stories.tsx"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "docs/astryx-surface-file-inventory.md"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 92,
+      "path": "packages/core/src/__tests__/oauth-subscription.test.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/core/src/__tests__/onboarding.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 21,
+      "path": "packages/core/src/__tests__/provider-auth.test.ts"
+    },
+    {
+      "additions": 54,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/__tests__/provider-catalog-contract.test.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/src/llm-connections.ts"
+    },
+    {
+      "additions": 16,
+      "changeType": "MODIFIED",
+      "deletions": 115,
+      "path": "packages/core/src/oauth-subscription.ts"
+    },
+    {
+      "additions": 43,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/provider-auth.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/provider-contract-matrix.ts"
+    },
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "packages/core/src/provider-registry.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 28,
+      "path": "packages/runtime-host/src/__tests__/execution-model-composition.test.ts"
+    },
+    {
+      "additions": 112,
+      "changeType": "MODIFIED",
+      "deletions": 224,
+      "path": "packages/runtime-host/src/__tests__/oauth-coordinator.test.ts"
+    },
+    {
+      "additions": 23,
+      "changeType": "MODIFIED",
+      "deletions": 173,
+      "path": "packages/runtime-host/src/__tests__/oauth-execution-authority.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/__tests__/oauth-protocol.test.ts"
+    },
+    {
+      "additions": 19,
+      "changeType": "MODIFIED",
+      "deletions": 11,
+      "path": "packages/runtime-host/src/__tests__/oauth-two-client-uds.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/protocol/index.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/protocol/oauth.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "packages/runtime-host/src/server/execution-composition.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "packages/runtime-host/src/server/execution-model-authority.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/server/execution-model-composition.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 142,
+      "path": "packages/runtime-host/src/server/oauth-coordinator.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 19,
+      "path": "packages/runtime-host/src/server/oauth-execution-authority.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/package.json"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 29,
+      "path": "packages/runtime/src/__tests__/claude-subscription-runtime.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "DELETED",
+      "deletions": 30,
+      "path": "packages/runtime/src/__tests__/claude-subscription-usage.test.ts"
+    },
+    {
+      "additions": 31,
+      "changeType": "MODIFIED",
+      "deletions": 124,
+      "path": "packages/runtime/src/__tests__/oauth-login.test.ts"
+    },
+    {
+      "additions": 24,
+      "changeType": "MODIFIED",
+      "deletions": 24,
+      "path": "packages/runtime/src/__tests__/subscription-credentials.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 85,
+      "path": "packages/runtime/src/__tests__/subscription-model-fetch.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "DELETED",
+      "deletions": 64,
+      "path": "packages/runtime/src/claude-subscription-usage.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/codex-oauth-enrollment.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 11,
+      "path": "packages/runtime/src/model-factory.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "packages/runtime/src/model-fetcher.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/model-runtime.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 248,
+      "path": "packages/runtime/src/oauth-login.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "packages/runtime/src/oauth-provider-contracts.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 13,
+      "path": "packages/runtime/src/subscription-auth.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "DELETED",
+      "deletions": 143,
+      "path": "packages/runtime/src/subscription-cloaked-request.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 41,
+      "path": "packages/runtime/src/subscription-credentials.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 71,
+      "path": "packages/runtime/src/subscription-model-fetch.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 25,
+      "path": "packages/runtime/src/test-connection.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/xai-oauth-enrollment.ts"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/storage/src/__tests__/runtime-policy-stores.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "packages/storage/src/runtime-policy/coordinator.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/storage/src/runtime-policy/operations.ts"
+    }
+  ],
+  "head_sha": "7c6cc8e5bdeafc1a8152621adec19bd1d859b366",
+  "issues": [],
+  "patch_sha256": "c51e27b10650503bfdf4b0d2532d67dda850854b5ae967c1893c2eebdf07b56d",
+  "pr_number": 2965,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "chore(runtime): retire the Claude subscription OAuth path",
+  "url": "https://github.com/apache/maka/pull/2965"
+}

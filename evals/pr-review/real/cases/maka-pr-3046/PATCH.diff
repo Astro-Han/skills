@@ -1,0 +1,1434 @@
+From d223a97660797be376b9803874f9223530c007b2 Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 10:27:54 +0800
+Subject: [PATCH 1/6] fix(runtime): merge parallel tool calls into one
+ assistant message in history summarizer (#3030)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+replayPlanItemsToModelMessages mapped every tool_call replay item to its own
+assistant message. Strict OpenAI-compatible providers reject that shape
+(DeepSeek: 400, "an assistant message with 'tool_calls' must be followed by
+tool messages responding to each 'tool_call_id'"), so the history summarizer
+failed with provider_error on any session whose folded history contains
+parallel tool calls — the 3 consecutive provider_error fail-opens in the #3029
+incident ledger match this failure mode.
+
+The primary replay materializer already merges a step's tool calls into one
+provider message (model-history.ts); mirror that invariant here by folding
+consecutive tool_call items into a single assistant message. Verified live
+against DeepSeek with the incident session's real events: the request that
+previously 400'd is now accepted.
+
+Regression tests: parallel calls produce one assistant message with N
+tool-call parts followed by N tool messages; calls separated by other content
+stay unmerged.
+---
+ .../history-compact-summarizer.test.ts        | 65 +++++++++++++++++++
+ .../runtime/src/history-compact-summarizer.ts | 32 +++++----
+ 2 files changed, 86 insertions(+), 11 deletions(-)
+
+diff --git a/packages/runtime/src/__tests__/history-compact-summarizer.test.ts b/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
+index a71c2a3f4b..79063c5ae9 100644
+--- a/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
+@@ -15,6 +15,7 @@ import { ProviderRequestTracker } from '../provider-request-telemetry.js';
+ import type { HistoryCompactSummaryInput } from '../ai-sdk-compaction-contract.js';
+ import {
+   buildLlmHistorySummarizer,
++  replayPlanItemsToModelMessages,
+   type AiSdkGenerateTextLike,
+ } from '../history-compact-summarizer.js';
+ import { buildHistoryCompactCheckpoint } from '../history-compact-checkpoint.js';
+@@ -261,3 +262,67 @@ describe('buildLlmHistorySummarizer', () => {
+     expect(serialized.includes('ALREADY_SUMMARIZED_RAW')).toBe(false);
+   });
+ });
++
++describe('replayPlanItemsToModelMessages tool-call grouping', () => {
++  // #3030: strict OpenAI-compatible providers 400 when parallel tool calls of
++  // one step are split across multiple assistant messages. The primary
++  // materializer merges a step's tool calls into one provider message; the
++  // summarizer's projection must honor the same invariant.
++  function callItem(toolCallId: string) {
++    return {
++      kind: 'tool_call' as const,
++      toolCallId,
++      toolName: 'Bash',
++      input: { command: 'true' },
++      eventId: `evt-${toolCallId}`,
++      ts: 1,
++    };
++  }
++  function resultItem(toolCallId: string) {
++    return {
++      kind: 'tool_result' as const,
++      toolCallId,
++      toolName: 'Bash',
++      output: { stdout: '' },
++      isError: false,
++      eventId: `evt-r-${toolCallId}`,
++      ts: 2,
++    };
++  }
++
++  test('merges consecutive tool calls into one assistant message', () => {
++    const messages = replayPlanItemsToModelMessages([
++      callItem('call-1'),
++      callItem('call-2'),
++      resultItem('call-1'),
++      resultItem('call-2'),
++    ]);
++    assert.equal(messages.length, 3);
++    const [assistant, tool1, tool2] = messages;
++    assert.equal(assistant?.role, 'assistant');
++    const parts = Array.isArray(assistant?.content) ? assistant.content : [];
++    assert.deepEqual(
++      parts.map((p) => p.type),
++      ['tool-call', 'tool-call'],
++    );
++    assert.deepEqual(
++      parts.map((p) => (p.type === 'tool-call' ? p.toolCallId : undefined)),
++      ['call-1', 'call-2'],
++    );
++    assert.equal(tool1?.role, 'tool');
++    assert.equal(tool2?.role, 'tool');
++  });
++
++  test('does not merge tool calls separated by other content', () => {
++    const messages = replayPlanItemsToModelMessages([
++      callItem('call-1'),
++      resultItem('call-1'),
++      callItem('call-2'),
++      resultItem('call-2'),
++    ]);
++    assert.deepEqual(
++      messages.map((m) => m.role),
++      ['assistant', 'tool', 'assistant', 'tool'],
++    );
++  });
++});
+diff --git a/packages/runtime/src/history-compact-summarizer.ts b/packages/runtime/src/history-compact-summarizer.ts
+index 6bafd48ed9..68a1f7aeb9 100644
+--- a/packages/runtime/src/history-compact-summarizer.ts
++++ b/packages/runtime/src/history-compact-summarizer.ts
+@@ -143,17 +143,27 @@ export function replayPlanItemsToModelMessages(items: ReplayPlanItems): ModelMes
+         out.push({ role: 'assistant', content: [textPart] });
+       }
+     } else if (item.kind === 'tool_call') {
+-      out.push({
+-        role: 'assistant',
+-        content: [
+-          {
+-            type: 'tool-call',
+-            toolCallId: item.toolCallId,
+-            toolName: item.toolName,
+-            input: item.input,
+-          },
+-        ],
+-      });
++      // Merge consecutive tool calls into ONE assistant message, mirroring the
++      // primary materializer's step merge (model-history.ts): strict
++      // OpenAI-compatible providers 400 when an assistant message's tool_calls
++      // are interrupted by another assistant message before their tool
++      // results arrive (#3030).
++      const toolCallPart = {
++        type: 'tool-call' as const,
++        toolCallId: item.toolCallId,
++        toolName: item.toolName,
++        input: item.input,
++      };
++      const previous = out[out.length - 1];
++      if (
++        previous?.role === 'assistant' &&
++        Array.isArray(previous.content) &&
++        previous.content.every((part) => part.type === 'tool-call')
++      ) {
++        previous.content.push(toolCallPart);
++      } else {
++        out.push({ role: 'assistant', content: [toolCallPart] });
++      }
+     } else if (item.kind === 'tool_result') {
+       out.push({
+         role: 'tool',
+
+From 1e275af33b1b9e72473f1e59adcc5bb88b7d4cb3 Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 10:28:14 +0800
+Subject: [PATCH 2/6] fix(runtime): reject malformed history-compact summaries
+ at the write gates (#3029)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Incident: a degraded summarizer response — a 138-token section-less fragment
+ending mid-sentence, produced right after 3 provider_error retries — was
+persisted as checkpoint hcheckpoint-981ceab8…, replacing 742 folded events
+(~235k estimated tokens). The continuation model then hallucinated
+implementation details the summary had lost. The only rejection gate was
+empty_summary; any non-empty string replaced the folded history.
+
+Add validateHistoryCompactSummary (history-compact-summary-validation.ts):
+- required section headers (## Goal / ## Progress / ## Next Steps — the
+  load-bearing subset of the prompt contract), and
+- truncation detection (output ending on colon/comma/paren/backtick/em-dash,
+  or stopping inside an unclosed code fence).
+
+Enforce it at both checkpoint write gates — writeHistoryCompactCheckpoint and
+planMidTurnCapacityCompaction — so every summarizer implementation, not just
+the LLM one, passes the same bar. Rejections fail open with the new
+malformed_summary reason: history is kept and compaction retries next turn.
+
+The section names are the single source of truth: the summarization prompt is
+now built from HISTORY_COMPACT_SUMMARY_SECTIONS, so the requested contract
+and the enforced contract cannot drift apart.
+
+Tests:
+- validation unit matrix (incident fragment verbatim, single word, raw DSML
+  tool markup from a live weak-model reproduction, missing sections, unclosed
+  fence, truncation punctuation),
+- mid-turn fail-open with diagnosticReason malformed_summary,
+- backend end-to-end: fragment summary records no checkpoint, the turn
+  completes on the raw projection, diagnostics carry failOpenReason
+  malformed_summary,
+- existing stub summaries updated to the conforming shape.
+---
+ ...history-compact-summary-validation.test.ts | 102 ++++++++++++++++++
+ .../mid-turn-capacity-backend.test.ts         |  44 +++++++-
+ .../mid-turn-capacity-compact.test.ts         |  22 +++-
+ .../overflow-reactive-recovery.test.ts        |   4 +-
+ .../src/__tests__/session-manager.test.ts     |   7 +-
+ packages/runtime/src/ai-sdk-compaction.ts     |   7 ++
+ packages/runtime/src/history-compact-error.ts |   5 +-
+ .../runtime/src/history-compact-summarizer.ts |  42 ++++----
+ .../src/history-compact-summary-validation.ts |  58 ++++++++++
+ .../runtime/src/mid-turn-capacity-compact.ts  |  11 ++
+ 10 files changed, 275 insertions(+), 27 deletions(-)
+ create mode 100644 packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+ create mode 100644 packages/runtime/src/history-compact-summary-validation.ts
+
+diff --git a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+new file mode 100644
+index 0000000000..2908e6746c
+--- /dev/null
++++ b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+@@ -0,0 +1,102 @@
++/**
++ * Tests for validateHistoryCompactSummary — the structural gate that keeps a
++ * degraded summarizer response from replacing folded history (#3029).
++ *
++ * Run: `npm --workspace @maka/runtime run test`
++ */
++import assert from 'node:assert/strict';
++import { describe, test } from 'node:test';
++import {
++  HISTORY_COMPACT_REQUIRED_SECTIONS,
++  HISTORY_COMPACT_SUMMARY_SECTIONS,
++  validateHistoryCompactSummary,
++} from '../history-compact-summary-validation.js';
++
++const CONFORMING = [
++  '## Goal',
++  'Fix the compaction gate.',
++  '',
++  '## Progress',
++  '### Done',
++  '- Gate added.',
++  '### In Progress',
++  '- Tests.',
++  '',
++  '## Key Decisions',
++  '- **Fail open**: never persist fragments.',
++  '',
++  '## Next Steps',
++  '1. Review.',
++  '',
++  '## Critical Context',
++  '- packages/runtime/src/mid-turn-capacity-compact.ts',
++].join('\n');
++
++describe('validateHistoryCompactSummary', () => {
++  test('accepts a fully conforming summary', () => {
++    assert.equal(validateHistoryCompactSummary(CONFORMING), undefined);
++  });
++
++  test('accepts a summary with only the required sections', () => {
++    const thin = [
++      '## Goal',
++      'g',
++      '',
++      '## Progress',
++      '### Done',
++      '- d',
++      '',
++      '## Next Steps',
++      '1. n',
++    ].join('\n');
++    assert.equal(validateHistoryCompactSummary(thin), undefined);
++  });
++
++  test('rejects the incident fragment verbatim (sections missing, tail truncated)', () => {
++    // The exact summary persisted by checkpoint hcheckpoint-981ceab8…: the
++    // pipeline accepted it and replaced 742 events / ~235k tokens (#3029).
++    const incident =
++      '确认服务端语义后，决定：`/goal pause|resume|clear` 走 `runControl`（写操作互斥），turn 中不可达但提示明确。现在看 desktop 的 retry 循环结尾：';
++    assert.equal(validateHistoryCompactSummary(incident), 'missing_sections');
++  });
++
++  test('rejects a single word', () => {
++    assert.equal(validateHistoryCompactSummary('done'), 'missing_sections');
++  });
++
++  test('rejects raw tool-call markup instead of a summary', () => {
++    // Observed live from a weak summarizer model that continued the
++    // conversation instead of summarizing it (DeepSeek DSML output).
++    const dsml =
++      '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="Bash">\n<｜｜DSML｜｜parameter name="command" string="true">ls</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>';
++    assert.equal(validateHistoryCompactSummary(dsml), 'missing_sections');
++  });
++
++  test('rejects when a required section is missing', () => {
++    for (const section of HISTORY_COMPACT_REQUIRED_SECTIONS) {
++      const broken = CONFORMING.replace(section, section.replace('## ', '## Removed '));
++      assert.equal(validateHistoryCompactSummary(broken), 'missing_sections', section);
++    }
++  });
++
++  test('rejects output that stops inside a code fence', () => {
++    assert.equal(validateHistoryCompactSummary(CONFORMING + '\n\n```ts\nconst x = 1'), 'truncated');
++  });
++
++  test('rejects a summary ending on truncation punctuation', () => {
++    for (const tail of [':', '：', ',', '，', '、', ';', '；', '(', '（', '`', '—']) {
++      assert.equal(validateHistoryCompactSummary(CONFORMING + ' ' + tail), 'truncated', tail);
++    }
++  });
++
++  test('accepts a closed fence and terminal punctuation', () => {
++    const withFence = CONFORMING + '\n\n```sh\nnpm test\n```\n\nDone.';
++    assert.equal(validateHistoryCompactSummary(withFence), undefined);
++  });
++
++  test('required sections are a subset of the full prompt contract', () => {
++    for (const section of HISTORY_COMPACT_REQUIRED_SECTIONS) {
++      assert.ok((HISTORY_COMPACT_SUMMARY_SECTIONS as readonly string[]).includes(section), section);
++    }
++  });
++});
+diff --git a/packages/runtime/src/__tests__/mid-turn-capacity-backend.test.ts b/packages/runtime/src/__tests__/mid-turn-capacity-backend.test.ts
+index 8ba6bcc2da..abdf60703e 100644
+--- a/packages/runtime/src/__tests__/mid-turn-capacity-backend.test.ts
++++ b/packages/runtime/src/__tests__/mid-turn-capacity-backend.test.ts
+@@ -298,7 +298,12 @@ function buildFixture(options: MidTurnFixtureOptions = {}): MidTurnFixture {
+   const commits: ModelCallCommit<ModelCallAttempt>[] = [];
+   const summarizerModel = new MockLanguageModelV4({
+     doGenerate: {
+-      content: [{ type: 'text', text: 'MID_TURN_SUMMARY_SENTINEL' }],
++      content: [
++        {
++          type: 'text',
++          text: '## Goal\nMID_TURN_SUMMARY_SENTINEL\n\n## Progress\n### Done\n- folded span summarized\n\n### In Progress\n- none\n\n## Next Steps\n1. continue the turn\n\n## Critical Context\n- (none)',
++        },
++      ],
+       finishReason: { unified: 'stop', raw: 'stop' },
+       usage: {
+         inputTokens: { total: 31, noCache: 31, cacheRead: 0, cacheWrite: 0 },
+@@ -422,7 +427,9 @@ function buildFixture(options: MidTurnFixtureOptions = {}): MidTurnFixture {
+       // The real summarizer is what carries the accounting the backend hands
+       // it, so the metered case must go through it rather than a stub.
+       if (options.meteredSummarizer) return await meteredSummarize(input);
+-      const summary = options.summarize ? await options.summarize() : 'MID_TURN_SUMMARY_SENTINEL';
++      const summary = options.summarize
++        ? await options.summarize()
++        : '## Goal\nMID_TURN_SUMMARY_SENTINEL\n\n## Progress\n### Done\n- folded span summarized\n\n### In Progress\n- none\n\n## Next Steps\n1. continue the turn\n\n## Critical Context\n- (none)';
+       return summary;
+     },
+     ...(options.meteredSummarizer
+@@ -797,6 +804,27 @@ function defineMidTurnSuite(consumer: ConsumerMode): void {
+     assert.equal(usageEvent?.contextBudget?.historyCompactWriteFailures, 1);
+   });
+ 
++  test('fails open with malformed_summary diagnostics when the summarizer returns a fragment (#3029)', async () => {
++    // Regression for the incident: a degraded provider returned a section-less
++    // fragment ending mid-sentence, and the pipeline persisted it as the
++    // checkpoint, replacing the folded span. The gate must refuse it.
++    const fixture = buildFixture({
++      summarize: () => '确认服务端语义后，决定走 runControl。现在看 desktop 的 retry 循环结尾：',
++    });
++    await runFixtureTurn(fixture, consumer);
++
++    // No checkpoint is recorded; the turn continues on the raw projection.
++    assert.equal(fixture.recorded.length, 0);
++    assert.equal(fixture.model.doStreamCalls.length, 3);
++    const complete = fixture.events.find((event) => event.type === 'complete');
++    assert.equal(complete?.type === 'complete' ? complete.stopReason : undefined, 'end_turn');
++
++    const failedOpen = compactionDecisions(fixture).find(
++      (decision) => decision.phase === 'mid_turn' && decision.decision === 'failedOpen',
++    );
++    assert.equal(failedOpen?.failOpenReason, 'malformed_summary');
++  });
++
+   test('exhausts with write_failed in the durable diagnostics when the write fails over the window', async () => {
+     // Big priors make folding rescue the over-window estimate, so the plan
+     // compacts and the failure happens AT the recorder — over the window that
+@@ -1029,7 +1057,12 @@ function defineMidTurnSuite(consumer: ConsumerMode): void {
+     // projection; the hook measures the materialized payload and keeps the raw
+     // messages instead. Validation runs before the recorder, so the rejected
+     // checkpoint is never persisted (asserted below).
+-    const fixture = buildFixture({ summarize: () => 'GIANT_SUMMARY_'.repeat(600) });
++    const fixture = buildFixture({
++      summarize: () =>
++        '## Goal\n' +
++        'GIANT_SUMMARY_'.repeat(600) +
++        '\n\n## Progress\n### Done\n- padded\n\n## Next Steps\n1. continue',
++    });
+     await runFixtureTurn(fixture, consumer);
+ 
+     assert.equal(fixture.model.doStreamCalls.length, 3);
+@@ -1127,7 +1160,10 @@ function defineMidTurnSuite(consumer: ConsumerMode): void {
+     const fixture = buildFixture({
+       contextWindow: 150,
+       reserveTokens: 100,
+-      summarize: () => 'GIANT_SUMMARY_'.repeat(600),
++      summarize: () =>
++        '## Goal\n' +
++        'GIANT_SUMMARY_'.repeat(600) +
++        '\n\n## Progress\n### Done\n- padded\n\n## Next Steps\n1. continue',
+     });
+     await runFixtureTurn(fixture, consumer);
+ 
+diff --git a/packages/runtime/src/__tests__/mid-turn-capacity-compact.test.ts b/packages/runtime/src/__tests__/mid-turn-capacity-compact.test.ts
+index 50b1db6452..a894d7aeac 100644
+--- a/packages/runtime/src/__tests__/mid-turn-capacity-compact.test.ts
++++ b/packages/runtime/src/__tests__/mid-turn-capacity-compact.test.ts
+@@ -151,7 +151,8 @@ describe('plan mid-turn capacity compaction', () => {
+       reserveTailEvents: 1,
+       charsPerToken: 4,
+       now: 1_800_000_010_000,
+-      summarize: () => 'A faithful mid-turn summary.',
++      summarize: () =>
++        '## Goal\nFold prior work.\n\n## Progress\n### Done\n- Prior turns summarized.\n\n## Next Steps\n1. Continue the turn.',
+       ...over,
+     };
+   }
+@@ -242,6 +243,23 @@ describe('plan mid-turn capacity compaction', () => {
+     assert.deepEqual(result, { decision: 'fail_open', reason: 'summarizer_failed' });
+   });
+ 
++  test('fails open when the summarizer returns a malformed fragment (#3029)', async () => {
++    // Regression: the incident's actual summary — a section-less fragment
++    // ending mid-sentence — was persisted as the checkpoint, replacing the
++    // folded events. The write gate must reject it instead.
++    const result = await planMidTurnCapacityCompaction(
++      planInput({
++        estimatedNextRequestTokens: 120_000, // over high-water, under window
++        summarize: () => '确认服务端语义后，决定走 runControl。现在看 desktop 的 retry 循环结尾：',
++      }),
++    );
++    assert.deepEqual(result, {
++      decision: 'fail_open',
++      reason: 'summarizer_failed',
++      diagnosticReason: 'malformed_summary',
++    });
++  });
++
+   test('preserves a typed summarizer failure as the mid-turn diagnostic reason', async () => {
+     const result = await planMidTurnCapacityCompaction(
+       planInput({
+@@ -328,7 +346,7 @@ describe('plan mid-turn capacity compaction', () => {
+         summarize: ({ newlyFoldedRuntimeEvents, previousCheckpoint }) => {
+           seenNewlyFolded = newlyFoldedRuntimeEvents.map((event) => event.id);
+           assert.equal(previousCheckpoint?.checkpointId, first.checkpoint.checkpointId);
+-          return 'rolled-forward summary';
++          return '## Goal\nFold prior work.\n\n## Progress\n### Done\n- Prior turns summarized.\n\n## Next Steps\n1. Continue the turn.';
+         },
+       }),
+     );
+diff --git a/packages/runtime/src/__tests__/overflow-reactive-recovery.test.ts b/packages/runtime/src/__tests__/overflow-reactive-recovery.test.ts
+index 73bea6387d..72d249f59b 100644
+--- a/packages/runtime/src/__tests__/overflow-reactive-recovery.test.ts
++++ b/packages/runtime/src/__tests__/overflow-reactive-recovery.test.ts
+@@ -410,7 +410,9 @@ function buildReactiveFixture(options: ReactiveFixtureOptions): ReactiveFixture
+         }) => {
+           counters.summarizerCalls += 1;
+           summarizedSources.push(JSON.stringify(input.source.foldedRuntimeEvents));
+-          return options.summarize ? await options.summarize() : 'REACTIVE_SUMMARY_SENTINEL';
++          return options.summarize
++            ? await options.summarize()
++            : '## Goal\nREACTIVE_SUMMARY_SENTINEL\n\n## Progress\n### Done\n- folded span summarized\n\n### In Progress\n- none\n\n## Next Steps\n1. continue the turn\n\n## Critical Context\n- (none)';
+         },
+         recordHistoryCompactCheckpoint: (checkpoint: HistoryCompactCheckpoint) => {
+           recorded.push(checkpoint);
+diff --git a/packages/runtime/src/__tests__/session-manager.test.ts b/packages/runtime/src/__tests__/session-manager.test.ts
+index f242bf0b32..994ac59c7c 100644
+--- a/packages/runtime/src/__tests__/session-manager.test.ts
++++ b/packages/runtime/src/__tests__/session-manager.test.ts
+@@ -3891,7 +3891,12 @@ describe('SessionManager manual compaction and quiescent session changes', () =>
+     const modelCalls: ModelCallAttempt[] = [];
+     const summarizerModel = new MockLanguageModelV4({
+       doGenerate: {
+-        content: [{ type: 'text', text: 'MANUAL_COMPACT_SUMMARY' }],
++        content: [
++          {
++            type: 'text',
++            text: '## Goal\nMANUAL_COMPACT_SUMMARY\n\n## Progress\n### Done\n- folded span summarized\n\n### In Progress\n- none\n\n## Next Steps\n1. continue the turn\n\n## Critical Context\n- (none)',
++          },
++        ],
+         finishReason: { unified: 'stop', raw: 'stop' },
+         usage: {
+           inputTokens: { total: 41, noCache: 41, cacheRead: 0, cacheWrite: 0 },
+diff --git a/packages/runtime/src/ai-sdk-compaction.ts b/packages/runtime/src/ai-sdk-compaction.ts
+index 97bc2883ab..f955a4f7e3 100644
+--- a/packages/runtime/src/ai-sdk-compaction.ts
++++ b/packages/runtime/src/ai-sdk-compaction.ts
+@@ -41,6 +41,7 @@ import {
+   isHistoryCompactContentEvent,
+ } from './history-compact.js';
+ import { HistoryCompactSummarizerError } from './history-compact-error.js';
++import { validateHistoryCompactSummary } from './history-compact-summary-validation.js';
+ import {
+   buildHistoryCompactCheckpoint,
+   matchHistoryCompactCheckpointPrefix,
+@@ -547,6 +548,12 @@ export class AiSdkCompaction {
+           },
+         };
+       }
++      // A degraded provider response (section-less fragment, truncated
++      // mid-sentence, raw tool markup) must never replace the folded events;
++      // throw so the enclosing catch fails open with `malformed_summary` (#3029).
++      if (validateHistoryCompactSummary(summary) !== undefined) {
++        throw new HistoryCompactSummarizerError('malformed_summary');
++      }
+       const checkpoint = buildHistoryCompactCheckpoint({
+         sessionId: this.sessionId,
+         coveredRuntimeEvents: foldedRuntimeEvents,
+diff --git a/packages/runtime/src/history-compact-error.ts b/packages/runtime/src/history-compact-error.ts
+index 8917dbdc53..2d96ed56e3 100644
+--- a/packages/runtime/src/history-compact-error.ts
++++ b/packages/runtime/src/history-compact-error.ts
+@@ -1,4 +1,7 @@
+-export type HistoryCompactSummarizerFailureReason = 'output_length' | 'provider_error';
++export type HistoryCompactSummarizerFailureReason =
++  | 'output_length'
++  | 'provider_error'
++  | 'malformed_summary';
+ 
+ export class HistoryCompactSummarizerError extends Error {
+   constructor(
+diff --git a/packages/runtime/src/history-compact-summarizer.ts b/packages/runtime/src/history-compact-summarizer.ts
+index 68a1f7aeb9..1b32ca7611 100644
+--- a/packages/runtime/src/history-compact-summarizer.ts
++++ b/packages/runtime/src/history-compact-summarizer.ts
+@@ -1,6 +1,7 @@
+ import { rawFinishReasonString, type ModelMessage } from './model-protocol.js';
+ import { buildRuntimeEventModelReplayPlan } from './model-history.js';
+ import { toolResultOutput } from './tool-result-output.js';
++import { HISTORY_COMPACT_SUMMARY_SECTIONS } from './history-compact-summary-validation.js';
+ import type { HistoryCompactSummaryInput } from './ai-sdk-compaction-contract.js';
+ import { HistoryCompactSummarizerError } from './history-compact-error.js';
+ import type { AiSdkUsageLike } from './model-adapter.js';
+@@ -34,30 +35,35 @@ export interface BuildLlmHistorySummarizerOptions {
+ // asks for a checkpoint another LLM can continue from. Tool calls and their
+ // results are part of the conversation sent to the summarizer, because the
+ // folded events are projected with the same policy the model would see them.
++//
++// Section names come from history-compact-summary-validation.ts — the same
++// constant the checkpoint write gates validate against, so the requested
++// contract and the enforced contract cannot drift apart.
++const SECTION_PLACEHOLDERS: Record<(typeof HISTORY_COMPACT_SUMMARY_SECTIONS)[number], string[]> = {
++  '## Goal': ['[What the user is trying to accomplish]'],
++  '## Progress': [
++    '### Done',
++    '- [Completed work and changes]',
++    '### In Progress',
++    '- [Current work]',
++  ],
++  '## Key Decisions': ['- **[Decision]**: [Brief rationale]'],
++  '## Next Steps': ['1. [Ordered list of what should happen next]'],
++  '## Critical Context': [
++    '- [Files, commands/results, errors, anything needed to continue; or "(none)"]',
++  ],
++};
+ const SUMMARIZATION_SYSTEM_PROMPT = [
+   'You are a context summarization assistant.',
+   'Read the conversation between a user and an AI assistant, then produce a structured summary another LLM will use to continue the same task.',
+   'Do NOT continue the conversation. Do NOT answer questions in it. ONLY output the structured summary.',
+   '',
+   'Use this exact format:',
+-  '',
+-  '## Goal',
+-  '[What the user is trying to accomplish]',
+-  '',
+-  '## Progress',
+-  '### Done',
+-  '- [Completed work and changes]',
+-  '### In Progress',
+-  '- [Current work]',
+-  '',
+-  '## Key Decisions',
+-  '- **[Decision]**: [Brief rationale]',
+-  '',
+-  '## Next Steps',
+-  '1. [Ordered list of what should happen next]',
+-  '',
+-  '## Critical Context',
+-  '- [Files, commands/results, errors, anything needed to continue; or "(none)"]',
++  ...HISTORY_COMPACT_SUMMARY_SECTIONS.flatMap((section) => [
++    '',
++    section,
++    ...SECTION_PLACEHOLDERS[section],
++  ]),
+   '',
+   'Keep each section concise. Preserve exact file paths, function names, commands, and error messages.',
+ ].join('\n');
+diff --git a/packages/runtime/src/history-compact-summary-validation.ts b/packages/runtime/src/history-compact-summary-validation.ts
+new file mode 100644
+index 0000000000..fffc1aaafe
+--- /dev/null
++++ b/packages/runtime/src/history-compact-summary-validation.ts
+@@ -0,0 +1,58 @@
++/**
++ * Structural contract for history-compact checkpoint summaries.
++ *
++ * A checkpoint summary is the only survivor of a history fold: once written,
++ * the covered RuntimeEvents are replaced by this text alone. The summarizer
++ * prompt (history-compact-summarizer.ts) declares a sectioned contract, but a
++ * degraded provider can return anything non-empty — a single word, raw tool
++ * markup, or a fragment ending mid-sentence — and before this gate existed the
++ * pipeline persisted all of it (see #3029). Both checkpoint write paths call
++ * `validateHistoryCompactSummary` and fail open on a rejection, so a bad
++ * summary never replaces folded history.
++ *
++ * The section names are the single source of truth: the summarizer prompt is
++ * built from them, and validation reuses the same constants.
++ */
++
++/** Every section the summarization prompt asks for, in order. */
++export const HISTORY_COMPACT_SUMMARY_SECTIONS = [
++  '## Goal',
++  '## Progress',
++  '## Key Decisions',
++  '## Next Steps',
++  '## Critical Context',
++] as const;
++
++/**
++ * Sections without which a continuation cannot recover the task: what is being
++ * done, how far it got, and what happens next. `## Key Decisions` and
++ * `## Critical Context` are valuable but not load-bearing, so a summary that
++ * omits them is thin rather than malformed.
++ */
++export const HISTORY_COMPACT_REQUIRED_SECTIONS = [
++  '## Goal',
++  '## Progress',
++  '## Next Steps',
++] as const;
++
++/** Terminal punctuation that indicates the output was cut off mid-thought. */
++const TRUNCATED_TAIL_PATTERN = /[:：,，、;；(（`—]\s*$/u;
++
++/** Why a summary failed validation, for diagnostics and tests. */
++export type HistoryCompactSummaryRejection = 'missing_sections' | 'truncated';
++
++/**
++ * Returns why the summary is malformed, or undefined when it satisfies the
++ * contract. Callers map any rejection to `malformed_summary` and fail open.
++ */
++export function validateHistoryCompactSummary(
++  summary: string,
++): HistoryCompactSummaryRejection | undefined {
++  const missing = HISTORY_COMPACT_REQUIRED_SECTIONS.filter((section) => !summary.includes(section));
++  if (missing.length > 0) return 'missing_sections';
++  // An odd number of fences means the output stops inside a code block.
++  const fenceCount = (summary.match(/^```/gm) ?? []).length;
++  if (fenceCount % 2 === 1) return 'truncated';
++  if (TRUNCATED_TAIL_PATTERN.test(summary)) return 'truncated';
++  return undefined;
++}
+diff --git a/packages/runtime/src/mid-turn-capacity-compact.ts b/packages/runtime/src/mid-turn-capacity-compact.ts
+index 3e84b585b6..17d90c5262 100644
+--- a/packages/runtime/src/mid-turn-capacity-compact.ts
++++ b/packages/runtime/src/mid-turn-capacity-compact.ts
+@@ -4,6 +4,7 @@ import {
+   HistoryCompactSummarizerError,
+   type HistoryCompactSummarizerFailureReason,
+ } from './history-compact-error.js';
++import { validateHistoryCompactSummary } from './history-compact-summary-validation.js';
+ import {
+   buildHistoryCompactCheckpoint,
+   historyCompactCheckpointToRuntimeEvent,
+@@ -333,6 +334,16 @@ export async function planMidTurnCapacityCompaction(
+   if (!summary) {
+     return { decision: 'fail_open', reason: 'summarizer_failed' };
+   }
++  // The summary replaces the folded events outright, so a degraded provider
++  // response (section-less fragment, truncated mid-sentence, raw tool markup)
++  // must fail open rather than be persisted as the checkpoint (#3029).
++  if (validateHistoryCompactSummary(summary) !== undefined) {
++    return {
++      decision: 'fail_open',
++      reason: 'summarizer_failed',
++      diagnosticReason: 'malformed_summary',
++    };
++  }
+ 
+   const checkpoint = buildHistoryCompactCheckpoint({
+     sessionId: input.sessionId,
+
+From 6ac53c62460a65fcebd87015d554f868508749c2 Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 11:37:27 +0800
+Subject: [PATCH 3/6] test(runtime): anchor required-section headings and cover
+ the checkpoint write gate (#3029)
+
+Review follow-up (first-principles + Occam): section headings are now
+matched line-anchored instead of via substring includes, so prose mentions
+or near-matches like `## Goals` no longer satisfy the contract; the
+required-section list is pinned to the full prompt contract at compile time.
+Adds a direct regression test for the writeHistoryCompactCheckpoint gate
+(previously only the mid-turn gate was exercised) and trims redundant tests.
+---
+ .../src/__tests__/ai-sdk-backend.test.ts      | 91 +++++++++++++++++++
+ ...history-compact-summary-validation.test.ts | 36 +++++---
+ .../src/history-compact-summary-validation.ts | 20 +++-
+ 3 files changed, 132 insertions(+), 15 deletions(-)
+
+diff --git a/packages/runtime/src/__tests__/ai-sdk-backend.test.ts b/packages/runtime/src/__tests__/ai-sdk-backend.test.ts
+index 51901a2e81..e714fc1c69 100644
+--- a/packages/runtime/src/__tests__/ai-sdk-backend.test.ts
++++ b/packages/runtime/src/__tests__/ai-sdk-backend.test.ts
+@@ -5302,6 +5302,97 @@ describe('AiSdkBackend model history', () => {
+     );
+   });
+ 
++  test('V2 malformed summary fails open without recording a checkpoint and reports malformed_summary', async () => {
++    const model = completionModel();
++    const storedMessages: StoredMessage[] = [];
++    let recordCalls = 0;
++    const events: SessionEvent[] = [];
++    const backend = createTestAiSdkBackend({
++      sessionId: 'session-1',
++      header: header(),
++      appendMessage: async (message) => {
++        storedMessages.push(message);
++      },
++      connection: connection(),
++      apiKey: '[redacted]',
++      modelId: 'mock-model-id',
++      modelFactory: () => model,
++      tools: [],
++      newId: idGenerator(),
++      now: monotonicClock(),
++      contextBudget: {
++        maxHistoryEstimatedTokens: 1_500,
++        charsPerToken: 1,
++        historyCompact: {
++          enabled: true,
++          mode: 'read_write',
++          highWaterRatio: 0.01,
++          tailEstimatedTokens: 20,
++          maxSummaryEstimatedTokens: 500,
++        },
++      },
++      summarizeHistoryCompact: async () => '确认服务端语义后，决定：结尾：',
++      recordHistoryCompactCheckpoint: () => {
++        recordCalls += 1;
++      },
++    });
++    for await (const event of backend.send({
++      turnId: 'turn-current',
++      text: 'continue',
++      context: [],
++      runtimeContext: [
++        runtimeTextEvent({
++          id: 'malformed-old-1',
++          turnId: 'malformed-turn-1',
++          role: 'user',
++          author: 'user',
++          text: 'malformed old source one '.repeat(30),
++        }),
++        runtimeTextEvent({
++          id: 'malformed-old-2',
++          turnId: 'malformed-turn-2',
++          role: 'model',
++          author: 'agent',
++          text: 'malformed old source two '.repeat(50),
++        }),
++        runtimeTextEvent({
++          id: 'malformed-recent',
++          turnId: 'malformed-recent-turn',
++          role: 'user',
++          author: 'user',
++          text: 'MALFORMED_RETAINED_TAIL',
++        }),
++      ],
++    })) {
++      events.push(event);
++    }
++
++    const prompt = JSON.stringify(compactPrompt(model));
++    assert.equal(prompt.includes('malformed old source one'), false);
++    assert.equal(prompt.includes('malformed old source two'), false);
++    assert.match(prompt, /MALFORMED_RETAINED_TAIL/);
++    assert.equal(recordCalls, 0);
++    assert.equal(
++      storedMessages.filter(
++        (message) =>
++          message.type === 'system_note' && message.kind === 'context_compaction_failed_open',
++      ).length,
++      1,
++    );
++    const usage = events.find(
++      (event): event is Extract<SessionEvent, { type: 'token_usage' }> =>
++        event.type === 'token_usage',
++    );
++    assert.equal(
++      usage?.contextBudget?.historyCompactWriteSkippedReasonCounts?.malformed_summary,
++      1,
++    );
++    assert.equal(
++      usage?.contextBudget?.compactionDecisions?.[0]?.failOpenReason,
++      'malformed_summary',
++    );
++  });
++
+   test('keeps RuntimeEvent replay when a tool result is unmatched (orphan dropped, rest replayed)', async () => {
+     // `unmatched_tool_result` is a non-blocking diagnostic: the materializer
+     // drops the orphan itself (a standalone tool message is an Anthropic 400),
+diff --git a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+index 2908e6746c..0b50e8f4d0 100644
+--- a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+@@ -8,7 +8,6 @@ import assert from 'node:assert/strict';
+ import { describe, test } from 'node:test';
+ import {
+   HISTORY_COMPACT_REQUIRED_SECTIONS,
+-  HISTORY_COMPACT_SUMMARY_SECTIONS,
+   validateHistoryCompactSummary,
+ } from '../history-compact-summary-validation.js';
+ 
+@@ -60,10 +59,6 @@ describe('validateHistoryCompactSummary', () => {
+     assert.equal(validateHistoryCompactSummary(incident), 'missing_sections');
+   });
+ 
+-  test('rejects a single word', () => {
+-    assert.equal(validateHistoryCompactSummary('done'), 'missing_sections');
+-  });
+-
+   test('rejects raw tool-call markup instead of a summary', () => {
+     // Observed live from a weak summarizer model that continued the
+     // conversation instead of summarizing it (DeepSeek DSML output).
+@@ -79,24 +74,41 @@ describe('validateHistoryCompactSummary', () => {
+     }
+   });
+ 
++  test('requires each section as its own heading line, not a prose mention', () => {
++    const proseMention = [
++      '## Goal',
++      'Fix the gate.',
++      '',
++      '## Progress',
++      'Done.',
++      '',
++      'The required headings are ## Goal, ## Progress, and ## Next Steps.',
++    ].join('\n');
++    assert.equal(validateHistoryCompactSummary(proseMention), 'missing_sections');
++  });
++
++  test('rejects a near-match heading like ## Goals for the ## Goal section', () => {
++    const plural = CONFORMING.replace('## Goal\n', '## Goals\n');
++    assert.equal(validateHistoryCompactSummary(plural), 'missing_sections');
++  });
++
+   test('rejects output that stops inside a code fence', () => {
+     assert.equal(validateHistoryCompactSummary(CONFORMING + '\n\n```ts\nconst x = 1'), 'truncated');
+   });
+ 
+   test('rejects a summary ending on truncation punctuation', () => {
+-    for (const tail of [':', '：', ',', '，', '、', ';', '；', '(', '（', '`', '—']) {
++    // Representative sample of the tail class; the full char list lives next to
++    // the regex so it stays co-located with the implementation it describes.
++    for (const tail of [':', '：', '`']) {
+       assert.equal(validateHistoryCompactSummary(CONFORMING + ' ' + tail), 'truncated', tail);
+     }
++    // Sentence terminals are completion, not truncation, and must be accepted.
++    assert.equal(validateHistoryCompactSummary(CONFORMING + '.'), undefined);
++    assert.equal(validateHistoryCompactSummary(CONFORMING + '。'), undefined);
+   });
+ 
+   test('accepts a closed fence and terminal punctuation', () => {
+     const withFence = CONFORMING + '\n\n```sh\nnpm test\n```\n\nDone.';
+     assert.equal(validateHistoryCompactSummary(withFence), undefined);
+   });
+-
+-  test('required sections are a subset of the full prompt contract', () => {
+-    for (const section of HISTORY_COMPACT_REQUIRED_SECTIONS) {
+-      assert.ok((HISTORY_COMPACT_SUMMARY_SECTIONS as readonly string[]).includes(section), section);
+-    }
+-  });
+ });
+diff --git a/packages/runtime/src/history-compact-summary-validation.ts b/packages/runtime/src/history-compact-summary-validation.ts
+index fffc1aaafe..3549474dd0 100644
+--- a/packages/runtime/src/history-compact-summary-validation.ts
++++ b/packages/runtime/src/history-compact-summary-validation.ts
+@@ -33,7 +33,20 @@ export const HISTORY_COMPACT_REQUIRED_SECTIONS = [
+   '## Goal',
+   '## Progress',
+   '## Next Steps',
+-] as const;
++] as const satisfies readonly (typeof HISTORY_COMPACT_SUMMARY_SECTIONS)[number][];
++
++/**
++ * Line-anchored heading matchers: a required section must appear as its own
++ * heading line. A substring match would also accept `## Goals` or a prose
++ * mention of `## Goal`, neither of which follows the summarizer contract.
++ */
++const REQUIRED_SECTION_HEADING_PATTERNS = HISTORY_COMPACT_REQUIRED_SECTIONS.map(
++  (section) => new RegExp(`^${escapeRegExp(section)}\\b`, 'm'),
++);
++
++function escapeRegExp(text: string): string {
++  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
++}
+ 
+ /** Terminal punctuation that indicates the output was cut off mid-thought. */
+ const TRUNCATED_TAIL_PATTERN = /[:：,，、;；(（`—]\s*$/u;
+@@ -48,8 +61,9 @@ export type HistoryCompactSummaryRejection = 'missing_sections' | 'truncated';
+ export function validateHistoryCompactSummary(
+   summary: string,
+ ): HistoryCompactSummaryRejection | undefined {
+-  const missing = HISTORY_COMPACT_REQUIRED_SECTIONS.filter((section) => !summary.includes(section));
+-  if (missing.length > 0) return 'missing_sections';
++  if (REQUIRED_SECTION_HEADING_PATTERNS.some((pattern) => !pattern.test(summary))) {
++    return 'missing_sections';
++  }
+   // An odd number of fences means the output stops inside a code block.
+   const fenceCount = (summary.match(/^```/gm) ?? []).length;
+   if (fenceCount % 2 === 1) return 'truncated';
+
+From 9ff972337207e967080346c4e4f2a6fb8ddfef2d Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 18:23:13 +0800
+Subject: [PATCH 4/6] revert(runtime): remove #3030 tool-call merge from this
+ PR (superseded by #3038)
+
+PR #3038 (fix/summarizer-parallel-tool-calls) fixes #3030 with a stronger
+step-based grouping that also handles interleaved results (call A, call B,
+result A, call C, result B, result C). Our adjacency-based merge missed that
+case, so drop the #3030 portion here and keep this PR focused on #3029
+(write-gate summary validation) only.
+---
+ .../history-compact-summarizer.test.ts        | 65 -------------------
+ .../runtime/src/history-compact-summarizer.ts | 32 ++++-----
+ 2 files changed, 11 insertions(+), 86 deletions(-)
+
+diff --git a/packages/runtime/src/__tests__/history-compact-summarizer.test.ts b/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
+index 79063c5ae9..a71c2a3f4b 100644
+--- a/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-summarizer.test.ts
+@@ -15,7 +15,6 @@ import { ProviderRequestTracker } from '../provider-request-telemetry.js';
+ import type { HistoryCompactSummaryInput } from '../ai-sdk-compaction-contract.js';
+ import {
+   buildLlmHistorySummarizer,
+-  replayPlanItemsToModelMessages,
+   type AiSdkGenerateTextLike,
+ } from '../history-compact-summarizer.js';
+ import { buildHistoryCompactCheckpoint } from '../history-compact-checkpoint.js';
+@@ -262,67 +261,3 @@ describe('buildLlmHistorySummarizer', () => {
+     expect(serialized.includes('ALREADY_SUMMARIZED_RAW')).toBe(false);
+   });
+ });
+-
+-describe('replayPlanItemsToModelMessages tool-call grouping', () => {
+-  // #3030: strict OpenAI-compatible providers 400 when parallel tool calls of
+-  // one step are split across multiple assistant messages. The primary
+-  // materializer merges a step's tool calls into one provider message; the
+-  // summarizer's projection must honor the same invariant.
+-  function callItem(toolCallId: string) {
+-    return {
+-      kind: 'tool_call' as const,
+-      toolCallId,
+-      toolName: 'Bash',
+-      input: { command: 'true' },
+-      eventId: `evt-${toolCallId}`,
+-      ts: 1,
+-    };
+-  }
+-  function resultItem(toolCallId: string) {
+-    return {
+-      kind: 'tool_result' as const,
+-      toolCallId,
+-      toolName: 'Bash',
+-      output: { stdout: '' },
+-      isError: false,
+-      eventId: `evt-r-${toolCallId}`,
+-      ts: 2,
+-    };
+-  }
+-
+-  test('merges consecutive tool calls into one assistant message', () => {
+-    const messages = replayPlanItemsToModelMessages([
+-      callItem('call-1'),
+-      callItem('call-2'),
+-      resultItem('call-1'),
+-      resultItem('call-2'),
+-    ]);
+-    assert.equal(messages.length, 3);
+-    const [assistant, tool1, tool2] = messages;
+-    assert.equal(assistant?.role, 'assistant');
+-    const parts = Array.isArray(assistant?.content) ? assistant.content : [];
+-    assert.deepEqual(
+-      parts.map((p) => p.type),
+-      ['tool-call', 'tool-call'],
+-    );
+-    assert.deepEqual(
+-      parts.map((p) => (p.type === 'tool-call' ? p.toolCallId : undefined)),
+-      ['call-1', 'call-2'],
+-    );
+-    assert.equal(tool1?.role, 'tool');
+-    assert.equal(tool2?.role, 'tool');
+-  });
+-
+-  test('does not merge tool calls separated by other content', () => {
+-    const messages = replayPlanItemsToModelMessages([
+-      callItem('call-1'),
+-      resultItem('call-1'),
+-      callItem('call-2'),
+-      resultItem('call-2'),
+-    ]);
+-    assert.deepEqual(
+-      messages.map((m) => m.role),
+-      ['assistant', 'tool', 'assistant', 'tool'],
+-    );
+-  });
+-});
+diff --git a/packages/runtime/src/history-compact-summarizer.ts b/packages/runtime/src/history-compact-summarizer.ts
+index 1b32ca7611..9f40da0f1f 100644
+--- a/packages/runtime/src/history-compact-summarizer.ts
++++ b/packages/runtime/src/history-compact-summarizer.ts
+@@ -149,27 +149,17 @@ export function replayPlanItemsToModelMessages(items: ReplayPlanItems): ModelMes
+         out.push({ role: 'assistant', content: [textPart] });
+       }
+     } else if (item.kind === 'tool_call') {
+-      // Merge consecutive tool calls into ONE assistant message, mirroring the
+-      // primary materializer's step merge (model-history.ts): strict
+-      // OpenAI-compatible providers 400 when an assistant message's tool_calls
+-      // are interrupted by another assistant message before their tool
+-      // results arrive (#3030).
+-      const toolCallPart = {
+-        type: 'tool-call' as const,
+-        toolCallId: item.toolCallId,
+-        toolName: item.toolName,
+-        input: item.input,
+-      };
+-      const previous = out[out.length - 1];
+-      if (
+-        previous?.role === 'assistant' &&
+-        Array.isArray(previous.content) &&
+-        previous.content.every((part) => part.type === 'tool-call')
+-      ) {
+-        previous.content.push(toolCallPart);
+-      } else {
+-        out.push({ role: 'assistant', content: [toolCallPart] });
+-      }
++      out.push({
++        role: 'assistant',
++        content: [
++          {
++            type: 'tool-call',
++            toolCallId: item.toolCallId,
++            toolName: item.toolName,
++            input: item.input,
++          },
++        ],
++      });
+     } else if (item.kind === 'tool_result') {
+       out.push({
+         role: 'tool',
+
+From 7ae7f2f541d006e8ce0e373db9213692ded3a46b Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 12:43:34 +0800
+Subject: [PATCH 5/6] fix(runtime): reject truncated history-compact summaries
+ at load time (#3041)
+
+---
+ .../history-compact-checkpoint.test.ts        | 63 +++++++++++++++++++
+ ...history-compact-summary-validation.test.ts | 23 +++++++
+ .../runtime/src/history-compact-ledger.ts     | 25 +++++++-
+ .../src/history-compact-summary-validation.ts | 20 ++++--
+ 4 files changed, 125 insertions(+), 6 deletions(-)
+
+diff --git a/packages/runtime/src/__tests__/history-compact-checkpoint.test.ts b/packages/runtime/src/__tests__/history-compact-checkpoint.test.ts
+index 6d26bb830b..493243cb7f 100644
+--- a/packages/runtime/src/__tests__/history-compact-checkpoint.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-checkpoint.test.ts
+@@ -184,6 +184,69 @@ describe('history compact checkpoint', () => {
+     assert.equal(loaded?.checkpointId, latest.checkpointId);
+   });
+ 
++  test('rejects a truncated checkpoint at load and recovers the prior valid one', async () => {
++    const valid = buildHistoryCompactCheckpoint({
++      sessionId: 'session-1',
++      coveredRuntimeEvents: [textEvent(0), textEvent(1)],
++      summary: 'legacy summary without sections but complete.',
++      now: 10,
++    });
++    // A truncated fragment that would otherwise win by coverage: the load gate
++    // must drop it and fall back to the previous complete checkpoint (#3041).
++    const poisoned = buildHistoryCompactCheckpoint({
++      sessionId: 'session-1',
++      coveredRuntimeEvents: [textEvent(0), textEvent(1), textEvent(2)],
++      summary: 'stops mid-thought：',
++      previousCheckpointId: valid.checkpointId,
++      now: 20,
++    });
++    const store = new StubAgentRunStore(
++      [run('run-valid', 10), run('run-poisoned', 20)],
++      new Map([
++        ['run-valid', [checkpointEvent('ledger-valid', 'run-valid', valid, 10)]],
++        ['run-poisoned', [checkpointEvent('ledger-poisoned', 'run-poisoned', poisoned, 20)]],
++      ]),
++    );
++
++    const loaded = await loadLatestHistoryCompactCheckpointFromRunLedger(store, 'session-1');
++
++    assert.equal(loaded?.checkpointId, valid.checkpointId);
++  });
++
++  test('treats a truncated projection as invalid and repairs from the canonical ledger', async () => {
++    const valid = buildHistoryCompactCheckpoint({
++      sessionId: 'session-1',
++      coveredRuntimeEvents: [textEvent(0)],
++      summary: 'canonical complete summary',
++    });
++    const canonicalEvent = checkpointEvent('canonical-event', 'run-canonical', valid, 20);
++    const poisoned = buildHistoryCompactCheckpoint({
++      sessionId: 'session-1',
++      coveredRuntimeEvents: [textEvent(0), textEvent(1)],
++      summary: 'projection fragment cut off：',
++    });
++    const poisonedProjection = checkpointEvent('projection-event', 'run-projection', poisoned, 30);
++    const replacedEventIds: Array<string | undefined> = [];
++    const store = {
++      readEventProjection: async () => poisonedProjection,
++      repairEventProjection: async (
++        _sessionId: string,
++        _type: AgentRunEvent['type'],
++        _event: AgentRunEvent | null,
++        options?: { replaceEventId?: string },
++      ) => {
++        replacedEventIds.push(options?.replaceEventId);
++      },
++      listSessionRuns: async () => [run('run-canonical', 10)],
++      readEvents: async () => [canonicalEvent],
++    };
++
++    const loaded = await loadLatestHistoryCompactCheckpointFromRunLedger(store, 'session-1');
++
++    assert.equal(loaded?.checkpointId, valid.checkpointId);
++    assert.deepEqual(replacedEventIds, [poisonedProjection.id]);
++  });
++
+   test('loads the furthest checkpoint when a later run records stale coverage', async () => {
+     const furthest = buildHistoryCompactCheckpoint({
+       sessionId: 'session-1',
+diff --git a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+index 0b50e8f4d0..bcb7292ea3 100644
+--- a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+@@ -7,6 +7,7 @@
+ import assert from 'node:assert/strict';
+ import { describe, test } from 'node:test';
+ import {
++  detectHistoryCompactSummaryTruncation,
+   HISTORY_COMPACT_REQUIRED_SECTIONS,
+   validateHistoryCompactSummary,
+ } from '../history-compact-summary-validation.js';
+@@ -112,3 +113,25 @@ describe('validateHistoryCompactSummary', () => {
+     assert.equal(validateHistoryCompactSummary(withFence), undefined);
+   });
+ });
++
++describe('detectHistoryCompactSummaryTruncation', () => {
++  test('flags a fragment ending on truncation punctuation regardless of sections', () => {
++    // Legacy summaries never carried the sectioned contract, so a section-less
++    // summary is still loadable; only the truncation signal matters at load.
++    assert.equal(detectHistoryCompactSummaryTruncation('legacy summary without sections.'), false);
++    assert.equal(detectHistoryCompactSummaryTruncation('legacy summary cut off：'), true);
++    assert.equal(detectHistoryCompactSummaryTruncation('ends with a dangling colon :'), true);
++  });
++
++  test('flags output that stops inside a code fence', () => {
++    assert.equal(detectHistoryCompactSummaryTruncation('```ts\nconst x = 1'), true);
++    // A closed fence followed by a sentence terminal is completion, not
++    // truncation (the same expectation as validateHistoryCompactSummary).
++    assert.equal(detectHistoryCompactSummaryTruncation('```ts\nconst x = 1\n```\n\nDone.'), false);
++  });
++
++  test('accepts sentence terminals as completion, not truncation', () => {
++    assert.equal(detectHistoryCompactSummaryTruncation('Done.'), false);
++    assert.equal(detectHistoryCompactSummaryTruncation('Done。'), false);
++  });
++});
+diff --git a/packages/runtime/src/history-compact-ledger.ts b/packages/runtime/src/history-compact-ledger.ts
+index cd2a54aae9..f6851fc4e1 100644
+--- a/packages/runtime/src/history-compact-ledger.ts
++++ b/packages/runtime/src/history-compact-ledger.ts
+@@ -4,12 +4,25 @@ import {
+   validateHistoryCompactCheckpointShape,
+   type HistoryCompactCheckpoint,
+ } from './history-compact-checkpoint.js';
++import { detectHistoryCompactSummaryTruncation } from './history-compact-summary-validation.js';
+ 
+ interface LedgerCheckpointCandidate {
+   checkpoint: HistoryCompactCheckpoint;
+   event: AgentRunEvent;
+ }
+ 
++/**
++ * Legacy checkpoints predate the sectioned summarizer contract, so their
++ * summaries may omit `## Goal` etc. and remain usable. A truncated fragment,
++ * however, poisons every subsequent replay with a half-finished thought
++ * regardless of which writer produced it (#3029, #3041). The load path
++ * therefore rejects only truncated summaries and leaves section-less legacy
++ * summaries intact.
++ */
++function hasLoadableHistoryCompactSummary(checkpoint: HistoryCompactCheckpoint): boolean {
++  return !detectHistoryCompactSummaryTruncation(checkpoint.summary);
++}
++
+ export async function loadLatestHistoryCompactCheckpointFromRunLedger(
+   runStore: Pick<
+     AgentRunStore,
+@@ -26,7 +39,12 @@ export async function loadLatestHistoryCompactCheckpointFromRunLedger(
+       );
+       if (projected === null) return undefined;
+       const checkpoint = projected?.data?.checkpoint;
+-      if (validateHistoryCompactCheckpointShape(checkpoint, sessionId)) return checkpoint;
++      if (
++        validateHistoryCompactCheckpointShape(checkpoint, sessionId) &&
++        hasLoadableHistoryCompactSummary(checkpoint)
++      ) {
++        return checkpoint;
++      }
+       replaceEventId = projected?.id;
+     } catch {
+       // Recover the derived projection from the canonical ledger below.
+@@ -41,7 +59,10 @@ export async function loadLatestHistoryCompactCheckpointFromRunLedger(
+       const event = events[eventIndex]!;
+       if (event.type !== 'history_compact_checkpoint_recorded') continue;
+       const checkpoint = event.data?.checkpoint;
+-      if (validateHistoryCompactCheckpointShape(checkpoint, sessionId)) {
++      if (
++        validateHistoryCompactCheckpointShape(checkpoint, sessionId) &&
++        hasLoadableHistoryCompactSummary(checkpoint)
++      ) {
+         candidates.push({ checkpoint, event });
+       }
+     }
+diff --git a/packages/runtime/src/history-compact-summary-validation.ts b/packages/runtime/src/history-compact-summary-validation.ts
+index 3549474dd0..84393ccf99 100644
+--- a/packages/runtime/src/history-compact-summary-validation.ts
++++ b/packages/runtime/src/history-compact-summary-validation.ts
+@@ -54,6 +54,21 @@ const TRUNCATED_TAIL_PATTERN = /[:：,，、;；(（`—]\s*$/u;
+ /** Why a summary failed validation, for diagnostics and tests. */
+ export type HistoryCompactSummaryRejection = 'missing_sections' | 'truncated';
+ 
++/**
++ * Writer-agnostic truncation detection: an odd number of code fences means the
++ * output stops inside a code block, and terminal dangling punctuation means it
++ * stops mid-thought. Legacy checkpoints (written before the sectioned
++ * summarizer prompt) never followed the section contract, but a truncated
++ * fragment is unusable regardless of writer era, so the load path applies this
++ * check to every checkpoint summary (#3041).
++ */
++export function detectHistoryCompactSummaryTruncation(summary: string): boolean {
++  // An odd number of fences means the output stops inside a code block.
++  const fenceCount = (summary.match(/^```/gm) ?? []).length;
++  if (fenceCount % 2 === 1) return true;
++  return TRUNCATED_TAIL_PATTERN.test(summary);
++}
++
+ /**
+  * Returns why the summary is malformed, or undefined when it satisfies the
+  * contract. Callers map any rejection to `malformed_summary` and fail open.
+@@ -64,9 +79,6 @@ export function validateHistoryCompactSummary(
+   if (REQUIRED_SECTION_HEADING_PATTERNS.some((pattern) => !pattern.test(summary))) {
+     return 'missing_sections';
+   }
+-  // An odd number of fences means the output stops inside a code block.
+-  const fenceCount = (summary.match(/^```/gm) ?? []).length;
+-  if (fenceCount % 2 === 1) return 'truncated';
+-  if (TRUNCATED_TAIL_PATTERN.test(summary)) return 'truncated';
++  if (detectHistoryCompactSummaryTruncation(summary)) return 'truncated';
+   return undefined;
+ }
+
+From 621f1d535556c3a4cbdb356904cec97b778f39bf Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Sat, 15 Aug 2026 12:56:14 +0800
+Subject: [PATCH 6/6] fix(runtime): stop the truncation tail from matching
+ closed code fences (#3041 review)
+
+The shared truncation heuristic counted a trailing backtick as truncation,
+but an even fence count already proves a fenced code block closed. Applying
+that tail check at load time therefore rejected complete legacy summaries
+that happened to end with a code fence, discarding their compaction benefit
+and forcing a re-compaction. Drop the backtick from the tail class (fence
+count still catches unclosed blocks), add the ellipsis signal, and rename the
+predicate to isHistoryCompactSummaryTruncated to match its boolean result.
+---
+ ...history-compact-summary-validation.test.ts | 30 +++++++++----------
+ .../runtime/src/history-compact-ledger.ts     | 14 ++++-----
+ .../src/history-compact-summary-validation.ts | 26 +++++++++++-----
+ 3 files changed, 38 insertions(+), 32 deletions(-)
+
+diff --git a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+index bcb7292ea3..85fa9d79e1 100644
+--- a/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
++++ b/packages/runtime/src/__tests__/history-compact-summary-validation.test.ts
+@@ -7,8 +7,8 @@
+ import assert from 'node:assert/strict';
+ import { describe, test } from 'node:test';
+ import {
+-  detectHistoryCompactSummaryTruncation,
+   HISTORY_COMPACT_REQUIRED_SECTIONS,
++  isHistoryCompactSummaryTruncated,
+   validateHistoryCompactSummary,
+ } from '../history-compact-summary-validation.js';
+ 
+@@ -99,8 +99,9 @@ describe('validateHistoryCompactSummary', () => {
+ 
+   test('rejects a summary ending on truncation punctuation', () => {
+     // Representative sample of the tail class; the full char list lives next to
+-    // the regex so it stays co-located with the implementation it describes.
+-    for (const tail of [':', '：', '`']) {
++    // the regex so it stays co-located with the implementation it describes. A
++    // backtick is deliberately absent: a trailing backtick also closes a fence.
++    for (const tail of [':', '：', '…']) {
+       assert.equal(validateHistoryCompactSummary(CONFORMING + ' ' + tail), 'truncated', tail);
+     }
+     // Sentence terminals are completion, not truncation, and must be accepted.
+@@ -114,24 +115,21 @@ describe('validateHistoryCompactSummary', () => {
+   });
+ });
+ 
+-describe('detectHistoryCompactSummaryTruncation', () => {
+-  test('flags a fragment ending on truncation punctuation regardless of sections', () => {
++describe('isHistoryCompactSummaryTruncated', () => {
++  test('rejects a truncated fragment and accepts a complete legacy summary without sections', () => {
+     // Legacy summaries never carried the sectioned contract, so a section-less
+     // summary is still loadable; only the truncation signal matters at load.
+-    assert.equal(detectHistoryCompactSummaryTruncation('legacy summary without sections.'), false);
+-    assert.equal(detectHistoryCompactSummaryTruncation('legacy summary cut off：'), true);
+-    assert.equal(detectHistoryCompactSummaryTruncation('ends with a dangling colon :'), true);
++    assert.equal(isHistoryCompactSummaryTruncated('legacy summary without sections.'), false);
++    assert.equal(isHistoryCompactSummaryTruncated('legacy summary cut off：'), true);
+   });
+ 
+-  test('flags output that stops inside a code fence', () => {
+-    assert.equal(detectHistoryCompactSummaryTruncation('```ts\nconst x = 1'), true);
+-    // A closed fence followed by a sentence terminal is completion, not
+-    // truncation (the same expectation as validateHistoryCompactSummary).
+-    assert.equal(detectHistoryCompactSummaryTruncation('```ts\nconst x = 1\n```\n\nDone.'), false);
++  test('rejects output that stops inside a code fence even without sections', () => {
++    assert.equal(isHistoryCompactSummaryTruncated('```ts\nconst x = 1'), true);
+   });
+ 
+-  test('accepts sentence terminals as completion, not truncation', () => {
+-    assert.equal(detectHistoryCompactSummaryTruncation('Done.'), false);
+-    assert.equal(detectHistoryCompactSummaryTruncation('Done。'), false);
++  test('accepts a complete summary ending with a closed code fence', () => {
++    // The trailing backtick closes the fence; the even fence count already
++    // proves the block closed, so this is completion, not truncation.
++    assert.equal(isHistoryCompactSummaryTruncated('```ts\nconst x = 1\n```'), false);
+   });
+ });
+diff --git a/packages/runtime/src/history-compact-ledger.ts b/packages/runtime/src/history-compact-ledger.ts
+index f6851fc4e1..75fb471f8d 100644
+--- a/packages/runtime/src/history-compact-ledger.ts
++++ b/packages/runtime/src/history-compact-ledger.ts
+@@ -4,7 +4,7 @@ import {
+   validateHistoryCompactCheckpointShape,
+   type HistoryCompactCheckpoint,
+ } from './history-compact-checkpoint.js';
+-import { detectHistoryCompactSummaryTruncation } from './history-compact-summary-validation.js';
++import { isHistoryCompactSummaryTruncated } from './history-compact-summary-validation.js';
+ 
+ interface LedgerCheckpointCandidate {
+   checkpoint: HistoryCompactCheckpoint;
+@@ -12,15 +12,13 @@ interface LedgerCheckpointCandidate {
+ }
+ 
+ /**
+- * Legacy checkpoints predate the sectioned summarizer contract, so their
+- * summaries may omit `## Goal` etc. and remain usable. A truncated fragment,
+- * however, poisons every subsequent replay with a half-finished thought
+- * regardless of which writer produced it (#3029, #3041). The load path
+- * therefore rejects only truncated summaries and leaves section-less legacy
+- * summaries intact.
++ * Only truncation is load-bearing here: legacy summaries may omit the section
++ * contract and remain usable, but a truncated fragment poisons every replay
++ * (#3041). See `isHistoryCompactSummaryTruncated` for the writer-agnostic
++ * heuristic.
+  */
+ function hasLoadableHistoryCompactSummary(checkpoint: HistoryCompactCheckpoint): boolean {
+-  return !detectHistoryCompactSummaryTruncation(checkpoint.summary);
++  return !isHistoryCompactSummaryTruncated(checkpoint.summary);
+ }
+ 
+ export async function loadLatestHistoryCompactCheckpointFromRunLedger(
+diff --git a/packages/runtime/src/history-compact-summary-validation.ts b/packages/runtime/src/history-compact-summary-validation.ts
+index 84393ccf99..4be08239ea 100644
+--- a/packages/runtime/src/history-compact-summary-validation.ts
++++ b/packages/runtime/src/history-compact-summary-validation.ts
+@@ -48,8 +48,15 @@ function escapeRegExp(text: string): string {
+   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+ }
+ 
+-/** Terminal punctuation that indicates the output was cut off mid-thought. */
+-const TRUNCATED_TAIL_PATTERN = /[:：,，、;；(（`—]\s*$/u;
++/**
++ * Terminal punctuation that indicates the output was cut off mid-thought.
++ * Best-effort by construction: a fragment ending mid-word (no punctuation) is
++ * undetectable, and code fences are handled separately by the fence count in
++ * `isHistoryCompactSummaryTruncated`. A trailing backtick is deliberately NOT
++ * here — it would also match a closed ``` fence, which is completion, not
++ * truncation.
++ */
++const TRUNCATED_TAIL_PATTERN = /[:：,，、;；…(（—]\s*$/u;
+ 
+ /** Why a summary failed validation, for diagnostics and tests. */
+ export type HistoryCompactSummaryRejection = 'missing_sections' | 'truncated';
+@@ -57,12 +64,15 @@ export type HistoryCompactSummaryRejection = 'missing_sections' | 'truncated';
+ /**
+  * Writer-agnostic truncation detection: an odd number of code fences means the
+  * output stops inside a code block, and terminal dangling punctuation means it
+- * stops mid-thought. Legacy checkpoints (written before the sectioned
+- * summarizer prompt) never followed the section contract, but a truncated
+- * fragment is unusable regardless of writer era, so the load path applies this
+- * check to every checkpoint summary (#3041).
++ * stops mid-thought. A complete summary that ends with a closed ``` fence is
++ * NOT truncated (the even fence count already proves the block closed), so the
++ * tail punctuation deliberately excludes a trailing backtick. Legacy
++ * checkpoints (written before the sectioned summarizer prompt) never followed
++ * the section contract, but a truncated fragment is unusable regardless of
++ * writer era, so the load path applies this check to every checkpoint summary
++ * (#3041).
+  */
+-export function detectHistoryCompactSummaryTruncation(summary: string): boolean {
++export function isHistoryCompactSummaryTruncated(summary: string): boolean {
+   // An odd number of fences means the output stops inside a code block.
+   const fenceCount = (summary.match(/^```/gm) ?? []).length;
+   if (fenceCount % 2 === 1) return true;
+@@ -79,6 +89,6 @@ export function validateHistoryCompactSummary(
+   if (REQUIRED_SECTION_HEADING_PATTERNS.some((pattern) => !pattern.test(summary))) {
+     return 'missing_sections';
+   }
+-  if (detectHistoryCompactSummaryTruncation(summary)) return 'truncated';
++  if (isHistoryCompactSummaryTruncated(summary)) return 'truncated';
+   return undefined;
+ }

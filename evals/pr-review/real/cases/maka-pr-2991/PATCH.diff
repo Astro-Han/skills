@@ -1,0 +1,1335 @@
+From 99d8cf9f38e4645ec52dc21aef0c89e265a81e9d Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Wed, 19 Aug 2026 16:00:51 +0800
+Subject: [PATCH 1/4] fix(agent-graph): bind refresh and stop identity
+
+Fence stale session reads before they can mutate panel selection, reuse cached epoch history for activity refreshes, and bind stop requests to the graph rendered by the operator UI.
+
+Generated-by: Maka
+---
+ .../main/__tests__/agent-graph-panel.test.ts  | 139 +++++++++++++++---
+ ...time-host-session-domains-ipc-main.test.ts |  13 ++
+ apps/desktop/src/main/runtime-host-client.ts  |   4 +
+ .../runtime-host-session-domains-ipc-main.ts  |  19 ++-
+ apps/desktop/src/preload/bridge-contract.d.ts |   3 +-
+ apps/desktop/src/preload/preload.ts           |  10 +-
+ .../src/renderer/agent-graph-panel.tsx        |  37 ++++-
+ .../__tests__/agent-graph-coordinator.test.ts |   9 +-
+ .../__tests__/agent-graph-protocol.test.ts    |  10 +-
+ .../agent-graph-two-client-uds.test.ts        |  11 +-
+ .../__tests__/execution-composition.test.ts   |   5 +-
+ .../runtime-host/src/protocol/agent-graph.ts  |  22 ++-
+ .../src/server/agent-graph-coordinator.ts     |   9 +-
+ .../src/server/execution-composition.ts       |   3 +-
+ .../stream-graph-coordinator.test.ts          |  16 ++
+ .../runtime/src/stream-graph-coordinator.ts   |   9 +-
+ 16 files changed, 274 insertions(+), 45 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+index d04bffff35..99e135ab6c 100644
+--- a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
++++ b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+@@ -93,7 +93,9 @@ function installGraphRenderer(
+   renderSession(sessionId: string): Promise<void>;
+   holdNextEpochList(sessionId: string): DeferredRead;
+   holdNextSnapshot(graphId: string): DeferredRead;
+-  stopCalls: string[];
++  setCurrentWithoutNotification(next: AgentGraphClientSnapshot): void;
++  epochReadCounts(): { full: number; current: number };
++  stopCalls: Array<{ sessionId: string; expectedGraphId: string }>;
+ } {
+   const { document, window } = parseHTML('<div id="root"></div>');
+   const matchMedia = (media: string) => ({
+@@ -130,29 +132,42 @@ function installGraphRenderer(
+   const listeners = new Set<GraphListener>();
+   const epochListGates = new Map<string, DeferredReadGate>();
+   const snapshotGates = new Map<string, DeferredReadGate>();
+-  const stopCalls: string[] = [];
++  const stopCalls: Array<{ sessionId: string; expectedGraphId: string }> = [];
++  let fullEpochReads = 0;
++  let currentEpochReads = 0;
++  const epochDirectory = (sessionId: string) => {
++    const currentGraphId = currentGraphIds.get(sessionId);
++    const entries = [...snapshots.values()]
++      .filter((entry) => entry.rootSessionId === sessionId)
++      .sort(
++        (left, right) =>
++          Number(right.graphId === currentGraphId) - Number(left.graphId === currentGraphId),
++      );
++    return {
++      epochs: entries.map((entry, index) => ({
++        epoch: entries.length - index,
++        graphId: entry.graphId,
++        createdAt: index + 1,
++        current: currentGraphIds.get(sessionId) === entry.graphId,
++      })),
++      truncated: false,
++    };
++  };
+   (window as unknown as { maka: unknown }).maka = {
+     graphs: {
+       listEpochs: async (sessionId: string) => {
++        fullEpochReads += 1;
+         const gate = epochListGates.get(sessionId);
+         if (gate) {
+           epochListGates.delete(sessionId);
+           gate.markStarted();
+           await gate.waitForRelease;
+         }
+-        const currentGraphId = currentGraphIds.get(sessionId);
+-        const entries = [...snapshots.values()]
+-          .filter((entry) => entry.rootSessionId === sessionId)
+-          .sort((left, right) => Number(right.graphId === currentGraphId) - Number(left.graphId === currentGraphId));
+-        return {
+-          epochs: entries.map((entry, index) => ({
+-            epoch: entries.length - index,
+-            graphId: entry.graphId,
+-            createdAt: index + 1,
+-            current: currentGraphIds.get(sessionId) === entry.graphId,
+-          })),
+-          truncated: false,
+-        };
++        return epochDirectory(sessionId);
++      },
++      listCurrentEpochs: async (sessionId: string) => {
++        currentEpochReads += 1;
++        return epochDirectory(sessionId);
+       },
+       getSnapshot: async (sessionId: string, options?: { graphId?: string }) => {
+         const graphId = options?.graphId ?? currentGraphIds.get(sessionId);
+@@ -177,8 +192,11 @@ function installGraphRenderer(
+           listeners.delete(listener);
+         };
+       },
+-      stop: async (sessionId: string) => {
+-        stopCalls.push(sessionId);
++      stop: async (sessionId: string, expectedGraphId: string) => {
++        stopCalls.push({ sessionId, expectedGraphId });
++        if (currentGraphIds.get(sessionId) !== expectedGraphId) {
++          throw new Error('graph changed before stop');
++        }
+       },
+     },
+   };
+@@ -200,6 +218,13 @@ function installGraphRenderer(
+     evict(graphId) {
+       snapshots.delete(graphId);
+     },
++    setCurrentWithoutNotification(next) {
++      snapshots.set(next.graphId, next);
++      currentGraphIds.set(next.rootSessionId, next.graphId);
++    },
++    epochReadCounts() {
++      return { full: fullEpochReads, current: currentEpochReads };
++    },
+     async renderSession(sessionId) {
+       await act(async () => {
+         root.render(
+@@ -277,6 +302,51 @@ describe('AgentGraphPanel dismiss', () => {
+     await act(async () => harness.root.unmount());
+   });
+ 
++  it('does not let a disposed session read overwrite the live session selection refs', async () => {
++    const sessionA = snapshot({ graphId: 'graph-a', status: 'active' });
++    const sessionBCurrent = snapshot({
++      graphId: 'graph-b2',
++      status: 'active',
++      rootSessionId: 'session-2',
++    });
++    const sessionBHistory = snapshot({
++      graphId: 'graph-b1',
++      status: 'completed',
++      rootSessionId: 'session-2',
++    });
++    const harness = installGraphRenderer(sessionA, [sessionBCurrent, sessionBHistory]);
++    const readA = harness.holdNextEpochList('session-1');
++    await harness.renderSession('session-1');
++    await readA.started;
++
++    await harness.renderSession('session-2');
++    const selector = harness.container.querySelector('[role="combobox"]');
++    assert.ok(selector);
++    await act(async () => {
++      (selector as HTMLElement).click();
++      await Promise.resolve();
++    });
++    const historyOption = [...document.querySelectorAll('[role="option"]')].find((option) =>
++      option.textContent?.includes('History'),
++    );
++    assert.ok(historyOption);
++    await act(async () => {
++      (historyOption as HTMLElement).click();
++      await Promise.resolve();
++    });
++
++    await act(async () => {
++      readA.release();
++      await Promise.resolve();
++    });
++    await harness.setSnapshot({ ...sessionBCurrent, status: 'waiting' });
++    assert.match(
++      harness.container.querySelector('[role="combobox"]')?.textContent ?? '',
++      /#1 · History \(read-only\)/,
++    );
++    await act(async () => harness.root.unmount());
++  });
++
+   it('switches to a historical epoch without exposing current-graph controls', async () => {
+     const current = snapshot({ graphId: 'graph-2', status: 'active' });
+     const previous = snapshot({ graphId: 'graph-1', status: 'completed' });
+@@ -321,6 +391,41 @@ describe('AgentGraphPanel dismiss', () => {
+     await act(async () => harness.root.unmount());
+   });
+ 
++  it('binds stop to the graph identity rendered before a silent rollover', async () => {
++    const current = snapshot({ graphId: 'graph-1', status: 'active' });
++    const harness = await renderPanel(current);
++    const stop = [...harness.container.querySelectorAll('button')].find((button) =>
++      button.textContent?.includes('Stop graph'),
++    );
++    assert.ok(stop);
++
++    harness.setCurrentWithoutNotification(snapshot({ graphId: 'graph-2', status: 'active' }));
++    await act(async () => {
++      (stop as HTMLElement).click();
++      await Promise.resolve();
++    });
++
++    assert.deepEqual(harness.stopCalls, [
++      { sessionId: 'session-1', expectedGraphId: 'graph-1' },
++    ]);
++    assert.match(harness.container.textContent ?? '', /Could not stop the graph/);
++    await act(async () => harness.root.unmount());
++  });
++
++  it('reuses cached history during activity and reloads it only after epoch rollover', async () => {
++    const graph1 = snapshot({ graphId: 'graph-1', status: 'active' });
++    const harness = await renderPanel(graph1);
++    assert.deepEqual(harness.epochReadCounts(), { full: 1, current: 0 });
++
++    await harness.setSnapshot({ ...graph1, status: 'waiting', scheduleRevision: 2 });
++    await harness.setSnapshot({ ...graph1, status: 'active', scheduleRevision: 3 });
++    assert.deepEqual(harness.epochReadCounts(), { full: 1, current: 2 });
++
++    await harness.setSnapshot(snapshot({ graphId: 'graph-2', status: 'active' }));
++    assert.deepEqual(harness.epochReadCounts(), { full: 2, current: 3 });
++    await act(async () => harness.root.unmount());
++  });
++
+   it('resumes following the current epoch after the selected history expires', async () => {
+     const current = snapshot({ graphId: 'graph-2', status: 'active' });
+     const previous = snapshot({ graphId: 'graph-1', status: 'completed' });
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts b/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
+index be3f029763..a76a2c3f97 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
+@@ -93,6 +93,14 @@ test('adapts bounded Agent Graph epoch reads without changing graph identity', a
+         truncated: false,
+       };
+     },
++    listCurrentAgentGraphEpochs: async (rootSessionId) => {
++      calls.push({ current: rootSessionId });
++      return {
++        rootSessionId,
++        epochs: [{ epoch: 2, graphId: 'graph-2', createdAt: 2, current: true }],
++        nextBeforeEpoch: 2,
++      };
++    },
+     queryAgentGraph: async (input) => {
+       calls.push(input);
+       return graphSnapshot(input.rootSessionId, input.graphId ?? 'graph-current');
+@@ -105,6 +113,10 @@ test('adapts bounded Agent Graph epoch reads without changing graph identity', a
+     epochs: [{ epoch: 2, graphId: 'graph-2', createdAt: 2, current: true }],
+     truncated: false,
+   });
++  assert.deepEqual(await ipc.invoke('graphs:listCurrentEpochs', 'session-1'), {
++    epochs: [{ epoch: 2, graphId: 'graph-2', createdAt: 2, current: true }],
++    truncated: true,
++  });
+   assert.equal(
+     (await ipc.invoke('graphs:getSnapshot', 'session-1', { graphId: 'graph-2' }) as {
+       graphId: string;
+@@ -113,6 +125,7 @@ test('adapts bounded Agent Graph epoch reads without changing graph identity', a
+   );
+   assert.deepEqual(calls, [
+     'session-1',
++    { current: 'session-1' },
+     { rootSessionId: 'session-1', graphId: 'graph-2' },
+   ]);
+ });
+diff --git a/apps/desktop/src/main/runtime-host-client.ts b/apps/desktop/src/main/runtime-host-client.ts
+index 22965a101c..4668d5db26 100644
+--- a/apps/desktop/src/main/runtime-host-client.ts
++++ b/apps/desktop/src/main/runtime-host-client.ts
+@@ -1273,6 +1273,10 @@ export class DesktopRuntimeHostClient {
+     return readRuntimeHostAgentGraphEpochs(this.connection, rootSessionId);
+   }
+ 
++  listCurrentAgentGraphEpochs(rootSessionId: string) {
++    return this.request("agent.graph.epochs.query", { rootSessionId });
++  }
++
+   queryAgentGraphOperator(
+     input: OperationInput<"agent.graph.operator.query">,
+   ): Promise<OperationOutput<"agent.graph.operator.query">> {
+diff --git a/apps/desktop/src/main/runtime-host-session-domains-ipc-main.ts b/apps/desktop/src/main/runtime-host-session-domains-ipc-main.ts
+index e8a0619698..d11f0092a9 100644
+--- a/apps/desktop/src/main/runtime-host-session-domains-ipc-main.ts
++++ b/apps/desktop/src/main/runtime-host-session-domains-ipc-main.ts
+@@ -33,6 +33,7 @@ type RuntimeHostSessionDomainClient = RuntimeHostShellRunsClient &
+   | 'getPlanState'
+   | 'listRuntimeResources'
+   | 'listAgentGraphEpochs'
++  | 'listCurrentAgentGraphEpochs'
+   | 'listTasks'
+   | 'queryAgentGraph'
+   | 'queryAgentGraphOperator'
+@@ -197,6 +198,16 @@ export function registerRuntimeHostSessionDomainsIpc(
+     async (_event, rootSessionId: unknown): Promise<AgentGraphEpochDirectory> =>
+       deps.client.listAgentGraphEpochs(requiredId(rootSessionId, 'root Session')),
+   );
++  handleReconnectableRead(
++    ipcMain,
++    'graphs:listCurrentEpochs',
++    async (_event, rootSessionId: unknown): Promise<AgentGraphEpochDirectory> => {
++      const page = await deps.client.listCurrentAgentGraphEpochs(
++        requiredId(rootSessionId, 'root Session'),
++      );
++      return { epochs: page.epochs, truncated: page.nextBeforeEpoch !== null };
++    },
++  );
+   handleReconnectableRead(
+     ipcMain,
+     'graphs:inspectOperator',
+@@ -216,11 +227,15 @@ export function registerRuntimeHostSessionDomainsIpc(
+         }),
+       ),
+   );
+-  ipcMain.handle('graphs:stop', async (_event, rootSessionId: unknown) => {
++  ipcMain.handle(
++    'graphs:stop',
++    async (_event, rootSessionId: unknown, expectedGraphId: unknown) => {
+     await deps.client.stopAgentGraph({
+       rootSessionId: requiredId(rootSessionId, 'root Session'),
++      expectedGraphId: requiredId(expectedGraphId, 'Agent graph'),
+     });
+-  });
++    },
++  );
+ 
+   const sessionDomainChanged = (change: SessionDomainChange): void => {
+     switch (change.domain) {
+diff --git a/apps/desktop/src/preload/bridge-contract.d.ts b/apps/desktop/src/preload/bridge-contract.d.ts
+index 4b71fed502..e80a15c3b7 100644
+--- a/apps/desktop/src/preload/bridge-contract.d.ts
++++ b/apps/desktop/src/preload/bridge-contract.d.ts
+@@ -499,6 +499,7 @@ export interface MakaBridge {
+   };
+   graphs: {
+     listEpochs(rootSessionId: string): Promise<AgentGraphEpochDirectory>;
++    listCurrentEpochs(rootSessionId: string): Promise<AgentGraphEpochDirectory>;
+     getSnapshot(
+       rootSessionId: string,
+       options?: AgentGraphClientSnapshotOptions & { graphId?: string },
+@@ -508,7 +509,7 @@ export interface MakaBridge {
+       operatorId: string,
+       graphId?: string,
+     ): Promise<AgentGraphOperatorInspection>;
+-    stop(rootSessionId: string): Promise<void>;
++    stop(rootSessionId: string, expectedGraphId: string): Promise<void>;
+     subscribe(
+       rootSessionId: string,
+       handler: () => void,
+diff --git a/apps/desktop/src/preload/preload.ts b/apps/desktop/src/preload/preload.ts
+index fb975e3a43..189101db2b 100644
+--- a/apps/desktop/src/preload/preload.ts
++++ b/apps/desktop/src/preload/preload.ts
+@@ -1209,6 +1209,12 @@ const makaBridge = {
+         'graphs:listEpochs', session.scope, session.sessionId,
+       ) as Promise<AgentGraphEpochDirectory>;
+     },
++    async listCurrentEpochs(rootSessionId: string): Promise<AgentGraphEpochDirectory> {
++      const session = await runtimeHostSessionRef(rootSessionId);
++      return ipcRenderer.invoke(
++        'graphs:listCurrentEpochs', session.scope, session.sessionId,
++      ) as Promise<AgentGraphEpochDirectory>;
++    },
+     async getSnapshot(
+       rootSessionId: string,
+       options?: AgentGraphClientSnapshotOptions & { graphId?: string },
+@@ -1234,8 +1240,8 @@ const makaBridge = {
+       ) as AgentGraphOperatorInspection;
+       return projectProtocolSessionIds(session.scope.hostId, inspection);
+     },
+-    stop(rootSessionId: string): Promise<void> {
+-      return invokeSessionRuntimeHost('graphs:stop', rootSessionId);
++    stop(rootSessionId: string, expectedGraphId: string): Promise<void> {
++      return invokeSessionRuntimeHost('graphs:stop', rootSessionId, expectedGraphId);
+     },
+     subscribe(
+       rootSessionId: string,
+diff --git a/apps/desktop/src/renderer/agent-graph-panel.tsx b/apps/desktop/src/renderer/agent-graph-panel.tsx
+index 9517416d08..c761ebf350 100644
+--- a/apps/desktop/src/renderer/agent-graph-panel.tsx
++++ b/apps/desktop/src/renderer/agent-graph-panel.tsx
+@@ -4,6 +4,7 @@ import type {
+   AgentGraphClientOperator,
+   AgentGraphClientSnapshot,
+ } from '@maka/runtime/stream-graph-read-model';
++import type { AgentGraphEpochDirectory } from '@maka/runtime-host/client';
+ import type { AgentGraphEpochSummary } from '@maka/runtime-host/protocol';
+ import { IconButton, Selector, type SelectorOptionType } from '@maka/ui';
+ import { ICON_SIZE, ChevronDown, X } from '@maka/ui/icons';
+@@ -186,11 +187,22 @@ export function AgentGraphPanel(props: {
+     setStopError(false);
+     setCollapsed(false);
+     setLoading(props.enabled);
++    let cachedDirectory: AgentGraphEpochDirectory | undefined;
+ 
+     const scheduler = createAgentGraphRefreshScheduler(async (fence) => {
+       setLoading(true);
+       try {
+-        const directory = await window.maka.graphs.listEpochs(props.rootSessionId);
++        let directory: AgentGraphEpochDirectory;
++        if (!cachedDirectory) {
++          directory = await window.maka.graphs.listEpochs(props.rootSessionId);
++        } else {
++          const currentPage = await window.maka.graphs.listCurrentEpochs(props.rootSessionId);
++          directory = sameEpochPage(cachedDirectory, currentPage)
++            ? cachedDirectory
++            : await window.maka.graphs.listEpochs(props.rootSessionId);
++        }
++        if (!scheduler.isCurrent(fence)) return;
++        cachedDirectory = directory;
+         const nextEpochs = directory.epochs;
+         const current = nextEpochs.find((entry) => entry.current) ?? nextEpochs[0];
+         const selected = followCurrentRef.current
+@@ -277,12 +289,12 @@ export function AgentGraphPanel(props: {
+     return null;
+   }
+ 
+-  const stopGraph = async (): Promise<void> => {
++  const stopGraph = async (expectedGraphId: string): Promise<void> => {
+     if (stopPending) return;
+     setStopPending(true);
+     setStopError(false);
+     try {
+-      await window.maka.graphs.stop(props.rootSessionId);
++      await window.maka.graphs.stop(props.rootSessionId, expectedGraphId);
+     } catch {
+       setStopError(true);
+     } finally {
+@@ -353,7 +365,9 @@ export function AgentGraphPanel(props: {
+               size="sm"
+               label={stopPending ? copy.stopping : copy.stop}
+               isDisabled={stopPending}
+-              onClick={() => void stopGraph()}
++              onClick={() => {
++                if (snapshot) void stopGraph(snapshot.graphId);
++              }}
+             />
+           ) : null}
+           {dismissAvailable && snapshot ? (
+@@ -466,6 +480,21 @@ export function AgentGraphPanel(props: {
+   );
+ }
+ 
++function sameEpochPage(
++  cached: AgentGraphEpochDirectory,
++  currentPage: AgentGraphEpochDirectory,
++): boolean {
++  if (!currentPage.truncated && currentPage.epochs.length !== cached.epochs.length) return false;
++  return currentPage.epochs.every((entry, index) => {
++    const previous = cached.epochs[index];
++    return (
++      previous?.epoch === entry.epoch &&
++      previous.graphId === entry.graphId &&
++      previous.current === entry.current
++    );
++  });
++}
++
+ function firstWait(operator: AgentGraphClientOperator) {
+   return operator.readiness.find((readiness) => readiness.status === 'waiting')?.waitingFor[0];
+ }
+diff --git a/packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts b/packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts
+index b464fad77f..1a6e79937d 100644
+--- a/packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts
++++ b/packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts
+@@ -26,6 +26,7 @@ describe('Host Agent Graph coordinator', () => {
+     const snapshot = graphSnapshot();
+     const inspection = operatorInspection(snapshot);
+     let stoppedRoot: string | undefined;
++    let stoppedGraph: string | undefined;
+     let listener: AgentGraphClientChangedListener | undefined;
+     let unsubscribed = false;
+     const invalidations: unknown[] = [];
+@@ -58,8 +59,9 @@ describe('Host Agent Graph coordinator', () => {
+     const coordinator = new HostAgentGraphCoordinator({
+       authority,
+       continuity: { enqueueAgentGraphChanged: (event) => invalidations.push(event) },
+-      stopExecution: async (rootSessionId) => {
++      stopExecution: async (rootSessionId, expectedGraphId) => {
+         stoppedRoot = rootSessionId;
++        stoppedGraph = expectedGraphId;
+       },
+     });
+ 
+@@ -96,7 +98,7 @@ describe('Host Agent Graph coordinator', () => {
+     assert.equal(inspected.result.operator.operatorId, 'operator-1');
+ 
+     const stopped = await coordinator.handlers['agent.graph.stop'](
+-      { rootSessionId: 'root-1' },
++      { rootSessionId: 'root-1', expectedGraphId: snapshot.graphId },
+       context(),
+     );
+     assert.deepEqual(stopped, {
+@@ -104,6 +106,7 @@ describe('Host Agent Graph coordinator', () => {
+       result: { rootSessionId: 'root-1', graphId: snapshot.graphId },
+     });
+     assert.equal(stoppedRoot, 'root-1');
++    assert.equal(stoppedGraph, snapshot.graphId);
+ 
+     await listener?.({
+       schemaVersion: 1,
+@@ -167,7 +170,7 @@ describe('Host Agent Graph coordinator', () => {
+     if (!childQuery.ok) assert.equal(childQuery.error.code, 'operation_conflict');
+ 
+     const archivedStop = await child.handlers['agent.graph.stop'](
+-      { rootSessionId: 'root-1' },
++      { rootSessionId: 'root-1', expectedGraphId: agentGraphIdForRootSession('root-1') },
+       context(),
+     );
+     assert.equal(archivedStop.ok, false);
+diff --git a/packages/runtime-host/src/__tests__/agent-graph-protocol.test.ts b/packages/runtime-host/src/__tests__/agent-graph-protocol.test.ts
+index 8786e5df75..10025d86ff 100644
+--- a/packages/runtime-host/src/__tests__/agent-graph-protocol.test.ts
++++ b/packages/runtime-host/src/__tests__/agent-graph-protocol.test.ts
+@@ -59,9 +59,13 @@ describe('Agent Graph Client protocol', () => {
+       }),
+       { rootSessionId: 'root-1', graphId: 'agent_graph_1', operatorId: 'operator:1' },
+     );
+-    assert.deepEqual(decodeAgentGraphStopInput({ rootSessionId: 'root-1' }), {
+-      rootSessionId: 'root-1',
+-    });
++    assert.deepEqual(
++      decodeAgentGraphStopInput({
++        rootSessionId: 'root-1',
++        expectedGraphId: 'agent_graph_1',
++      }),
++      { rootSessionId: 'root-1', expectedGraphId: 'agent_graph_1' },
++    );
+     assert.deepEqual(
+       decodeAgentGraphStopResult({ rootSessionId: 'root-1', graphId: 'agent_graph_1' }),
+       { rootSessionId: 'root-1', graphId: 'agent_graph_1' },
+diff --git a/packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts b/packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts
+index 7ac2db6950..89b5165402 100644
+--- a/packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts
++++ b/packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts
+@@ -60,7 +60,8 @@ test('two Clients query and control one Agent graph through Session invalidation
+       const graph = new HostAgentGraphCoordinator({
+         authority,
+         continuity,
+-        stopExecution: (rootSessionId) => authority.stopExecution(rootSessionId),
++        stopExecution: (rootSessionId, expectedGraphId) =>
++          authority.stopExecution(rootSessionId, expectedGraphId),
+       });
+       return {
+         handlers: {
+@@ -125,7 +126,10 @@ test('two Clients query and control one Agent graph through Session invalidation
+     );
+ 
+     tui = await connect(root, 'tui', onLivenessProbe);
+-    const stopped = await tui.request('agent.graph.stop', { rootSessionId: ROOT_SESSION_ID });
++    const stopped = await tui.request('agent.graph.stop', {
++      rootSessionId: ROOT_SESSION_ID,
++      expectedGraphId: GRAPH_ID,
++    });
+     assert.deepEqual(stopped, { rootSessionId: ROOT_SESSION_ID, graphId: GRAPH_ID });
+     assert.equal(authority.stopCount, 1);
+ 
+@@ -212,8 +216,9 @@ class FakeAgentGraphAuthority implements GraphAuthority {
+    *  probe cycles — causal ordering, no fixed timing at all. */
+   stopGate: Promise<void> = Promise.resolve();
+ 
+-  async stopExecution(rootSessionId: string): Promise<void> {
++  async stopExecution(rootSessionId: string, expectedGraphId?: string): Promise<void> {
+     assert.equal(rootSessionId, ROOT_SESSION_ID);
++    assert.equal(expectedGraphId, GRAPH_ID);
+     await this.stopGate;
+     this.stopCount += 1;
+     this.#snapshot.status = 'stopped';
+diff --git a/packages/runtime-host/src/__tests__/execution-composition.test.ts b/packages/runtime-host/src/__tests__/execution-composition.test.ts
+index 6083587900..c4492fb2e4 100644
+--- a/packages/runtime-host/src/__tests__/execution-composition.test.ts
++++ b/packages/runtime-host/src/__tests__/execution-composition.test.ts
+@@ -755,7 +755,10 @@ test('production composition validates graph stop before aborting a claimed chil
+         acquireResidency: () => ({ release() {} }),
+       };
+       const invalidStop = await composition.handlers['agent.graph.stop'](
+-        { rootSessionId: abortedClaim.targetSessionId },
++        {
++          rootSessionId: abortedClaim.targetSessionId,
++          expectedGraphId: abortedClaim.graphId,
++        },
+         clientContext,
+       );
+       assert.equal(invalidStop.ok, false);
+diff --git a/packages/runtime-host/src/protocol/agent-graph.ts b/packages/runtime-host/src/protocol/agent-graph.ts
+index bffc107d3a..369efa0fbd 100644
+--- a/packages/runtime-host/src/protocol/agent-graph.ts
++++ b/packages/runtime-host/src/protocol/agent-graph.ts
+@@ -335,6 +335,7 @@ export interface AgentGraphOperatorQueryInput {
+ 
+ export interface AgentGraphStopInput {
+   readonly rootSessionId: string;
++  readonly expectedGraphId?: string;
+ }
+ 
+ export interface AgentGraphStopResult {
+@@ -418,7 +419,12 @@ export const AGENT_GRAPH_OPERATION_SPECS = {
+     errors: STOP_ERRORS,
+     decodeInput: decodeAgentGraphStopInput,
+     decodeOutput: decodeAgentGraphStopResult,
+-    assertOutputForInput: (input, output) => assertRootIdentity(input.rootSessionId, output),
++    assertOutputForInput: (input, output) => {
++      assertRootIdentity(input.rootSessionId, output);
++      if (input.expectedGraphId !== undefined && output.graphId !== input.expectedGraphId) {
++        throw invalidProtocolFrame('Agent graph stop changed request graph identity');
++      }
++    },
+   }),
+ } as const;
+ 
+@@ -531,8 +537,18 @@ function decodeOptionalEpochCursor(value: unknown): number | null {
+ }
+ 
+ export function decodeAgentGraphStopInput(value: unknown): AgentGraphStopInput {
+-  const record = requireExactRecord(value, 'agent.graph.stop input', ['rootSessionId']);
+-  return { rootSessionId: requireEntityId(record.rootSessionId, 'rootSessionId') };
++  const record = requireShapedRecord(
++    value,
++    'agent.graph.stop input',
++    ['rootSessionId'],
++    ['expectedGraphId'],
++  );
++  return {
++    rootSessionId: requireEntityId(record.rootSessionId, 'rootSessionId'),
++    ...(record.expectedGraphId === undefined
++      ? {}
++      : { expectedGraphId: requireOpaqueIdentity(record.expectedGraphId, 'expectedGraphId') }),
++  };
+ }
+ 
+ export function decodeAgentGraphStopResult(value: unknown): AgentGraphStopResult {
+diff --git a/packages/runtime-host/src/server/agent-graph-coordinator.ts b/packages/runtime-host/src/server/agent-graph-coordinator.ts
+index 297150b596..beac8c58fc 100644
+--- a/packages/runtime-host/src/server/agent-graph-coordinator.ts
++++ b/packages/runtime-host/src/server/agent-graph-coordinator.ts
+@@ -80,13 +80,13 @@ export class HostAgentGraphCoordinator {
+   };
+ 
+   readonly #authority: AgentGraphAuthority;
+-  readonly #stopExecution: (rootSessionId: string) => Promise<void>;
++  readonly #stopExecution: (rootSessionId: string, expectedGraphId?: string) => Promise<void>;
+   #unsubscribe: (() => void) | undefined;
+ 
+   constructor(options: {
+     authority: AgentGraphAuthority;
+     continuity: GraphContinuity;
+-    stopExecution: (rootSessionId: string) => Promise<void>;
++    stopExecution: (rootSessionId: string, expectedGraphId?: string) => Promise<void>;
+   }) {
+     this.#authority = options.authority;
+     this.#stopExecution = options.stopExecution;
+@@ -163,8 +163,9 @@ export class HostAgentGraphCoordinator {
+ 
+   async #stop(input: AgentGraphStopInput): Promise<OperationOutcome<'agent.graph.stop'>> {
+     try {
+-      await this.#stopExecution(input.rootSessionId);
+-      const graphId = await this.#authority.currentGraphId(input.rootSessionId);
++      await this.#stopExecution(input.rootSessionId, input.expectedGraphId);
++      const graphId =
++        input.expectedGraphId ?? (await this.#authority.currentGraphId(input.rootSessionId));
+       return {
+         ok: true,
+         result: {
+diff --git a/packages/runtime-host/src/server/execution-composition.ts b/packages/runtime-host/src/server/execution-composition.ts
+index c2ca7fea76..2f4a44ca99 100644
+--- a/packages/runtime-host/src/server/execution-composition.ts
++++ b/packages/runtime-host/src/server/execution-composition.ts
+@@ -997,8 +997,9 @@ export async function createExecutionRuntimeHostComposition(
+     graphClient = new HostAgentGraphCoordinator({
+       authority: graphCoordinator,
+       continuity: continuityCoordinator,
+-      stopExecution: (rootSessionId) =>
++      stopExecution: (rootSessionId, expectedGraphId) =>
+         requireGraphCoordinator(graphCoordinator).stopExecution(rootSessionId, {
++          expectedGraphId,
+           stopSupervisor: () =>
+             requireRootCoordinator(rootCoordinator).stopAgentGraphSupervisor(rootSessionId, {
+               source: 'stop_button',
+diff --git a/packages/runtime/src/__tests__/stream-graph-coordinator.test.ts b/packages/runtime/src/__tests__/stream-graph-coordinator.test.ts
+index 9625d44fbc..e419b4bd55 100644
+--- a/packages/runtime/src/__tests__/stream-graph-coordinator.test.ts
++++ b/packages/runtime/src/__tests__/stream-graph-coordinator.test.ts
+@@ -537,6 +537,7 @@ describe('host-managed agent graph coordinator', () => {
+       let childStopEntered = false;
+       await assert.rejects(
+         coordinator.stopExecution(childSessions[0]!.id, {
++          expectedGraphId: graphId,
+           stopSupervisor: async () => {
+             childStopEntered = true;
+           },
+@@ -653,9 +654,24 @@ describe('host-managed agent graph coordinator', () => {
+       );
+       await gate.started;
+       try {
++        let mismatchedStopEntered = false;
++        await assert.rejects(
++          recovered.stopExecution(rootSession.id, {
++            expectedGraphId: 'agent_graph_stale',
++            stopSupervisor: async () => {
++              mismatchedStopEntered = true;
++            },
++            withSupervisorWakesSuppressed: (operation) => operation(),
++          }),
++          (error: unknown) =>
++            error instanceof AgentGraphClientOperationError && error.code === 'operation_conflict',
++        );
++        assert.equal(mismatchedStopEntered, false);
++
+         const supervisorStopFailure = new Error('supervisor stop failed');
+         await assert.rejects(
+           recovered.stopExecution(rootSession.id, {
++            expectedGraphId: graphId,
+             stopSupervisor: async () => {
+               throw supervisorStopFailure;
+             },
+diff --git a/packages/runtime/src/stream-graph-coordinator.ts b/packages/runtime/src/stream-graph-coordinator.ts
+index 85628d17b4..aa785a6c04 100644
+--- a/packages/runtime/src/stream-graph-coordinator.ts
++++ b/packages/runtime/src/stream-graph-coordinator.ts
+@@ -113,6 +113,7 @@ export interface AgentGraphCoordinatorInput {
+ }
+ 
+ export interface AgentGraphExecutionStopInput {
++  expectedGraphId?: string;
+   stopSupervisor(): Promise<void>;
+   withSupervisorWakesSuppressed(operation: () => Promise<void>): Promise<void>;
+ }
+@@ -560,8 +561,14 @@ export class AgentGraphCoordinator {
+   /** Stop the validated root supervisor and its graph under one wake fence. */
+   async stopExecution(rootSessionId: string, input: AgentGraphExecutionStopInput): Promise<void> {
+     await this.#assertRootSupervisor(rootSessionId);
+-    const driver = await this.#driver(rootSessionId);
+     await input.withSupervisorWakesSuppressed(async () => {
++      const driver = await this.#driver(rootSessionId);
++      if (input.expectedGraphId !== undefined && driver.graphId !== input.expectedGraphId) {
++        throw new AgentGraphClientOperationError(
++          'operation_conflict',
++          `Agent graph ${input.expectedGraphId} is no longer current`,
++        );
++      }
+       const failures: unknown[] = [];
+       try {
+         await input.stopSupervisor();
+
+From 323d97e8488d04689b4717e17c7b1a6e27f0a625 Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Wed, 19 Aug 2026 16:17:14 +0800
+Subject: [PATCH 2/4] fix(agent-graph): preserve controls during refresh
+
+Keep current graph actions mounted during background reads, fence historical TUI results after shutdown, and cover both lifecycle boundaries.
+
+Generated-by: Maka
+---
+ .../main/__tests__/agent-graph-panel.test.ts  | 23 ++++++++-
+ ...time-host-session-domains-ipc-main.test.ts |  1 +
+ .../src/renderer/agent-graph-panel.tsx        |  2 +-
+ .../cli/src/__tests__/pi-tui-runner.test.ts   | 49 +++++++++++++++++++
+ packages/cli/src/pi-tui-runner.ts             |  1 +
+ 5 files changed, 74 insertions(+), 2 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+index 99e135ab6c..54caa97518 100644
+--- a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
++++ b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+@@ -94,6 +94,7 @@ function installGraphRenderer(
+   holdNextEpochList(sessionId: string): DeferredRead;
+   holdNextSnapshot(graphId: string): DeferredRead;
+   setCurrentWithoutNotification(next: AgentGraphClientSnapshot): void;
++  notify(): void;
+   epochReadCounts(): { full: number; current: number };
+   stopCalls: Array<{ sessionId: string; expectedGraphId: string }>;
+ } {
+@@ -147,7 +148,7 @@ function installGraphRenderer(
+       epochs: entries.map((entry, index) => ({
+         epoch: entries.length - index,
+         graphId: entry.graphId,
+-        createdAt: index + 1,
++        createdAt: entries.length - index,
+         current: currentGraphIds.get(sessionId) === entry.graphId,
+       })),
+       truncated: false,
+@@ -222,6 +223,9 @@ function installGraphRenderer(
+       snapshots.set(next.graphId, next);
+       currentGraphIds.set(next.rootSessionId, next.graphId);
+     },
++    notify() {
++      for (const listener of [...listeners]) listener();
++    },
+     epochReadCounts() {
+       return { full: fullEpochReads, current: currentEpochReads };
+     },
+@@ -426,6 +430,23 @@ describe('AgentGraphPanel dismiss', () => {
+     await act(async () => harness.root.unmount());
+   });
+ 
++  it('keeps current controls mounted during a background refresh', async () => {
++    const graph = snapshot({ graphId: 'graph-1', status: 'active' });
++    const harness = await renderPanel(graph);
++    const read = harness.holdNextSnapshot(graph.graphId);
++
++    harness.setCurrentWithoutNotification({ ...graph, scheduleRevision: 2 });
++    harness.notify();
++    await read.started;
++    assert.match(harness.container.textContent ?? '', /Stop graph/);
++
++    await act(async () => {
++      read.release();
++      await Promise.resolve();
++    });
++    await act(async () => harness.root.unmount());
++  });
++
+   it('resumes following the current epoch after the selected history expires', async () => {
+     const current = snapshot({ graphId: 'graph-2', status: 'active' });
+     const previous = snapshot({ graphId: 'graph-1', status: 'completed' });
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts b/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
+index a76a2c3f97..aa09bf9034 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts
+@@ -728,6 +728,7 @@ function domainClient(overrides: Partial<DomainClient>): DomainClient {
+     getPlanState: unavailable,
+     listRuntimeResources: unavailable,
+     listAgentGraphEpochs: unavailable,
++    listCurrentAgentGraphEpochs: unavailable,
+     listTasks: unavailable,
+     queryAgentGraph: unavailable,
+     queryAgentGraphOperator: unavailable,
+diff --git a/apps/desktop/src/renderer/agent-graph-panel.tsx b/apps/desktop/src/renderer/agent-graph-panel.tsx
+index c761ebf350..5d1caa7997 100644
+--- a/apps/desktop/src/renderer/agent-graph-panel.tsx
++++ b/apps/desktop/src/renderer/agent-graph-panel.tsx
+@@ -190,7 +190,7 @@ export function AgentGraphPanel(props: {
+     let cachedDirectory: AgentGraphEpochDirectory | undefined;
+ 
+     const scheduler = createAgentGraphRefreshScheduler(async (fence) => {
+-      setLoading(true);
++      if (!cachedDirectory) setLoading(true);
+       try {
+         let directory: AgentGraphEpochDirectory;
+         if (!cachedDirectory) {
+diff --git a/packages/cli/src/__tests__/pi-tui-runner.test.ts b/packages/cli/src/__tests__/pi-tui-runner.test.ts
+index 0c7f267d7e..27374f7fc3 100644
+--- a/packages/cli/src/__tests__/pi-tui-runner.test.ts
++++ b/packages/cli/src/__tests__/pi-tui-runner.test.ts
+@@ -2546,6 +2546,55 @@ describe('Maka Pi TUI runner', () => {
+     await run;
+   });
+ 
++  test('does not render a historical Agent Graph snapshot after shutdown', async () => {
++    const terminal = new FakeTerminal();
++    const driver = new SlashCommandDriver();
++    const snapshotStarted = deferred<void>();
++    const releaseSnapshot = deferred<void>();
++    const run = runMakaPiTui({
++      title: 'Maka',
++      driver,
++      cwd: '/repo',
++      model: 'deepseek-v4-flash',
++      connectionSlug: 'deepseek',
++      permissionMode: 'ask',
++      terminal,
++      agentGraphHistory: {
++        listEpochs: async () => ({
++          epochs: [
++            { epoch: 2, graphId: 'graph-2', createdAt: 2, current: true },
++            { epoch: 1, graphId: 'graph-1', createdAt: 1, current: false },
++          ],
++          truncated: false,
++        }),
++        getSnapshot: async (_rootSessionId, graphId) => {
++          snapshotStarted.resolve();
++          await releaseSnapshot.promise;
++          return historicalGraphSnapshot(graphId);
++        },
++      },
++    });
++
++    terminal.input('/graph history');
++    terminal.input('\r');
++    await waitFor(() =>
++      plainTerminalOutput(terminal.screenOutput()).includes('Agent Graph History'),
++    );
++    terminal.input('\x1b[B');
++    terminal.input('\r');
++    await snapshotStarted.promise;
++
++    exitMaka(terminal);
++    await run;
++    releaseSnapshot.resolve();
++    await new Promise<void>((resolve) => setImmediate(resolve));
++
++    assert.doesNotMatch(
++      plainTerminalOutput(terminal.output()),
++      /Agent Graph run #1 · History \(read-only\)/,
++    );
++  });
++
+   test('rejects unsupported /thinking levels with usage instead of sending an update', async () => {
+     const terminal = new FakeTerminal();
+     const driver = new SlashCommandDriver();
+diff --git a/packages/cli/src/pi-tui-runner.ts b/packages/cli/src/pi-tui-runner.ts
+index 8bedbe83a0..300576985c 100644
+--- a/packages/cli/src/pi-tui-runner.ts
++++ b/packages/cli/src/pi-tui-runner.ts
+@@ -2302,6 +2302,7 @@ export async function runMakaPiTui(input: MakaPiTuiInput): Promise<void> {
+         if (!epoch) return;
+         void runControl(async () => {
+           const graph = await input.agentGraphHistory!.getSnapshot(rootSessionId, epoch.graphId);
++          if (closed) return;
+           state.entries.push({
+             kind: 'notice',
+             level: 'info',
+
+From 24456836e9a13009960b7ef789f4aad373b0662c Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Wed, 19 Aug 2026 17:22:05 +0800
+Subject: [PATCH 3/4] fix(desktop): fence graph stop state by session
+
+Keep deferred stop completion and failure state scoped to the root session and request that initiated them.
+
+Generated-by: Maka
+---
+ .../main/__tests__/agent-graph-panel.test.ts  | 50 +++++++++++++++++++
+ .../src/renderer/agent-graph-panel.tsx        | 38 +++++++++++---
+ 2 files changed, 80 insertions(+), 8 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+index 54caa97518..6aa1a54c7d 100644
+--- a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
++++ b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+@@ -93,6 +93,7 @@ function installGraphRenderer(
+   renderSession(sessionId: string): Promise<void>;
+   holdNextEpochList(sessionId: string): DeferredRead;
+   holdNextSnapshot(graphId: string): DeferredRead;
++  holdNextStop(sessionId: string): DeferredRead;
+   setCurrentWithoutNotification(next: AgentGraphClientSnapshot): void;
+   notify(): void;
+   epochReadCounts(): { full: number; current: number };
+@@ -133,6 +134,7 @@ function installGraphRenderer(
+   const listeners = new Set<GraphListener>();
+   const epochListGates = new Map<string, DeferredReadGate>();
+   const snapshotGates = new Map<string, DeferredReadGate>();
++  const stopGates = new Map<string, DeferredReadGate>();
+   const stopCalls: Array<{ sessionId: string; expectedGraphId: string }> = [];
+   let fullEpochReads = 0;
+   let currentEpochReads = 0;
+@@ -195,6 +197,13 @@ function installGraphRenderer(
+       },
+       stop: async (sessionId: string, expectedGraphId: string) => {
+         stopCalls.push({ sessionId, expectedGraphId });
++        const gate = stopGates.get(sessionId);
++        if (gate) {
++          stopGates.delete(sessionId);
++          gate.markStarted();
++          await gate.waitForRelease;
++          throw new Error('deferred stop failure');
++        }
+         if (currentGraphIds.get(sessionId) !== expectedGraphId) {
+           throw new Error('graph changed before stop');
+         }
+@@ -252,6 +261,11 @@ function installGraphRenderer(
+       snapshotGates.set(graphId, gate);
+       return gate;
+     },
++    holdNextStop(sessionId) {
++      const gate = deferredReadGate();
++      stopGates.set(sessionId, gate);
++      return gate;
++    },
+     stopCalls,
+   };
+ }
+@@ -416,6 +430,42 @@ describe('AgentGraphPanel dismiss', () => {
+     await act(async () => harness.root.unmount());
+   });
+ 
++  it('does not leak a deferred stop result across a root session switch', async () => {
++    const sessionA = snapshot({
++      rootSessionId: 'session-a',
++      graphId: 'graph-a',
++      status: 'active',
++    });
++    const sessionB = snapshot({
++      rootSessionId: 'session-b',
++      graphId: 'graph-b',
++      status: 'active',
++    });
++    const harness = installGraphRenderer(sessionA, [sessionB]);
++    await harness.renderSession(sessionA.rootSessionId);
++    const stopA = [...harness.container.querySelectorAll('button')].find((button) =>
++      button.textContent?.includes('Stop graph'),
++    );
++    assert.ok(stopA);
++    const stopRead = harness.holdNextStop(sessionA.rootSessionId);
++    await act(async () => {
++      (stopA as HTMLElement).click();
++      await stopRead.started;
++    });
++
++    await harness.renderSession(sessionB.rootSessionId);
++    assert.match(harness.container.textContent ?? '', /Stop graph/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++
++    await act(async () => {
++      stopRead.release();
++      await Promise.resolve();
++    });
++    assert.match(harness.container.textContent ?? '', /Stop graph/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++    await act(async () => harness.root.unmount());
++  });
++
+   it('reuses cached history during activity and reloads it only after epoch rollover', async () => {
+     const graph1 = snapshot({ graphId: 'graph-1', status: 'active' });
+     const harness = await renderPanel(graph1);
+diff --git a/apps/desktop/src/renderer/agent-graph-panel.tsx b/apps/desktop/src/renderer/agent-graph-panel.tsx
+index 5d1caa7997..67786ca694 100644
+--- a/apps/desktop/src/renderer/agent-graph-panel.tsx
++++ b/apps/desktop/src/renderer/agent-graph-panel.tsx
+@@ -166,15 +166,23 @@ export function AgentGraphPanel(props: {
+   const [selectedGraphId, setSelectedGraphId] = useState<string>();
+   const [loading, setLoading] = useState(props.enabled);
+   const [error, setError] = useState(false);
+-  const [stopPending, setStopPending] = useState(false);
+-  const [stopError, setStopError] = useState(false);
++  const [stopState, setStopState] = useState({
++    rootSessionId: props.rootSessionId,
++    requestId: 0,
++    pending: false,
++    error: false,
++  });
+   const [collapsed, setCollapsed] = useState(false);
+   const [dismissedBySession, setDismissedBySession] = useState<AgentGraphPanelDismissals>({});
+   const contentId = useId();
+   const refreshRef = useRef<AgentGraphRefreshScheduler>(noopAgentGraphRefreshScheduler);
+   const selectedGraphIdRef = useRef<string | undefined>(undefined);
+   const followCurrentRef = useRef(true);
++  const stopRequestIdRef = useRef(0);
+   const copy = getAgentGraphPanelCopy(props.locale);
++  const stopPending =
++    stopState.rootSessionId === props.rootSessionId && stopState.pending;
++  const stopError = stopState.rootSessionId === props.rootSessionId && stopState.error;
+ 
+   useEffect(() => {
+     setSnapshot(undefined);
+@@ -184,7 +192,12 @@ export function AgentGraphPanel(props: {
+     selectedGraphIdRef.current = undefined;
+     followCurrentRef.current = true;
+     setError(false);
+-    setStopError(false);
++    setStopState({
++      rootSessionId: props.rootSessionId,
++      requestId: ++stopRequestIdRef.current,
++      pending: false,
++      error: false,
++    });
+     setCollapsed(false);
+     setLoading(props.enabled);
+     let cachedDirectory: AgentGraphEpochDirectory | undefined;
+@@ -291,14 +304,23 @@ export function AgentGraphPanel(props: {
+ 
+   const stopGraph = async (expectedGraphId: string): Promise<void> => {
+     if (stopPending) return;
+-    setStopPending(true);
+-    setStopError(false);
++    const rootSessionId = props.rootSessionId;
++    const requestId = ++stopRequestIdRef.current;
++    setStopState({ rootSessionId, requestId, pending: true, error: false });
+     try {
+-      await window.maka.graphs.stop(props.rootSessionId, expectedGraphId);
++      await window.maka.graphs.stop(rootSessionId, expectedGraphId);
+     } catch {
+-      setStopError(true);
++      setStopState((current) =>
++        current.rootSessionId === rootSessionId && current.requestId === requestId
++          ? { ...current, error: true }
++          : current,
++      );
+     } finally {
+-      setStopPending(false);
++      setStopState((current) =>
++        current.rootSessionId === rootSessionId && current.requestId === requestId
++          ? { ...current, pending: false }
++          : current,
++      );
+     }
+   };
+   const stopAvailable =
+
+From d42bf37ee6986ae4375d35651df08e5c05e1cbf1 Mon Sep 17 00:00:00 2001
+From: me2seeks <me2seeks@gmail.com>
+Date: Wed, 19 Aug 2026 18:28:06 +0800
+Subject: [PATCH 4/4] fix(graph): fence stop feedback by epoch
+
+Generated-by: Maka
+---
+ .../main/__tests__/agent-graph-panel.test.ts  | 67 +++++++++++++++++++
+ .../src/renderer/agent-graph-panel.tsx        | 11 +--
+ .../__tests__/root-turn-coordinator.test.ts   | 51 ++++++++++++++
+ .../src/server/execution-composition.ts       |  1 +
+ .../src/server/root-turn-coordinator.ts       | 20 ++++--
+ 5 files changed, 139 insertions(+), 11 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+index 6aa1a54c7d..7430011602 100644
+--- a/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
++++ b/apps/desktop/src/main/__tests__/agent-graph-panel.test.ts
+@@ -466,6 +466,73 @@ describe('AgentGraphPanel dismiss', () => {
+     await act(async () => harness.root.unmount());
+   });
+ 
++  it('does not leak a deferred stop result across an epoch rollover', async () => {
++    const graphA = snapshot({ graphId: 'graph-a', status: 'active' });
++    const harness = await renderPanel(graphA);
++    const stopA = [...harness.container.querySelectorAll('button')].find((button) =>
++      button.textContent?.includes('Stop graph'),
++    );
++    assert.ok(stopA);
++    const stopRead = harness.holdNextStop(graphA.rootSessionId);
++    await act(async () => {
++      (stopA as HTMLElement).click();
++      await stopRead.started;
++    });
++
++    await harness.setSnapshot(snapshot({ graphId: 'graph-b', status: 'active' }));
++    assert.match(harness.container.textContent ?? '', /Stop graph/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Stopping/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++
++    await act(async () => {
++      stopRead.release();
++      await Promise.resolve();
++    });
++    assert.match(harness.container.textContent ?? '', /Stop graph/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++    await act(async () => harness.root.unmount());
++  });
++
++  it('does not leak a deferred current stop result into graph history', async () => {
++    const current = snapshot({ graphId: 'graph-2', status: 'active' });
++    const history = snapshot({ graphId: 'graph-1', status: 'completed' });
++    const harness = installGraphRenderer(current, [history]);
++    await harness.renderSession(current.rootSessionId);
++    const stop = [...harness.container.querySelectorAll('button')].find((button) =>
++      button.textContent?.includes('Stop graph'),
++    );
++    assert.ok(stop);
++    const stopRead = harness.holdNextStop(current.rootSessionId);
++    await act(async () => {
++      (stop as HTMLElement).click();
++      await stopRead.started;
++    });
++
++    const selector = harness.container.querySelector('[role="combobox"]');
++    assert.ok(selector);
++    await act(async () => {
++      (selector as HTMLElement).click();
++      await Promise.resolve();
++    });
++    const historyOption = [...document.querySelectorAll('[role="option"]')].find((option) =>
++      option.textContent?.includes('History'),
++    );
++    assert.ok(historyOption);
++    await act(async () => {
++      (historyOption as HTMLElement).click();
++      await Promise.resolve();
++    });
++    assert.doesNotMatch(harness.container.textContent ?? '', /Stopping/);
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++
++    await act(async () => {
++      stopRead.release();
++      await Promise.resolve();
++    });
++    assert.doesNotMatch(harness.container.textContent ?? '', /Could not stop the graph/);
++    await act(async () => harness.root.unmount());
++  });
++
+   it('reuses cached history during activity and reloads it only after epoch rollover', async () => {
+     const graph1 = snapshot({ graphId: 'graph-1', status: 'active' });
+     const harness = await renderPanel(graph1);
+diff --git a/apps/desktop/src/renderer/agent-graph-panel.tsx b/apps/desktop/src/renderer/agent-graph-panel.tsx
+index 67786ca694..ecf5204871 100644
+--- a/apps/desktop/src/renderer/agent-graph-panel.tsx
++++ b/apps/desktop/src/renderer/agent-graph-panel.tsx
+@@ -168,6 +168,7 @@ export function AgentGraphPanel(props: {
+   const [error, setError] = useState(false);
+   const [stopState, setStopState] = useState({
+     rootSessionId: props.rootSessionId,
++    graphId: undefined as string | undefined,
+     requestId: 0,
+     pending: false,
+     error: false,
+@@ -180,9 +181,10 @@ export function AgentGraphPanel(props: {
+   const followCurrentRef = useRef(true);
+   const stopRequestIdRef = useRef(0);
+   const copy = getAgentGraphPanelCopy(props.locale);
+-  const stopPending =
+-    stopState.rootSessionId === props.rootSessionId && stopState.pending;
+-  const stopError = stopState.rootSessionId === props.rootSessionId && stopState.error;
++  const stopFeedbackMatchesSelection =
++    stopState.rootSessionId === props.rootSessionId && stopState.graphId === selectedGraphId;
++  const stopPending = stopFeedbackMatchesSelection && stopState.pending;
++  const stopError = stopFeedbackMatchesSelection && stopState.error;
+ 
+   useEffect(() => {
+     setSnapshot(undefined);
+@@ -194,6 +196,7 @@ export function AgentGraphPanel(props: {
+     setError(false);
+     setStopState({
+       rootSessionId: props.rootSessionId,
++      graphId: undefined,
+       requestId: ++stopRequestIdRef.current,
+       pending: false,
+       error: false,
+@@ -306,7 +309,7 @@ export function AgentGraphPanel(props: {
+     if (stopPending) return;
+     const rootSessionId = props.rootSessionId;
+     const requestId = ++stopRequestIdRef.current;
+-    setStopState({ rootSessionId, requestId, pending: true, error: false });
++    setStopState({ rootSessionId, graphId: expectedGraphId, requestId, pending: true, error: false });
+     try {
+       await window.maka.graphs.stop(rootSessionId, expectedGraphId);
+     } catch {
+diff --git a/packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts b/packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts
+index ab015a6322..1d1b30454c 100644
+--- a/packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts
++++ b/packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts
+@@ -1362,6 +1362,57 @@ test('Agent Graph supervisor stop owns only graph-capable root Turns', async ()
+   }
+ });
+ 
++test('Agent Graph supervisor stop rejects a stale graph identity inside session admission', async () => {
++  let backend: LinkedChildAuthorityBackend | undefined;
++  let currentGraphId = 'graph-before-rollover';
++  const fixture = await createFailureFixture({
++    registerBackend: (backends) =>
++      backends.register('fake', (context) => {
++        backend = new LinkedChildAuthorityBackend(context.sessionId);
++        return backend;
++      }),
++    agentGraphEpochs: {
++      currentGraphId: async () => currentGraphId,
++      beginNextGraphEpoch: async () => currentGraphId,
++    },
++  });
++  try {
++    await fixture.manager.setOrchestrationMode(fixture.sessionId, 'graph');
++    const started = await fixture.interactiveTurns.handlers['turn.start'](
++      {
++        sessionId: fixture.sessionId,
++        turnId: 'turn-owned-by-graph-before-rollover',
++        content: { text: HOLD_EXTERNAL_PROMPT },
++      },
++      operationContext(fixture.hostEpoch, fixture.acquireResidency),
++    );
++    assert.equal(started.ok, true);
++    await waitUntil(() => backend !== undefined);
++    await backend?.externalHoldStarted.promise;
++
++    currentGraphId = 'graph-after-rollover';
++    await assert.rejects(
++      () =>
++        fixture.coordinator.stopAgentGraphSupervisor(fixture.sessionId, {
++          expectedGraphId: currentGraphId,
++          source: 'stop_button',
++        }),
++      (error: unknown) => {
++        assert.ok(error instanceof RuntimeHostedRootConflictError);
++        assert.match(error.message, /graph-after-rollover.*no longer current/);
++        return true;
++      },
++    );
++    assert.equal(backend?.stopCount, 0);
++    assert.equal(fixture.coordinator.readRootState(fixture.sessionId).kind, 'active');
++  } finally {
++    backend?.release();
++    await fixture.coordinator.close();
++    await fixture.messages.close();
++    await fixture.dispose();
++  }
++});
++
+ test('Agent Graph supervisor stop owns a graph safe-boundary continuation', async () => {
+   const workspaceIdentity = 'workspace-graph-continuation-stop';
+   let backend: BlockingRootBackend | undefined;
+diff --git a/packages/runtime-host/src/server/execution-composition.ts b/packages/runtime-host/src/server/execution-composition.ts
+index 2f4a44ca99..cb34e02a24 100644
+--- a/packages/runtime-host/src/server/execution-composition.ts
++++ b/packages/runtime-host/src/server/execution-composition.ts
+@@ -1002,6 +1002,7 @@ export async function createExecutionRuntimeHostComposition(
+           expectedGraphId,
+           stopSupervisor: () =>
+             requireRootCoordinator(rootCoordinator).stopAgentGraphSupervisor(rootSessionId, {
++              expectedGraphId,
+               source: 'stop_button',
+             }),
+           withSupervisorWakesSuppressed: (operation) =>
+diff --git a/packages/runtime-host/src/server/root-turn-coordinator.ts b/packages/runtime-host/src/server/root-turn-coordinator.ts
+index e53906839d..b9afbd4fd0 100644
+--- a/packages/runtime-host/src/server/root-turn-coordinator.ts
++++ b/packages/runtime-host/src/server/root-turn-coordinator.ts
+@@ -930,15 +930,25 @@ export class RootTurnCoordinator implements HostedExecutionAuthority {
+   async stopAgentGraphSupervisor(
+     sessionId: string,
+     input: {
++      expectedGraphId?: string;
+       source?: 'stop_button' | 'graph_supervisor';
+       mode?: BackendStopMode;
+     } = {},
+   ): Promise<void> {
+-    const graphId = await this.resolveCurrentGraphId(sessionId);
+     const identity = await this.runCommand(() =>
+-      this.sessionAdmission.run(sessionId, () => {
++      this.sessionAdmission.run(sessionId, async () => {
++        const graphId = input.expectedGraphId ?? (await this.resolveCurrentGraphId(sessionId));
+         const active = this.#executions.get(sessionId);
+-        if (!active || !activeRootOwnsAgentGraph(active, graphId)) return undefined;
++        if (!active?.graphOwnerId) return undefined;
++        if (active.graphOwnerId !== graphId) {
++          if (input.expectedGraphId !== undefined) {
++            throw new RuntimeHostedRootConflictError(
++              sessionId,
++              `Agent graph ${input.expectedGraphId} is no longer current`,
++            );
++          }
++          return undefined;
++        }
+         return {
+           sessionId,
+           turnId: active.turnId,
+@@ -2730,10 +2740,6 @@ function isTerminalSnapshot(snapshot: TurnSnapshot): boolean {
+   );
+ }
+ 
+-function activeRootOwnsAgentGraph(active: ActiveRootTurn, graphId: string): boolean {
+-  return active.graphOwnerId === graphId;
+-}
+-
+ function isShutdownCancelledBackendStart(error: unknown): boolean {
+   // The Host began draining while a Turn was still starting its backend, so
+   // the interaction bind was rejected with authority_draining. The Turn never

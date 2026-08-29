@@ -1,0 +1,2119 @@
+From 7c22a43992871bd5f2061c2ec6415ce46f298281 Mon Sep 17 00:00:00 2001
+From: AstroHan <lei.yuhan@outlook.com>
+Date: Sat, 15 Aug 2026 18:09:43 +0800
+Subject: [PATCH 1/3] refactor: retire Gemini CLI account preview
+
+Remove the non-executable gemini-cli provider from Core metadata and Desktop OAuth surfaces. Retire legacy persisted entries at the connection-catalog boundary without blocking supported connections, while preserving the ordinary Google API-key provider.
+
+Generated-by: Codex
+---
+ README.md                                     |   2 +-
+ README.zh-CN.md                               |   2 +-
+ SECURITY.md                                   |   4 +-
+ .../runtime-host-oauth-ipc-main.test.ts       |  12 -
+ .../src/main/runtime-host-oauth-ipc-main.ts   |  30 -
+ apps/desktop/src/preload/bridge-contract.d.ts |  20 -
+ apps/desktop/src/preload/preload.ts           |  40 +-
+ .../settings/provider-brand-marks.tsx         |   1 -
+ .../settings/provider-connection-detail.tsx   |   4 +-
+ .../settings/provider-display-copy.ts         |   4 -
+ .../settings/use-connection-detail.ts         |   7 +-
+ .../renderer/settings/use-oauth-login-flow.ts |   2 +-
+ .../settings/provider-settings.stories.tsx    |   4 -
+ .../core/src/__tests__/provider-auth.test.ts  |  20 -
+ .../__tests__/runtime-policy-codec.test.ts    |  32 +
+ packages/core/src/chat-model-choice.ts        |   1 -
+ packages/core/src/model-metadata.generated.ts | 552 ------------------
+ packages/core/src/model-metadata.ts           |   7 -
+ packages/core/src/model-web-search.ts         |   2 -
+ packages/core/src/provider-registry.ts        |  15 -
+ .../__tests__/runtime-policy-stores.test.ts   |  62 +-
+ .../connection-catalog-document.ts            |  29 +-
+ packages/ui/src/chat-model-helpers.ts         |   2 +-
+ scripts/sync-model-metadata.mjs               |   2 -
+ 24 files changed, 125 insertions(+), 731 deletions(-)
+
+diff --git a/README.md b/README.md
+index 5da39f27d2..731e17e63e 100644
+--- a/README.md
++++ b/README.md
+@@ -190,7 +190,7 @@ Current boundaries that matter:
+ 
+ - Sessions, messages, execution ledgers, workflows, usage, Automations, and Daily Review live in `runtime.sqlite`;
+ - Runtime credentials such as API keys, bot tokens, and proxy passwords currently live in local plaintext `credentials.json`, behind the OS account boundary, with POSIX directory mode `0700` and file mode `0600` enforced;
+-- Subscription OAuth tokens (Claude, Codex, GitHub Copilot, xAI, and the Antigravity preview) live in the same `credentials.json` — the single authority for Runtime Host clients. Pre-existing Electron `safeStorage` credential/token files are not imported; affected users must re-authenticate;
++- Subscription OAuth tokens (Claude, Codex, GitHub Copilot, and xAI) live in the same `credentials.json` — the single authority for Runtime Host clients. Pre-existing Electron `safeStorage` credential/token files are not imported; affected users must re-authenticate;
+ - Renderer does not receive plaintext credentials. File writes, Shell, and dangerous tool calls pass through the permission engine;
+ - Eval does not construct Runtime or read Runtime storage. Maka subjects connect to an existing Runtime Host.
+ 
+diff --git a/README.zh-CN.md b/README.zh-CN.md
+index 69dac727bb..a4cbbb3254 100644
+--- a/README.zh-CN.md
++++ b/README.zh-CN.md
+@@ -188,7 +188,7 @@ Maka 默认把 workspace 数据放在 Electron `userData` 下：
+ 
+ - 会话、消息、执行 ledger、workflow、usage、Automations 和 Daily Review 都保存在 `runtime.sqlite`；
+ - API key、bot token、proxy password 等运行凭据当前保存在本地 plaintext `credentials.json`，依赖 OS 账号边界，并在 POSIX 上强制目录 `0700`、文件 `0600`；
+-- 订阅 OAuth token（Claude、Codex、GitHub Copilot、xAI 以及 Antigravity preview）统一存放在同一份 `credentials.json`，它是 Runtime Host client 的唯一凭据权威；历史 Electron `safeStorage` 凭据/token 文件不会被导入，仅保留这些历史副本的用户需要重新登录；
++- 订阅 OAuth token（Claude、Codex、GitHub Copilot 和 xAI）统一存放在同一份 `credentials.json`，它是 Runtime Host client 的唯一凭据权威；历史 Electron `safeStorage` 凭据/token 文件不会被导入，仅保留这些历史副本的用户需要重新登录；
+ - Renderer 不接收明文凭据；文件写入、Shell 和危险工具调用需要经过 permission engine；
+ - Eval 不构造 Runtime，也不读取 Runtime storage；Maka subject 连接已有 Runtime Host。
+ 
+diff --git a/SECURITY.md b/SECURITY.md
+index d9f5a2d565..47cda4c257 100644
+--- a/SECURITY.md
++++ b/SECURITY.md
+@@ -92,8 +92,8 @@ supply their own boundary. See
+    user's workspace directory. Its load-bearing boundary is the OS
+    user account plus filesystem controls: directory mode 0o700,
+    file mode 0o600, atomic writes, and no symlink/traversal escape.
+-   Subscription OAuth tokens (Claude, Codex, GitHub Copilot, xAI, and the
+-   Antigravity preview) live in the same store: `credentials.json`
++   Subscription OAuth tokens (Claude, Codex, GitHub Copilot, and xAI) live in
++   the same store: `credentials.json`
+    is the single authority every Runtime Host surface — Desktop, TUI, CLI —
+    reads and writes, under the same OS-account and 0o700/0o600 boundary
+    as other runtime credentials. Electron safeStorage is not part of
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts b/apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts
+index 0d10cb2e4c..855cada63a 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts
+@@ -194,18 +194,6 @@ test('adapts every Host OAuth provider through one Desktop flow', async () => {
+     assert.equal(handlers.has(`${prefix}:get-account-state`), true);
+     assert.equal(handlers.has(`${prefix}:logout`), true);
+   }
+-  assert.equal(
+-    await invoke(handlers, 'antigravity-subscription:is-experimental-enabled'),
+-    false,
+-  );
+-  assert.deepEqual(
+-    await invoke(handlers, 'antigravity-subscription:get-account-state'),
+-    {
+-      provider: 'antigravity-subscription',
+-      status: 'preview',
+-      runtimeState: 'not_logged_in',
+-    },
+-  );
+   const authorization = await invoke(handlers, 'claude-subscription:get-auth-url');
+   assert.deepEqual(authorization, { authRequestId: attemptId, stateHint: 'STATE-HINT' });
+   assert.deepEqual(opened, ['https://claude.example/authorize']);
+diff --git a/apps/desktop/src/main/runtime-host-oauth-ipc-main.ts b/apps/desktop/src/main/runtime-host-oauth-ipc-main.ts
+index 154e8d6394..7aa94b437d 100644
+--- a/apps/desktop/src/main/runtime-host-oauth-ipc-main.ts
++++ b/apps/desktop/src/main/runtime-host-oauth-ipc-main.ts
+@@ -35,20 +35,12 @@ const SHARED_OAUTH_IPC_OPERATIONS = [
+   'refresh-tokens',
+   'logout',
+ ] as const;
+-const ANTIGRAVITY_OAUTH_IPC_OPERATIONS = [
+-  'is-experimental-enabled',
+-  ...SHARED_OAUTH_IPC_OPERATIONS,
+-] as const;
+-
+ export const RUNTIME_HOST_OAUTH_IPC_CHANNELS = Object.freeze([
+   ...OAUTH_LOGIN_PROVIDERS.flatMap((provider) => [
+     ...(provider === 'xai-oauth' ? [] : [`${provider}:is-experimental-enabled`]),
+     ...SHARED_OAUTH_IPC_OPERATIONS.map((operation) => `${provider}:${operation}`),
+     ...(provider === 'claude-subscription' ? [`${provider}:refresh-quota`] : []),
+   ]),
+-  ...ANTIGRAVITY_OAUTH_IPC_OPERATIONS.map(
+-    (operation) => `antigravity-subscription:${operation}`,
+-  ),
+ ]);
+ 
+ type OAuthClient = RuntimeHostAccountConnectionClient & Pick<
+@@ -227,28 +219,6 @@ export function registerRuntimeHostOAuthIpc(deps: RuntimeHostOAuthIpcDeps): void
+       return { ok: true as const };
+     });
+   }
+-  registerUnavailableAntigravityIpc(deps.ipcMain);
+-}
+-
+-function registerUnavailableAntigravityIpc(ipcMain: ReconnectableReadIpcMain): void {
+-  const prefix = 'antigravity-subscription';
+-  const unavailable = () =>
+-    actionFailure(
+-      'Google Antigravity account access is not available in Runtime Host',
+-      'experimental_disabled',
+-    );
+-  ipcMain.handle(`${prefix}:is-experimental-enabled`, async () => false);
+-  ipcMain.handle(`${prefix}:get-auth-url`, unavailable);
+-  ipcMain.handle(`${prefix}:open-auth-url`, unavailable);
+-  ipcMain.handle(`${prefix}:complete-authorization`, unavailable);
+-  ipcMain.handle(`${prefix}:cancel-authorization`, async () => ({ ok: true as const }));
+-  ipcMain.handle(`${prefix}:get-account-state`, async () => ({
+-    provider: prefix,
+-    status: 'preview' as const,
+-    runtimeState: 'not_logged_in' as const,
+-  }));
+-  ipcMain.handle(`${prefix}:refresh-tokens`, unavailable);
+-  ipcMain.handle(`${prefix}:logout`, async () => ({ ok: true as const }));
+ }
+ 
+ async function waitForPresentation(
+diff --git a/apps/desktop/src/preload/bridge-contract.d.ts b/apps/desktop/src/preload/bridge-contract.d.ts
+index 56aec7f324..3b1378fbaa 100644
+--- a/apps/desktop/src/preload/bridge-contract.d.ts
++++ b/apps/desktop/src/preload/bridge-contract.d.ts
+@@ -782,26 +782,6 @@ export interface MakaBridge {
+     refreshTokens(): Promise<SubscriptionActionResult>;
+     logout(): Promise<SubscriptionActionResult>;
+   };
+-  antigravitySubscription: {
+-    isExperimentalEnabled(): Promise<boolean>;
+-    getAuthUrl(): Promise<AuthorizationUrlPayload | SubscriptionActionResult>;
+-    openAuthUrl(authRequestId: string): Promise<SubscriptionActionResult>;
+-    completeAuthorization(authRequestId: string): Promise<SubscriptionActionResult>;
+-    cancelAuthorization(authRequestId?: string): Promise<{ ok: true }>;
+-    getAccountState(): Promise<{
+-      provider: 'antigravity-subscription';
+-      status: 'preview';
+-      runtimeState:
+-        | 'not_logged_in'
+-        | 'authorizing'
+-        | 'authenticated'
+-        | 'refreshing'
+-        | 'refresh_failed';
+-      errorMessage?: string;
+-    }>;
+-    refreshTokens(): Promise<SubscriptionActionResult>;
+-    logout(): Promise<SubscriptionActionResult>;
+-  };
+   scheduledTasks: {
+     list(): Promise<ScheduledTask[]>;
+     create(input: Omit<CreateScheduledTaskInput, 'createdBy'>): Promise<ScheduledTask>;
+diff --git a/apps/desktop/src/preload/preload.ts b/apps/desktop/src/preload/preload.ts
+index 7c789e09a8..8c95941771 100644
+--- a/apps/desktop/src/preload/preload.ts
++++ b/apps/desktop/src/preload/preload.ts
+@@ -1327,12 +1327,9 @@ const makaBridge = {
+       return invokeActiveRuntimeHost('claude-subscription:logout');
+     },
+   },
+-  // PR-MODEL-OAUTH-ALL-0: Codex / Antigravity subscription
+-  // bridges. Same shape as `claudeSubscription` (no token-shaped
+-  // fields, opaque authRequestId, action-result envelopes). Each
+-  // service's state snapshot is provider-specific because the
+-  // upstream auth claims differ (Codex carries JWT account_id /
+-  // plan; Antigravity is preview-only).
++  // Browser-assisted Codex account bridge. Same shape as
++  // `claudeSubscription`: no token-shaped fields cross preload, the
++  // authorization attempt stays opaque, and actions return envelopes.
+   openAiCodex: {
+     isExperimentalEnabled(): Promise<boolean> {
+       return invokeActiveRuntimeHost('openai-codex:is-experimental-enabled');
+@@ -1418,37 +1415,6 @@ const makaBridge = {
+       return invokeActiveRuntimeHost('github-copilot:logout');
+     },
+   },
+-  antigravitySubscription: {
+-    isExperimentalEnabled(): Promise<boolean> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:is-experimental-enabled');
+-    },
+-    getAuthUrl(): Promise<AuthorizationUrlPayload | SubscriptionActionResult> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:get-auth-url');
+-    },
+-    openAuthUrl(authRequestId: string): Promise<SubscriptionActionResult> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:open-auth-url', authRequestId);
+-    },
+-    completeAuthorization(authRequestId: string): Promise<SubscriptionActionResult> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:complete-authorization', authRequestId);
+-    },
+-    cancelAuthorization(authRequestId?: string): Promise<{ ok: true }> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:cancel-authorization', authRequestId);
+-    },
+-    getAccountState(): Promise<{
+-      provider: 'antigravity-subscription';
+-      status: 'preview';
+-      runtimeState: 'not_logged_in' | 'authorizing' | 'authenticated' | 'refreshing' | 'refresh_failed';
+-      errorMessage?: string;
+-    }> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:get-account-state');
+-    },
+-    refreshTokens(): Promise<SubscriptionActionResult> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:refresh-tokens');
+-    },
+-    logout(): Promise<SubscriptionActionResult> {
+-      return invokeActiveRuntimeHost('antigravity-subscription:logout');
+-    },
+-  },
+   scheduledTasks: {
+     list(): Promise<ScheduledTask[]> {
+       return listScheduledTasks();
+diff --git a/apps/desktop/src/renderer/settings/provider-brand-marks.tsx b/apps/desktop/src/renderer/settings/provider-brand-marks.tsx
+index 53078e1f6f..dad26973de 100644
+--- a/apps/desktop/src/renderer/settings/provider-brand-marks.tsx
++++ b/apps/desktop/src/renderer/settings/provider-brand-marks.tsx
+@@ -402,7 +402,6 @@ export function ProviderBrandMark({ type }: { type: ProviderType }): ReactElemen
+     case 'github-copilot':
+       return <ProviderAssetMask src={githubCopilotBrandMark} />;
+     case 'google':
+-    case 'gemini-cli':
+       return <Gemini />;
+     case 'deepseek':
+       return <DeepSeek />;
+diff --git a/apps/desktop/src/renderer/settings/provider-connection-detail.tsx b/apps/desktop/src/renderer/settings/provider-connection-detail.tsx
+index da6392a94a..9e4188d1e3 100644
+--- a/apps/desktop/src/renderer/settings/provider-connection-detail.tsx
++++ b/apps/desktop/src/renderer/settings/provider-connection-detail.tsx
+@@ -272,9 +272,7 @@ function ConnectionDetailInner(props: ConnectionDetailProps) {
+   // a per-connection URL. So the row exists only where the address is genuinely
+   // the user's: a service with no published endpoint (the *-compatible ones), or
+   // a local runtime whose port is a convention rather than a fact. A derived
+-  // endpoint (Cloudflare builds one from the account id) is nobody's to type,
+-  // and neither is an account-authorized one — `gemini-cli` is OAuth with an
+-  // empty baseUrl, so keying off "OAuth with a fixed URL" let it slip through.
++  // endpoint (Cloudflare builds one from the account id) is nobody's to type.
+   const showsEndpoint = !needsOAuth
+     && !defaults.baseUrlTemplate
+     && (!defaults.baseUrl || defaults.category === 'local');
+diff --git a/apps/desktop/src/renderer/settings/provider-display-copy.ts b/apps/desktop/src/renderer/settings/provider-display-copy.ts
+index 736998b72f..98956939c7 100644
+--- a/apps/desktop/src/renderer/settings/provider-display-copy.ts
++++ b/apps/desktop/src/renderer/settings/provider-display-copy.ts
+@@ -272,10 +272,6 @@ export const PROVIDER_DISPLAY_COPY = {
+     zh: { name: 'xAI OAuth', description: '使用 SuperGrok 或 X Premium 账号登录。', badge: 'Account' },
+     en: { name: 'xAI OAuth', description: 'Sign in with SuperGrok or X Premium.', badge: 'Account' },
+   },
+-  'gemini-cli': {
+-    zh: { name: 'Gemini CLI', description: 'Google 账号登录暂未接入聊天发送。' },
+-    en: { name: 'Gemini CLI', description: 'Google account sign-in is not yet wired to chat.' },
+-  },
+ } satisfies Record<ProviderType, UiCatalog<ProviderCopy>>;
+ 
+ export function providerDisplay(type: ProviderType, locale: UiLocale): ProviderCopy {
+diff --git a/apps/desktop/src/renderer/settings/use-connection-detail.ts b/apps/desktop/src/renderer/settings/use-connection-detail.ts
+index 4fcc0a6951..6e8b97e8cc 100644
+--- a/apps/desktop/src/renderer/settings/use-connection-detail.ts
++++ b/apps/desktop/src/renderer/settings/use-connection-detail.ts
+@@ -35,7 +35,7 @@ import {
+ 
+ // Maps an OAuth model-connection provider type to the browser-assisted login
+ // service that can re-run its authorization from inside the connection dialog. Only
+-// the loopback / polling services (Codex, Antigravity) are one-button-drivable
++// the browser-assisted services (Codex and xAI) are one-button-drivable
+ // here; Claude's paste-code flow and plain API-key providers return null so the
+ // notice falls back to prose instead of rendering a dead button.
+ export interface OAuthLoginService {
+@@ -55,11 +55,6 @@ export function oauthLoginServiceFor(providerType: ProviderType): OAuthLoginServ
+         bridge: window.maka.xaiOAuth as unknown as OAuthLoginFlowBridge,
+         display: { name: 'xAI Grok', shortName: 'SuperGrok / X Premium' },
+       };
+-    case 'gemini-cli':
+-      return {
+-        bridge: window.maka.antigravitySubscription as unknown as OAuthLoginFlowBridge,
+-        display: { name: 'Google Antigravity', shortName: 'Antigravity' },
+-      };
+     default:
+       return null;
+   }
+diff --git a/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts b/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
+index 1c4590ae4b..627a61d6e2 100644
+--- a/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
++++ b/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
+@@ -10,7 +10,7 @@ import { getProviderSettingsCopy } from '../locales/settings-provider-copy';
+ // polling / loopback PKCE depending on the provider).
+ //
+ // Extracted from the SubscriptionLoginModal `startLogin` flow so BOTH the
+-// OAuth catalog login modals (Codex / xAI / Antigravity) AND the model
++// OAuth catalog login modals (Codex / xAI) AND the model
+ // connection detail sheet's 重新登录 affordance drive the same
+ // getAuthUrl -> openAuthUrl -> refresh -> completeAuthorization sequence with
+ // one authRequestId lifecycle, one synchronous pending-action guard, and
+diff --git a/apps/desktop/stories/settings/provider-settings.stories.tsx b/apps/desktop/stories/settings/provider-settings.stories.tsx
+index cee2fc55ee..173c06375b 100644
+--- a/apps/desktop/stories/settings/provider-settings.stories.tsx
++++ b/apps/desktop/stories/settings/provider-settings.stories.tsx
+@@ -243,10 +243,6 @@ function installSubscriptionFixtures() {
+       runtimeState: 'not_logged_in',
+     }),
+     xaiOAuth: xaiDeviceSubscriptionFixture(),
+-    antigravitySubscription: browserSubscriptionFixture({
+-      runtimeState: 'storage_failed',
+-      errorMessage: '需要 Google client_id 后才能完成登录。',
+-    }),
+   };
+ }
+ 
+diff --git a/packages/core/src/__tests__/provider-auth.test.ts b/packages/core/src/__tests__/provider-auth.test.ts
+index 7185144597..d605cfd18f 100644
+--- a/packages/core/src/__tests__/provider-auth.test.ts
++++ b/packages/core/src/__tests__/provider-auth.test.ts
+@@ -102,26 +102,6 @@ describe('ProviderAuth contract', () => {
+     expect(contract.actionAvailability.fetch_models).toBe('hidden');
+   });
+ 
+-  test('unwired OAuth providers stay preview-only and do not expose live actions', () => {
+-    const contract = deriveProviderAuthContract({
+-      providerType: 'gemini-cli',
+-      hasSecret: true,
+-      lastTestStatus: 'verified',
+-    });
+-
+-    expect(contract.setupMode).toBe('oauth_preview');
+-    expect(contract.state).toBe('preview_only');
+-    expect(contract.validationStatus).toBe('not_run');
+-    expect(contract.requiresSecret).toBe(true);
+-    expect(contract.sendMayUseWithoutSecret).toBe(false);
+-    expect(contract.actionAvailability.save_secret).toBe('hidden');
+-    expect(contract.actionAvailability.test_credentials).toBe('hidden');
+-    expect(contract.actionAvailability.fetch_models).toBe('hidden');
+-    expect(contract.actionAvailability.start_oauth).toBe('preview_only');
+-    expect(contract.actionAvailability.refresh_oauth).toBe('preview_only');
+-    expect(contract.actionAvailability.revoke_auth).toBe('preview_only');
+-  });
+-
+   test('no-auth local providers can send without secret but are still not validated runtime probes', () => {
+     const contract = deriveProviderAuthContract({
+       providerType: 'ollama',
+diff --git a/packages/core/src/__tests__/runtime-policy-codec.test.ts b/packages/core/src/__tests__/runtime-policy-codec.test.ts
+index 2fb5123f66..88fdf1de92 100644
+--- a/packages/core/src/__tests__/runtime-policy-codec.test.ts
++++ b/packages/core/src/__tests__/runtime-policy-codec.test.ts
+@@ -163,6 +163,38 @@ test('normalizes catalog inputs while canonical entries reject noncanonical endp
+   );
+ });
+ 
++test('rejects new connections for the retired Gemini CLI account provider', () => {
++  assert.throws(
++    () =>
++      normalizeCreateCatalogConnectionInput({
++        expectedCatalogRevision: 0,
++        connection: {
++          slug: 'gemini-account',
++          name: 'Gemini account',
++          providerType: 'gemini-cli',
++          enabled: true,
++          enabledModelIds: [],
++        },
++      }),
++    /provider type is not registered/,
++  );
++});
++
++test('keeps ordinary Google API-key connections supported', () => {
++  const input = normalizeCreateCatalogConnectionInput({
++    expectedCatalogRevision: 0,
++    connection: {
++      slug: 'google-api',
++      name: 'Google API',
++      providerType: 'google',
++      enabled: true,
++      enabledModelIds: ['gemini-2.5-pro'],
++    },
++  });
++
++  assert.equal(input.connection.providerType, 'google');
++});
++
+ test('relay model profiles round-trip canonical entries and drafts, strictly', () => {
+   const table = {
+     'relay-reasoner': {
+diff --git a/packages/core/src/chat-model-choice.ts b/packages/core/src/chat-model-choice.ts
+index be71d11337..46e215950f 100644
+--- a/packages/core/src/chat-model-choice.ts
++++ b/packages/core/src/chat-model-choice.ts
+@@ -21,7 +21,6 @@ const MODEL_MENU_PROVIDER_LABELS: Partial<Record<ProviderType, string>> = {
+   'zai-coding-plan': 'Z.AI',
+   MiniMax: 'MiniMax',
+   'openai-codex': 'OpenAI OAuth',
+-  'gemini-cli': 'Gemini CLI',
+ };
+ 
+ export interface ChatModelChoice {
+diff --git a/packages/core/src/model-metadata.generated.ts b/packages/core/src/model-metadata.generated.ts
+index 9d91830308..cc8472d647 100644
+--- a/packages/core/src/model-metadata.generated.ts
++++ b/packages/core/src/model-metadata.generated.ts
+@@ -17,7 +17,6 @@ export const GENERATED_MODELS_DEV_METADATA: Record<
+   | 'fireworks-ai'
+   | 'github-copilot'
+   | 'google'
+-  | 'gemini-cli'
+   | 'groq'
+   | 'huggingface'
+   | 'kimi-coding-plan'
+@@ -4251,549 +4250,6 @@ export const GENERATED_MODELS_DEV_METADATA: Record<
+       modalities: { input: ['text', 'image'], output: [] },
+     },
+   },
+-  'gemini-cli': {
+-    'deep-research-max-preview-04-2026': {
+-      displayName: 'Deep Research Max Preview (Apr-21-2026)',
+-      description:
+-        'Maximum-comprehensiveness agentic researcher for multi-step investigation, synthesis, and cited reports',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-04-21',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text', 'image'] },
+-    },
+-    'deep-research-preview-04-2026': {
+-      displayName: 'Deep Research Preview (Apr-21-2026)',
+-      description: 'Agentic model for autonomous multi-step research, synthesis, and cited reports',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-04-21',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text', 'image'] },
+-    },
+-    'gemini-2.0-flash': {
+-      displayName: 'Gemini 2.0 Flash',
+-      description: 'Earlier Gemini Flash workhorse for responsive multimodal apps and tool use',
+-      lifecycle: 'deprecated',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 8192,
+-      knowledgeCutoff: '2024-06',
+-      structuredOutput: true,
+-      lastUpdated: '2024-12-11',
+-      capabilities: { vision: true, reasoning: false, functionCalling: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-2.0-flash-lite': {
+-      displayName: 'Gemini 2.0 Flash-Lite',
+-      description: 'Legacy model retained for compatibility with older integrations',
+-      lifecycle: 'deprecated',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 8192,
+-      knowledgeCutoff: '2024-06',
+-      structuredOutput: true,
+-      lastUpdated: '2024-12-11',
+-      capabilities: { vision: true, reasoning: false, functionCalling: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-2.5-computer-use-preview-10-2025': {
+-      displayName: 'Gemini 2.5 Computer Use Preview 10-2025',
+-      description: 'Specialized Gemini 2.5 model for browser-control agents that automate UI tasks',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2025-10-07',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      modalities: { input: ['text', 'image'], output: ['text'] },
+-    },
+-    'gemini-2.5-flash': {
+-      displayName: 'Gemini 2.5 Flash',
+-      description: 'Fast Gemini workhorse for multimodal apps where latency and price matter',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2025-06-17',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { toggle: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-2.5-flash-image': {
+-      displayName: 'Nano Banana',
+-      description:
+-        'Nano Banana image model for fast generation, edits, and character-consistent assets',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 32768,
+-      maxOutputTokens: 32768,
+-      knowledgeCutoff: '2024-06',
+-      lastUpdated: '2025-08-26',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: ['text', 'image'] },
+-    },
+-    'gemini-2.5-flash-lite': {
+-      displayName: 'Gemini 2.5 Flash-Lite',
+-      description: 'Lean Gemini 2.5 lane for cheap multimodal traffic and quick agents',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2025-06-17',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { toggle: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-2.5-flash-preview-tts': {
+-      displayName: 'Gemini 2.5 Flash Preview TTS',
+-      description: 'Speech generation model for controllable voice, narration, and audio delivery',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 8192,
+-      maxOutputTokens: 16384,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2025-05-01',
+-      capabilities: { vision: false, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text'], output: ['audio'] },
+-    },
+-    'gemini-2.5-pro': {
+-      displayName: 'Gemini 2.5 Pro',
+-      description: "Google's proven reasoning model for coding, math, and multimodal analysis",
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2025-06-17',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-2.5-pro-preview-tts': {
+-      displayName: 'Gemini 2.5 Pro Preview TTS',
+-      description: 'Speech generation model for controllable voice, narration, and audio delivery',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 8192,
+-      maxOutputTokens: 16384,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2025-05-01',
+-      capabilities: { vision: false, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text'], output: ['audio'] },
+-    },
+-    'gemini-3-flash-preview': {
+-      displayName: 'Gemini 3 Flash Preview',
+-      description:
+-        'New Gemini flash lane bringing frontier-style multimodal reasoning to cheaper runs',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2025-12-17',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3-pro-image': {
+-      displayName: 'Nano Banana Pro',
+-      description: 'Nano Banana Pro for higher-fidelity image generation and design-heavy edits',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 32768,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-05-28',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      thinkingOptions: { efforts: ['low', 'high'] },
+-      modalities: { input: ['text', 'image'], output: ['text', 'image'] },
+-    },
+-    'gemini-3-pro-image-preview': {
+-      displayName: 'Nano Banana Pro',
+-      description: 'Nano Banana Pro for higher-fidelity image generation and design-heavy edits',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 32768,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2025-11-20',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: ['text', 'image'] },
+-    },
+-    'gemini-3-pro-preview': {
+-      displayName: 'Gemini 3 Pro Preview',
+-      description:
+-        'Preview Gemini flagship for complex reasoning, coding, and rich multimodal prompts',
+-      lifecycle: 'deprecated',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2025-11-18',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['low', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.1-flash-image': {
+-      displayName: 'Nano Banana 2',
+-      description: 'Image model for prompt-driven generation, editing, and visual design workflows',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 65536,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-05-28',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      thinkingOptions: { efforts: ['minimal', 'high'] },
+-      modalities: { input: ['text', 'image', 'pdf'], output: ['text', 'image'] },
+-    },
+-    'gemini-3.1-flash-image-preview': {
+-      displayName: 'Nano Banana 2',
+-      description: 'Image model for prompt-driven generation, editing, and visual design workflows',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 65536,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-02-26',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      thinkingOptions: { efforts: ['minimal', 'high'] },
+-      modalities: { input: ['text', 'image', 'pdf'], output: ['text', 'image'] },
+-    },
+-    'gemini-3.1-flash-lite': {
+-      displayName: 'Gemini 3.1 Flash Lite',
+-      description: 'Low-latency Gemini model for high-volume multimodal and agent workloads',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-05-07',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.1-flash-lite-image': {
+-      displayName: 'Nano Banana 2 Lite',
+-      description:
+-        'Fastest, most cost-efficient Gemini image model for high-volume 1K generation and editing',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 65536,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: false,
+-      lastUpdated: '2026-06-30',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'high'] },
+-      modalities: { input: ['text', 'image'], output: ['text', 'image'] },
+-    },
+-    'gemini-3.1-flash-lite-preview': {
+-      displayName: 'Gemini 3.1 Flash Lite Preview',
+-      description: 'Legacy model retained for compatibility with older integrations',
+-      lifecycle: 'deprecated',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-03-03',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.1-flash-live-preview': {
+-      displayName: 'Gemini 3.1 Flash Live Preview',
+-      description:
+-        'High-quality, low-latency Live API model for real-time dialogue and voice-first AI applications',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: false,
+-      lastUpdated: '2026-03-26',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio'], output: ['text', 'audio'] },
+-    },
+-    'gemini-3.1-flash-tts-preview': {
+-      displayName: 'Gemini 3.1 Flash TTS Preview',
+-      description: 'Low-latency speech generation with steerable prompts and expressive audio tags',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 8192,
+-      maxOutputTokens: 16384,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-04-15',
+-      capabilities: { vision: false, reasoning: true, functionCalling: false },
+-      modalities: { input: ['text'], output: ['audio'] },
+-    },
+-    'gemini-3.1-pro-preview': {
+-      displayName: 'Gemini 3.1 Pro Preview',
+-      description: 'Reasoning-first Gemini preview for agentic coding and complex problem solving',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-02-19',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.1-pro-preview-customtools': {
+-      displayName: 'Gemini 3.1 Pro Preview Custom Tools',
+-      description: 'Advanced Gemini model for complex reasoning, coding, and multimodal analysis',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-02-19',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.5-flash': {
+-      displayName: 'Gemini 3.5 Flash',
+-      description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-05-19',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.5-flash-lite': {
+-      displayName: 'Gemini 3.5 Flash Lite',
+-      description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2026-03',
+-      structuredOutput: true,
+-      lastUpdated: '2026-07-21',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-3.5-live-translate-preview': {
+-      displayName: 'Gemini 3.5 Live Translate Preview',
+-      description:
+-        'Low-latency audio-to-audio model for real-time speech translation across 70+ languages',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 16384,
+-      maxOutputTokens: 32768,
+-      knowledgeCutoff: '2025-01',
+-      lastUpdated: '2026-06-09',
+-      capabilities: { vision: false, reasoning: false, functionCalling: false },
+-      modalities: { input: ['audio'], output: ['audio', 'text'] },
+-    },
+-    'gemini-3.6-flash': {
+-      displayName: 'Gemini 3.6 Flash',
+-      description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2026-03',
+-      structuredOutput: true,
+-      lastUpdated: '2026-07-21',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-embedding-001': {
+-      displayName: 'Gemini Embedding 001',
+-      description:
+-        'Embedding model for semantic search, retrieval, clustering, and ranking pipelines',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 2048,
+-      maxOutputTokens: 1,
+-      knowledgeCutoff: '2025-05',
+-      lastUpdated: '2025-05-20',
+-      capabilities: { vision: false, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text'], output: ['text'] },
+-    },
+-    'gemini-embedding-2': {
+-      displayName: 'Gemini Embedding 2',
+-      description:
+-        'Multimodal embedding model mapping text, images, video, audio, and PDFs into a unified embedding space',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 8192,
+-      maxOutputTokens: 1,
+-      knowledgeCutoff: '2025-11',
+-      lastUpdated: '2026-04-22',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-flash-latest': {
+-      displayName: 'Gemini Flash Latest',
+-      description: 'Fast Gemini model balancing multimodal reasoning, tool use, and cost',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-05-19',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-flash-lite-latest': {
+-      displayName: 'Gemini Flash-Lite Latest',
+-      description: 'Low-latency Gemini model for high-volume multimodal and agent workloads',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-05-07',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { efforts: ['minimal', 'low', 'medium', 'high'] },
+-      modalities: { input: ['text', 'image', 'audio', 'pdf'], output: ['text'] },
+-    },
+-    'gemini-omni-flash-preview': {
+-      displayName: 'Gemini Omni Flash Preview',
+-      description:
+-        'Video generation and editing model for fast, conversational text- and image-to-video workflows',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      lastUpdated: '2026-06-30',
+-      capabilities: { vision: true, reasoning: true, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: [] },
+-    },
+-    'gemini-robotics-er-1.6-preview': {
+-      displayName: 'Gemini Robotics-ER 1.6 Preview',
+-      description:
+-        'Vision-language model for embodied reasoning: spatial understanding, task planning, and physical-world agentic robotics',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 131072,
+-      maxOutputTokens: 65536,
+-      knowledgeCutoff: '2025-01',
+-      structuredOutput: true,
+-      lastUpdated: '2026-04-14',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { toggle: true },
+-      modalities: { input: ['text', 'image', 'audio'], output: ['text'] },
+-    },
+-    'gemma-4-26b-a4b-it': {
+-      displayName: 'Gemma 4 26B A4B IT',
+-      description: 'Open Gemma instruction model for efficient chat and self-hosted deployments',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 262144,
+-      maxOutputTokens: 32768,
+-      structuredOutput: true,
+-      lastUpdated: '2026-04-02',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { toggle: true },
+-      modalities: { input: ['text', 'image'], output: ['text'] },
+-    },
+-    'gemma-4-31b-it': {
+-      displayName: 'Gemma 4 31B IT',
+-      description: 'Largest Gemma 4 instruction model for open, self-hosted chat and reasoning',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 262144,
+-      maxOutputTokens: 32768,
+-      structuredOutput: true,
+-      lastUpdated: '2026-04-02',
+-      capabilities: { vision: true, reasoning: true, functionCalling: true },
+-      thinkingOptions: { toggle: true },
+-      modalities: { input: ['text', 'image'], output: ['text'] },
+-    },
+-    'lyria-3-clip-preview': {
+-      displayName: 'Lyria 3 Clip Preview',
+-      description:
+-        'Music generation model for short 30-second clips, loops, and previews from text or image prompts',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      structuredOutput: false,
+-      lastUpdated: '2026-03-25',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: ['text', 'audio'] },
+-    },
+-    'lyria-3-pro-preview': {
+-      displayName: 'Lyria 3 Pro Preview',
+-      description:
+-        'Music generation model for full-length songs from text or images with vocals and structure',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 1048576,
+-      maxOutputTokens: 65536,
+-      structuredOutput: false,
+-      lastUpdated: '2026-03-25',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: ['text', 'audio'] },
+-    },
+-    'veo-3.1-fast-generate-preview': {
+-      displayName: 'Veo 3.1 fast',
+-      description: 'Video model for prompt-guided generation, editing, and motion workflows',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 480,
+-      maxOutputTokens: 8192,
+-      lastUpdated: '2026-01-01',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: [] },
+-    },
+-    'veo-3.1-generate-preview': {
+-      displayName: 'Veo 3.1',
+-      description: 'Video model for prompt-guided generation, editing, and motion workflows',
+-      lifecycle: 'beta',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 480,
+-      maxOutputTokens: 8192,
+-      lastUpdated: '2026-01',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: [] },
+-    },
+-    'veo-3.1-lite-generate-preview': {
+-      displayName: 'Veo 3.1 lite',
+-      description: 'Video model for prompt-guided generation, editing, and motion workflows',
+-      lifecycle: 'active',
+-      docsUrl: 'https://ai.google.dev/gemini-api/docs/models',
+-      contextWindow: 480,
+-      maxOutputTokens: 8192,
+-      lastUpdated: '2026-03-31',
+-      capabilities: { vision: true, reasoning: false, functionCalling: false },
+-      modalities: { input: ['text', 'image'], output: [] },
+-    },
+-  },
+   groq: {
+     'allam-2-7b': {
+       displayName: 'ALLaM-2-7b',
+@@ -22700,7 +22156,6 @@ export const GENERATED_MODELS_DEV_MODEL_PROVIDER_OVERRIDES: Record<
+   | 'fireworks-ai'
+   | 'github-copilot'
+   | 'google'
+-  | 'gemini-cli'
+   | 'groq'
+   | 'huggingface'
+   | 'kimi-coding-plan'
+@@ -22754,7 +22209,6 @@ export const GENERATED_MODELS_DEV_MODEL_PROVIDER_OVERRIDES: Record<
+   'fireworks-ai': {},
+   'github-copilot': {},
+   google: {},
+-  'gemini-cli': {},
+   groq: {},
+   huggingface: {},
+   'kimi-coding-plan': {},
+@@ -22951,7 +22405,6 @@ export const GENERATED_MODELS_DEV_PROVIDER_FACTS: Record<
+   | 'fireworks-ai'
+   | 'github-copilot'
+   | 'google'
+-  | 'gemini-cli'
+   | 'groq'
+   | 'huggingface'
+   | 'kimi-coding-plan'
+@@ -23053,11 +22506,6 @@ export const GENERATED_MODELS_DEV_PROVIDER_FACTS: Record<
+     doc: 'https://docs.github.com/en/copilot',
+   },
+   google: { id: 'google', name: 'Google', doc: 'https://ai.google.dev/gemini-api/docs/models' },
+-  'gemini-cli': {
+-    id: 'google',
+-    name: 'Google',
+-    doc: 'https://ai.google.dev/gemini-api/docs/models',
+-  },
+   groq: { id: 'groq', name: 'Groq', doc: 'https://console.groq.com/docs/models' },
+   huggingface: {
+     id: 'huggingface',
+diff --git a/packages/core/src/model-metadata.ts b/packages/core/src/model-metadata.ts
+index 6bdfd2aaa1..8009513dfc 100644
+--- a/packages/core/src/model-metadata.ts
++++ b/packages/core/src/model-metadata.ts
+@@ -323,7 +323,6 @@ const STATIC_MODEL_METADATA: Partial<Record<ProviderType, Record<string, ModelMe
+       thinkingOptions: { toggle: true, offBehavior: 'cohere-thinking-disabled' },
+     },
+   },
+-  'gemini-cli': GOOGLE_MODEL_OVERRIDES,
+   'openai-codex': OPENAI_OAUTH_MODEL_METADATA,
+   siliconflow: SILICONFLOW_MODEL_OVERRIDES,
+   'tencent-coding-plan': {
+@@ -525,12 +524,6 @@ const CURATED_CATALOG_FALLBACK_MODELS: Partial<Record<ProviderType, readonly str
+   openai: ['gpt-5.5', 'gpt-5.5-pro', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5'],
+   deepseek: ['deepseek-v4-flash', 'deepseek-v4-pro', 'deepseek-reasoner', 'deepseek-chat'],
+   google: ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'],
+-  'gemini-cli': [
+-    'gemini-3.5-flash',
+-    'gemini-3.1-pro-preview',
+-    'gemini-2.5-pro',
+-    'gemini-2.5-flash',
+-  ],
+   'zai-coding-plan': ['glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-4.7', 'glm-4.5-air'],
+   MiniMax: ['MiniMax-M3'],
+   'MiniMax-cn': ['MiniMax-M3'],
+diff --git a/packages/core/src/model-web-search.ts b/packages/core/src/model-web-search.ts
+index 2eebfff4dc..9594764cc6 100644
+--- a/packages/core/src/model-web-search.ts
++++ b/packages/core/src/model-web-search.ts
+@@ -73,7 +73,6 @@ function providerHostedWebSearchAdapter(
+     case 'anthropic-compatible':
+       return { adapter: 'anthropic-messages', implemented: true };
+     case 'google':
+-    case 'gemini-cli':
+       return { adapter: 'google-grounding', implemented: false };
+     case 'zai':
+     case 'zai-coding-plan':
+@@ -116,7 +115,6 @@ function providerDefaultHostedWebSearchCapability(
+     case 'openai-responses-compatible':
+       return null;
+     case 'google':
+-    case 'gemini-cli':
+       return /^gemini-(?:2\.0|2\.5|3|3\.1|3\.5)(?:[.-]|$)/i.test(modelId) ? capability : null;
+     case 'zai':
+     case 'zai-coding-plan':
+diff --git a/packages/core/src/provider-registry.ts b/packages/core/src/provider-registry.ts
+index 9b31e2f825..30200a096b 100644
+--- a/packages/core/src/provider-registry.ts
++++ b/packages/core/src/provider-registry.ts
+@@ -1816,21 +1816,6 @@ const providerRegistry = {
+     catalogBadge: 'Account',
+     modelsDevId: GENERATED_MODELS_DEV_PROVIDER_FACTS.openai.id,
+   },
+-  'gemini-cli': {
+-    label: 'Gemini CLI OAuth',
+-    description: 'Google account path is tracked separately from ready API-key providers.',
+-    baseUrl: '',
+-    authKind: 'oauth_token',
+-    backendKind: 'ai-sdk',
+-    fallbackModels: ['gemini-2.5-pro', 'gemini-2.5-flash'],
+-    status: 'phase3-experimental',
+-    protocol: 'google',
+-    runtimeAdapter: { kind: 'unavailable' },
+-    modelDiscovery: { kind: 'protocol' },
+-    category: 'oauth',
+-    catalogBadge: 'Account',
+-    modelsDevId: GENERATED_MODELS_DEV_PROVIDER_FACTS['gemini-cli'].id,
+-  },
+ } satisfies Record<string, ProviderDefaults>;
+ 
+ export type ProviderType = keyof typeof providerRegistry;
+diff --git a/packages/storage/src/__tests__/runtime-policy-stores.test.ts b/packages/storage/src/__tests__/runtime-policy-stores.test.ts
+index ae535b3f3e..721fea4f41 100644
+--- a/packages/storage/src/__tests__/runtime-policy-stores.test.ts
++++ b/packages/storage/src/__tests__/runtime-policy-stores.test.ts
+@@ -613,6 +613,59 @@ describe('runtime policy stores', () => {
+     });
+   });
+ 
++  test('migrates a persisted Gemini CLI default to the remaining supported catalog', async () => {
++    await withInteractiveOwner(async ({ root, stores }) => {
++      const retiredConnectionId = '11111111-1111-4111-8111-111111111111';
++      const googleConnectionId = '22222222-2222-4222-8222-222222222222';
++      await writeFile(
++        join(root, 'connection-catalog.json'),
++        `${JSON.stringify({
++          schemaVersion: 1,
++          revision: 2,
++          defaultTarget: {
++            connectionId: retiredConnectionId,
++            modelId: 'gemini-2.5-pro',
++          },
++          connections: [
++            {
++              connectionId: retiredConnectionId,
++              revision: 1,
++              slug: 'gemini-account',
++              name: 'Gemini account',
++              providerType: 'gemini-cli',
++              enabled: true,
++              enabledModelIds: ['gemini-2.5-pro'],
++              models: [],
++            },
++            {
++              connectionId: googleConnectionId,
++              revision: 1,
++              slug: 'google-api',
++              name: 'Google API',
++              providerType: 'google',
++              enabled: true,
++              enabledModelIds: ['gemini-2.5-pro'],
++              models: [],
++            },
++          ],
++        })}\n`,
++        'utf8',
++      );
++
++      const snapshot = await stores.connectionCatalog.getSnapshot();
++
++      assert.equal(snapshot.revision, 2);
++      assert.equal(snapshot.defaultTarget, null);
++      assert.deepEqual(
++        snapshot.connections.map(({ connectionId, providerType }) => ({
++          connectionId,
++          providerType,
++        })),
++        [{ connectionId: googleConnectionId, providerType: 'google' }],
++      );
++    });
++  });
++
+   test('validates credential locators and redacts credential status', async () => {
+     await withInteractiveOwner(async ({ stores }) => {
+       const required = await createConnection(
+@@ -2038,18 +2091,13 @@ describe('runtime policy stores', () => {
+         2,
+         connectionDraft('public-copilot', 'github-copilot', 'Public Copilot'),
+       );
+-      const preview = await createConnection(
+-        stores,
+-        3,
+-        connectionDraft('public-preview', 'gemini-cli', 'Public preview'),
+-      );
+       const apiKey = await createConnection(
+         stores,
+-        4,
++        3,
+         connectionDraft('public-api-key', 'openai', 'Public API key'),
+       );
+ 
+-      for (const connection of [claude, codex, preview]) {
++      for (const connection of [claude, codex]) {
+         await assert.rejects(
+           () =>
+             stores.credentialVault.set({
+diff --git a/packages/storage/src/runtime-policy/connection-catalog-document.ts b/packages/storage/src/runtime-policy/connection-catalog-document.ts
+index 7557322867..384c9362cb 100644
+--- a/packages/storage/src/runtime-policy/connection-catalog-document.ts
++++ b/packages/storage/src/runtime-policy/connection-catalog-document.ts
+@@ -93,7 +93,17 @@ export class ConnectionCatalogDocumentOwner {
+     ) {
+       throw codecError('invalid_document', `${FILE}.connections must be a bounded array`);
+     }
+-    const connections = raw.connections.map((item) =>
++    // Releases before #3054 could persist the non-executable Gemini account
++    // preview. Keep the raw file recoverable on read, but omit retired entries
++    // from the active catalog; the next catalog mutation writes the canonical
++    // supported set and completes the migration.
++    const retiredConnectionIds = new Set<string>();
++    const maintainedConnections = raw.connections.filter((item) => {
++      if (!isRetiredGeminiCliConnection(item)) return true;
++      if (typeof item.connectionId === 'string') retiredConnectionIds.add(item.connectionId);
++      return false;
++    });
++    const connections = maintainedConnections.map((item) =>
+       decodePersistedDomain(() => decodeCanonicalConnectionCatalogEntry(item)),
+     );
+     unique(
+@@ -106,10 +116,14 @@ export class ConnectionCatalogDocumentOwner {
+       `${FILE} connection ids`,
+       'invalid_document',
+     );
+-    const defaultTarget =
++    const decodedDefaultTarget =
+       raw.defaultTarget === null
+         ? null
+         : decodePersistedDomain(() => decodeConnectionTarget(raw.defaultTarget));
++    const defaultTarget =
++      decodedDefaultTarget && retiredConnectionIds.has(decodedDefaultTarget.connectionId)
++        ? null
++        : decodedDefaultTarget;
+     if (defaultTarget && !isValidTarget(defaultTarget, connections)) {
+       throw codecError('invalid_document', `${FILE} contains an invalid default target`);
+     }
+@@ -673,6 +687,17 @@ function connectionStale(expected: ConnectionVersionBasis, actual: ConnectionVer
+   return deepFreeze({ kind: 'connection_stale' as const, expected, actual });
+ }
+ 
++function isRetiredGeminiCliConnection(
++  value: unknown,
++): value is { readonly connectionId?: unknown; readonly providerType: 'gemini-cli' } {
++  return (
++    typeof value === 'object' &&
++    value !== null &&
++    !Array.isArray(value) &&
++    Reflect.get(value, 'providerType') === 'gemini-cli'
++  );
++}
++
+ function committed(document: ConnectionCatalogDocument): ConnectionCatalogMutationResult {
+   return deepFreeze({ kind: 'committed', snapshot: catalogSnapshot(document) });
+ }
+diff --git a/packages/ui/src/chat-model-helpers.ts b/packages/ui/src/chat-model-helpers.ts
+index fe99ada149..f74f533de3 100644
+--- a/packages/ui/src/chat-model-helpers.ts
++++ b/packages/ui/src/chat-model-helpers.ts
+@@ -64,7 +64,7 @@ export interface ModelMenuGroup {
+  * the SAME provider are present and neither supplied a name (e.g. two OpenAI
+  * keys) — the slug is a safe `[a-z0-9-]` identifier, never the OAuth
+  * account email `connection.name` carries for `claude-subscription` /
+- * `openai-codex` / `gemini-cli`.
++ * `openai-codex`.
+  */
+ export function modelMenuGroups(choices: ChatModelChoice[], locale: UiLocale = 'zh'): ModelMenuGroup[] {
+   const copy = getSharedUiCopy(locale).providers;
+diff --git a/scripts/sync-model-metadata.mjs b/scripts/sync-model-metadata.mjs
+index 0590a74f3b..0843ed66bd 100644
+--- a/scripts/sync-model-metadata.mjs
++++ b/scripts/sync-model-metadata.mjs
+@@ -14,7 +14,6 @@ export const PRICING_EXCLUDED_PROVIDER_TYPES = new Set([
+   'alibaba-token-plan-cn',
+   'alibaba-token-plan',
+   'github-copilot',
+-  'gemini-cli',
+   'kimi-coding-plan',
+   'minimax-coding-plan',
+   'MiniMax-cn',
+@@ -46,7 +45,6 @@ export const PROVIDERS = {
+   'fireworks-ai': 'fireworks-ai',
+   'github-copilot': 'github-copilot',
+   google: 'google',
+-  'gemini-cli': 'google',
+   groq: 'groq',
+   huggingface: 'huggingface',
+   'kimi-coding-plan': 'kimi-for-coding',
+
+From dfc9e3c84e6b8ff68210b58e939bdb9f203530d4 Mon Sep 17 00:00:00 2001
+From: AstroHan <lei.yuhan@outlook.com>
+Date: Sat, 15 Aug 2026 18:32:19 +0800
+Subject: [PATCH 2/3] fix(storage): preserve retired connection identities
+
+Generated-by: Codex
+---
+ .../__tests__/runtime-policy-stores.test.ts   | 51 +++++++++++++++++++
+ .../connection-catalog-document.ts            | 25 ++++++---
+ 2 files changed, 69 insertions(+), 7 deletions(-)
+
+diff --git a/packages/storage/src/__tests__/runtime-policy-stores.test.ts b/packages/storage/src/__tests__/runtime-policy-stores.test.ts
+index 721fea4f41..8d36ec6ab1 100644
+--- a/packages/storage/src/__tests__/runtime-policy-stores.test.ts
++++ b/packages/storage/src/__tests__/runtime-policy-stores.test.ts
+@@ -663,6 +663,57 @@ describe('runtime policy stores', () => {
+         })),
+         [{ connectionId: googleConnectionId, providerType: 'google' }],
+       );
++      const persisted = JSON.parse(
++        await readFile(join(root, 'connection-catalog.json'), 'utf8'),
++      ) as {
++        connections: Array<{ providerType: string }>;
++      };
++      assert.deepEqual(
++        persisted.connections.map(({ providerType }) => providerType),
++        ['gemini-cli', 'google'],
++      );
++    });
++  });
++
++  test('rejects a retired Gemini CLI record that collides with a maintained connection identity', async () => {
++    await withInteractiveOwner(async ({ root, stores }) => {
++      const duplicateConnectionId = '11111111-1111-4111-8111-111111111111';
++      await writeFile(
++        join(root, 'connection-catalog.json'),
++        `${JSON.stringify({
++          schemaVersion: 1,
++          revision: 2,
++          defaultTarget: null,
++          connections: [
++            {
++              connectionId: duplicateConnectionId,
++              revision: 1,
++              slug: 'gemini-account',
++              name: 'Gemini account',
++              providerType: 'gemini-cli',
++              enabled: true,
++              enabledModelIds: ['gemini-2.5-pro'],
++              models: [],
++            },
++            {
++              connectionId: duplicateConnectionId,
++              revision: 1,
++              slug: 'google-api',
++              name: 'Google API',
++              providerType: 'google',
++              enabled: true,
++              enabledModelIds: ['gemini-2.5-pro'],
++              models: [],
++            },
++          ],
++        })}\n`,
++        'utf8',
++      );
++
++      await assert.rejects(
++        () => stores.connectionCatalog.getSnapshot(),
++        isStoreError('invalid_document'),
++      );
+     });
+   });
+ 
+diff --git a/packages/storage/src/runtime-policy/connection-catalog-document.ts b/packages/storage/src/runtime-policy/connection-catalog-document.ts
+index 384c9362cb..9a21bc4c6b 100644
+--- a/packages/storage/src/runtime-policy/connection-catalog-document.ts
++++ b/packages/storage/src/runtime-policy/connection-catalog-document.ts
+@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
+ import {
+   CONNECTION_CATALOG_MAX_CONNECTIONS,
+   decodeCanonicalConnectionCatalogEntry,
++  decodeConnectionSlug,
+   decodeConnectionTarget,
+   decodeConnectionTestSummary,
+   decodeConnectionVersionBasis,
+@@ -97,25 +98,33 @@ export class ConnectionCatalogDocumentOwner {
+     // preview. Keep the raw file recoverable on read, but omit retired entries
+     // from the active catalog; the next catalog mutation writes the canonical
+     // supported set and completes the migration.
+-    const retiredConnectionIds = new Set<string>();
++    const retiredConnections: Array<{
++      readonly connectionId: ConnectionCatalogEntry['connectionId'];
++      readonly slug: ConnectionCatalogEntry['slug'];
++    }> = [];
+     const maintainedConnections = raw.connections.filter((item) => {
+       if (!isRetiredGeminiCliConnection(item)) return true;
+-      if (typeof item.connectionId === 'string') retiredConnectionIds.add(item.connectionId);
++      retiredConnections.push({
++        connectionId: decodePersistedDomain(() => decodeRuntimePolicyEntityId(item.connectionId)),
++        slug: decodePersistedDomain(() => decodeConnectionSlug(item.slug)),
++      });
+       return false;
+     });
+     const connections = maintainedConnections.map((item) =>
+       decodePersistedDomain(() => decodeCanonicalConnectionCatalogEntry(item)),
+     );
++    const catalogIdentities = [...retiredConnections, ...connections];
+     unique(
+-      connections.map((item) => item.slug),
++      catalogIdentities.map((item) => item.slug),
+       `${FILE} connection slugs`,
+       'invalid_document',
+     );
+     unique(
+-      connections.map((item) => item.connectionId),
++      catalogIdentities.map((item) => item.connectionId),
+       `${FILE} connection ids`,
+       'invalid_document',
+     );
++    const retiredConnectionIds = new Set(retiredConnections.map((item) => item.connectionId));
+     const decodedDefaultTarget =
+       raw.defaultTarget === null
+         ? null
+@@ -687,9 +696,11 @@ function connectionStale(expected: ConnectionVersionBasis, actual: ConnectionVer
+   return deepFreeze({ kind: 'connection_stale' as const, expected, actual });
+ }
+ 
+-function isRetiredGeminiCliConnection(
+-  value: unknown,
+-): value is { readonly connectionId?: unknown; readonly providerType: 'gemini-cli' } {
++function isRetiredGeminiCliConnection(value: unknown): value is {
++  readonly connectionId?: unknown;
++  readonly providerType: 'gemini-cli';
++  readonly slug?: unknown;
++} {
+   return (
+     typeof value === 'object' &&
+     value !== null &&
+
+From 06f1f908f7425d043ab6e768e42abfc608248b50 Mon Sep 17 00:00:00 2001
+From: AstroHan <lei.yuhan@outlook.com>
+Date: Sat, 15 Aug 2026 18:39:17 +0800
+Subject: [PATCH 3/3] refactor: remove unused provider preview contract
+
+Generated-by: Codex
+---
+ apps/desktop/src/main/chat-readiness.ts       |  2 -
+ .../src/renderer/locales/conversation-copy.ts |  4 --
+ .../locales/settings-provider-copy.ts         | 20 +++----
+ .../src/renderer/model-catalog-choices.ts     |  4 --
+ .../renderer/settings/provider-add-form.tsx   | 10 +---
+ .../settings/use-connection-detail.ts         | 11 +---
+ .../renderer/settings/use-oauth-login-flow.ts |  1 -
+ .../core/src/__tests__/onboarding.test.ts     |  2 +-
+ .../core/src/__tests__/provider-auth.test.ts  |  6 +-
+ .../__tests__/runtime-policy-codec.test.ts    | 15 -----
+ packages/core/src/chat-model-choice.ts        |  8 +--
+ packages/core/src/connection-error-copy.ts    |  2 -
+ packages/core/src/connection-readiness.ts     | 23 +++-----
+ packages/core/src/llm-connections.ts          |  2 -
+ packages/core/src/onboarding.ts               |  1 -
+ packages/core/src/provider-auth.ts            | 57 +++++--------------
+ packages/core/src/provider-contract-matrix.ts |  2 +-
+ packages/core/src/provider-registry.ts        | 13 +----
+ .../core/src/task-submission-readiness.ts     |  1 -
+ .../src/server/execution-model-authority.ts   |  2 +-
+ .../__tests__/responses-wire-contract.test.ts |  1 -
+ packages/runtime/src/model-factory.ts         |  3 -
+ packages/runtime/src/model-runtime.ts         |  6 +-
+ packages/runtime/src/test-connection.ts       |  2 -
+ 24 files changed, 45 insertions(+), 153 deletions(-)
+
+diff --git a/apps/desktop/src/main/chat-readiness.ts b/apps/desktop/src/main/chat-readiness.ts
+index 8bfc88926d..28174f87c4 100644
+--- a/apps/desktop/src/main/chat-readiness.ts
++++ b/apps/desktop/src/main/chat-readiness.ts
+@@ -131,8 +131,6 @@ function messageForReason(
+       const model = requestedModel || connection.defaultModel;
+       return `模型 "${model}" 不能用于聊天。请到 设置 · 模型 选择支持聊天的模型。`;
+     }
+-    case 'oauth_subscription_not_wired':
+-      return `订阅连接 "${connection.name}" 只用于账号状态查看，当前不能作为聊天模型。请先选择 API key 模型连接。`;
+     case 'fake_backend':
+       return '当前会话来自旧的本地模拟连接，不能直接发送。请到 设置 · 模型 添加真实模型后新建会话。';
+     case 'missing_default_connection':
+diff --git a/apps/desktop/src/renderer/locales/conversation-copy.ts b/apps/desktop/src/renderer/locales/conversation-copy.ts
+index cc50f57352..3e9ed6caf9 100644
+--- a/apps/desktop/src/renderer/locales/conversation-copy.ts
++++ b/apps/desktop/src/renderer/locales/conversation-copy.ts
+@@ -383,7 +383,6 @@ const COPY = {
+         empty_model_list: '当前模型连接没有启用模型。请到 设置 · 模型 添加或启用模型后再发送。',
+         model_not_enabled: '当前会话选择的模型未启用。请到 设置 · 模型 重新选择可用模型后再发送。',
+         model_not_chat_capable: '当前会话选择的模型不能用于聊天。请到 设置 · 模型 重新选择支持聊天的模型后再发送。',
+-        oauth_subscription_not_wired: '这个订阅账号暂时不能作为聊天模型。请先选择可用的 API key 或已接入 OAuth 模型连接。',
+         fake_backend: '当前会话来自旧的本地模拟连接。请到 设置 · 模型 添加真实模型后新建会话。',
+       },
+     },
+@@ -556,7 +555,6 @@ const COPY = {
+         empty_model_list: { label: '连接没有启用模型', tooltip: (name) => `连接 "${name}" 没有启用任何模型，发送会失败。请到 设置 · 模型 先添加模型。` },
+         model_not_enabled: { label: '会话模型未启用', tooltip: (name, model) => `模型 "${model}" 不在连接 "${name}" 的启用列表中，发送会失败。请到 设置 · 模型 重新选择。` },
+         model_not_chat_capable: { label: '会话模型不支持聊天', tooltip: (name, model) => `模型 "${model}" 不能用于聊天，发送会失败。请到 设置 · 模型 选择支持聊天的模型。` },
+-        oauth_subscription_not_wired: { label: '订阅连接不能用于聊天', tooltip: (name) => `订阅连接 "${name}" 只用于账号状态查看，发送会失败。请先选择 API key 模型连接。` },
+       },
+       reauth: { label: '上次连接测试鉴权失败', tooltip: '最近一次连接测试返回鉴权失败（401 / 403），密钥可能已过期或被吊销。这不会拦截发送，但若发送失败请到 设置 · 模型 重新登录。' },
+       testError: { label: '上次连接测试失败', tooltip: '最近一次连接测试因网络 / 超时 / 5xx 失败。这不会拦截发送，但若问题持续请到 设置 · 模型 检查 Base URL / 代理。' },
+@@ -580,7 +578,6 @@ const COPY = {
+         empty_model_list: 'The current connection has no enabled models. Add or enable one in Settings · Models.',
+         model_not_enabled: 'The model selected for this conversation is disabled. Choose an enabled model in Settings · Models.',
+         model_not_chat_capable: 'The model selected for this conversation cannot chat. Choose a chat-capable model in Settings · Models.',
+-        oauth_subscription_not_wired: 'This subscription account cannot be used as a chat model yet. Choose an available API-key or supported OAuth connection.',
+         fake_backend: 'This conversation used the retired local simulation. Add a real model in Settings · Models, then start a new conversation.',
+       },
+     },
+@@ -757,7 +754,6 @@ const COPY = {
+         empty_model_list: { label: 'No models enabled', tooltip: (name) => `Connection "${name}" has no enabled models. Add one in Settings · Models.` },
+         model_not_enabled: { label: 'Conversation model disabled', tooltip: (name, model) => `Model "${model}" is not enabled for connection "${name}". Choose another model in Settings · Models.` },
+         model_not_chat_capable: { label: 'Conversation model cannot chat', tooltip: (_name, model) => `Model "${model}" cannot be used for chat. Choose a chat-capable model in Settings · Models.` },
+-        oauth_subscription_not_wired: { label: 'Subscription connection cannot chat', tooltip: (name) => `Subscription connection "${name}" is available only for account status. Choose an API-key model connection.` },
+       },
+       reauth: { label: 'Last connection test failed authentication', tooltip: 'The latest test returned 401 / 403. Sending is not blocked, but sign in again under Settings · Models if it fails.' },
+       testError: { label: 'Last connection test failed', tooltip: 'The latest test failed because of a network, timeout, or 5xx error. Sending is not blocked; check Base URL or proxy settings if it persists.' },
+diff --git a/apps/desktop/src/renderer/locales/settings-provider-copy.ts b/apps/desktop/src/renderer/locales/settings-provider-copy.ts
+index 42f6bbd3fd..254797918d 100644
+--- a/apps/desktop/src/renderer/locales/settings-provider-copy.ts
++++ b/apps/desktop/src/renderer/locales/settings-provider-copy.ts
+@@ -127,18 +127,16 @@ const zhCopy = {
+   },
+   catalog: {
+     unavailable: '未开放',
+-    wiredTitle: (name: string) => `${name}（请从账号连接登录）`,
+-    unwiredTitle: (name: string) => `${name}（账号登录暂未接入聊天发送）`, cardAria: (name: string, description: string) => `添加模型供应商：${name}，${description}`,
++    cardAria: (name: string, description: string) => `添加模型供应商：${name}，${description}`,
+   },
+   add: {
+     invalidSlug: '连接标识格式不正确', duplicateSlug: '连接标识已存在', cloudflareAccount: '请填写 Cloudflare Account ID', endpointRequired: '这个供应商需要填写服务地址',
+-    wiredLogin: '请到账号连接完成登录；登录成功后会自动创建模型连接。', unwiredLogin: '该账号登录暂未接入聊天发送；请先使用同一家厂商的模型密钥。',
+-    apiKeyPlaceholder: '输入或粘贴 API Key', cancel: '取消', wiredTitle: '使用账号连接登录', unwiredTitle: '账号登录暂未接入',
++    accountLogin: '请到账号连接完成登录；登录成功后会自动创建模型连接。',
++    apiKeyPlaceholder: '输入或粘贴 API Key', cancel: '取消', accountTitle: '使用账号连接登录',
+     advancedRequest: '高级请求设置', expandAdvancedRequest: '展开高级请求设置', collapseAdvancedRequest: '收起高级请求设置',
+     requestHeaders: '自定义请求头', headerName: '请求头名称', headerValue: '请求头值', retainedHeaderValue: '保留已保存的值', addHeader: '添加请求头', removeHeader: '移除', noRequestHeaders: '未设置自定义请求头。',
+     extraRequestBody: '额外请求体（JSON）', extraRequestBodyHelp: '仅添加顶层字段；与 Maka 生成字段重名时会明确失败。请求头值将作为凭据保存在本机。', requestCustomizationInvalid: '请检查高级请求设置。',
+-    wiredDetail: '不要在这里手动添加；请回到模型连接页的账号连接完成登录，Maka 会自动创建并刷新模型连接。',
+-    unwiredDetail: '这类账号登录暂未接入聊天发送。当前请先使用同一家厂商的模型密钥。',
++    accountDetail: '不要在这里手动添加；请回到模型连接页的账号连接完成登录，Maka 会自动创建并刷新模型连接。',
+     slug: '连接标识', name: '显示名称',
+     accountIdPlaceholder: '填写账户 ID',
+     saving: '保存中…', save: '保存供应商', keyRequired: (name: string) => `请填写 ${name} API Key`,
+@@ -277,18 +275,16 @@ const enCopy: ProviderSettingsCopy = {
+   },
+   catalog: {
+     unavailable: 'Unavailable',
+-    wiredTitle: (name: string) => `${name} (sign in under account connections)`,
+-    unwiredTitle: (name: string) => `${name} (account sign-in not connected to chat)`, cardAria: (name: string, description: string) => `Add model provider: ${name}; ${description}`,
++    cardAria: (name: string, description: string) => `Add model provider: ${name}; ${description}`,
+   },
+   add: {
+     invalidSlug: 'The connection identifier format is invalid', duplicateSlug: 'Connection identifier already exists', cloudflareAccount: 'Enter the Cloudflare Account ID', endpointRequired: 'This provider requires a service URL',
+-    wiredLogin: 'Complete sign-in under account connections. A model connection is created automatically afterward.', unwiredLogin: 'This account sign-in is not connected to chat yet. Use a model key from the same provider for now.',
+-    apiKeyPlaceholder: 'Enter or paste API key', cancel: 'Cancel', wiredTitle: 'Sign in with an account connection', unwiredTitle: 'Account sign-in is not connected',
++    accountLogin: 'Complete sign-in under account connections. A model connection is created automatically afterward.',
++    apiKeyPlaceholder: 'Enter or paste API key', cancel: 'Cancel', accountTitle: 'Sign in with an account connection',
+     advancedRequest: 'Advanced request settings', expandAdvancedRequest: 'Show advanced request settings', collapseAdvancedRequest: 'Hide advanced request settings',
+     requestHeaders: 'Custom request headers', headerName: 'Header name', headerValue: 'Header value', retainedHeaderValue: 'Keep saved value', addHeader: 'Add header', removeHeader: 'Remove', noRequestHeaders: 'No custom request headers.',
+     extraRequestBody: 'Extra request body (JSON)', extraRequestBodyHelp: 'Adds top-level fields only. A collision with a Maka-generated field fails explicitly. Header values stay in the local credential vault.', requestCustomizationInvalid: 'Check the advanced request settings.',
+-    wiredDetail: 'Do not add this provider manually here. Return to account connections and sign in; Maka creates and refreshes the model connection automatically.',
+-    unwiredDetail: 'This account sign-in is not connected to chat yet. Use a model key from the same provider for now.',
++    accountDetail: 'Do not add this provider manually here. Return to account connections and sign in; Maka creates and refreshes the model connection automatically.',
+     slug: 'Connection identifier', name: 'Display name',
+     accountIdPlaceholder: 'Enter account ID',
+     saving: 'Saving…', save: 'Save provider', keyRequired: (name: string) => `Enter the ${name} API key`,
+diff --git a/apps/desktop/src/renderer/model-catalog-choices.ts b/apps/desktop/src/renderer/model-catalog-choices.ts
+index 7ef8f46c2d..e2bba7c712 100644
+--- a/apps/desktop/src/renderer/model-catalog-choices.ts
++++ b/apps/desktop/src/renderer/model-catalog-choices.ts
+@@ -8,7 +8,6 @@ import {
+   PROVIDER_DEFAULTS,
+   connectionEnabledModelIds,
+ } from '@maka/core/llm-connections';
+-import { isWiredOAuthProvider } from '@maka/core/provider-registry';
+ import type { LlmConnection, ProviderType } from '@maka/core/llm-connections';
+ import type { UiLocale } from '@maka/core/ui-locale';
+ import { getShellRemainingCopy } from './locales/shell-remaining-copy.js';
+@@ -145,9 +144,6 @@ function isModelConsumerConnection(connection: Pick<LlmConnection, 'enabled' | '
+   // Mirrors `isFakeBackend` in connection-readiness.ts; without this guard the
+   // `.backendKind` read below throws on load for an orphan connection.
+   if (!connection.enabled || !defaults || defaults.backendKind !== 'ai-sdk') return false;
+-  if (defaults.authKind === 'oauth_token' && !isWiredOAuthProvider(connection.providerType)) {
+-    return false;
+-  }
+   return true;
+ }
+ 
+diff --git a/apps/desktop/src/renderer/settings/provider-add-form.tsx b/apps/desktop/src/renderer/settings/provider-add-form.tsx
+index dc02dfc279..a3f77c95cf 100644
+--- a/apps/desktop/src/renderer/settings/provider-add-form.tsx
++++ b/apps/desktop/src/renderer/settings/provider-add-form.tsx
+@@ -8,7 +8,6 @@ import {
+   deriveConnectionSlug,
+   validateSlug,
+ } from '@maka/core/llm-connections';
+-import { isWiredOAuthProvider } from '@maka/core/provider-registry';
+ import {
+   providerAuthRequiresSecret,
+   providerAuthSupportsApiKey,
+@@ -88,7 +87,6 @@ export function AddProviderForm(props: {
+   const showsDefaultModel = recommendedDefaultModel.trim() === '';
+   const isCustomRelay = defaults.category === 'custom';
+   const isExperimental = defaults.status === 'phase3-experimental';
+-  const isWiredOAuth = isWiredOAuthProvider(props.providerType);
+   const supportsRemoteDiscovery = providerSupportsModelDiscovery(props.providerType);
+   const supportsApiKey = providerAuthSupportsApiKey(props.providerType);
+   const requiresApiKey = providerAuthRequiresSecret(props.providerType) && supportsApiKey;
+@@ -143,7 +141,7 @@ export function AddProviderForm(props: {
+     if (isExperimental) {
+       return setError({
+         field: 'form',
+-        message: isWiredOAuth ? copy.wiredLogin : copy.unwiredLogin,
++        message: copy.accountLogin,
+       });
+     }
+     let normalizedRequestHeaders: Readonly<Record<string, string>>;
+@@ -285,10 +283,8 @@ export function AddProviderForm(props: {
+       {isExperimental && (
+         <Banner
+           status="info"
+-          title={isWiredOAuth ? copy.wiredTitle : copy.unwiredTitle}
+-          description={isWiredOAuth
+-            ? copy.wiredDetail
+-            : copy.unwiredDetail} />
++          title={copy.accountTitle}
++          description={copy.accountDetail} />
+       )}
+       <FormLayout>
+         {supportsApiKey && (
+diff --git a/apps/desktop/src/renderer/settings/use-connection-detail.ts b/apps/desktop/src/renderer/settings/use-connection-detail.ts
+index 6e8b97e8cc..11e1c68d63 100644
+--- a/apps/desktop/src/renderer/settings/use-connection-detail.ts
++++ b/apps/desktop/src/renderer/settings/use-connection-detail.ts
+@@ -13,7 +13,6 @@ import {
+   type RelayModelProfile,
+   type ThinkingLevel,
+ } from '@maka/core/model-thinking';
+-import { isWiredOAuthProvider } from '@maka/core/provider-registry';
+ import {
+   providerAuthRequiresSecret,
+   providerAuthSupportsApiKey,
+@@ -550,15 +549,11 @@ export function useConnectionDetail(props: ConnectionDetailProps) {
+     if (!releaseDelete) return;
+     const lifecycle = connectionDetailLifecycleRef.current;
+     setDeleting(true);
++    const usesOAuth = PROVIDER_DEFAULTS[connection.providerType].authKind === 'oauth_token';
+     const ok = await toast.confirm({
+       title: copy.deleteConnectionTitle(connection.name),
+-      description: copy.deleteDescription(
+-        props.isDefault,
+-        isWiredOAuthProvider(connection.providerType),
+-      ),
+-      confirmLabel: isWiredOAuthProvider(connection.providerType)
+-        ? copy.disconnectAndDelete
+-        : copy.delete,
++      description: copy.deleteDescription(props.isDefault, usesOAuth),
++      confirmLabel: usesOAuth ? copy.disconnectAndDelete : copy.delete,
+       cancelLabel: copy.cancel,
+       destructive: true,
+     });
+diff --git a/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts b/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
+index 627a61d6e2..f22946f6c8 100644
+--- a/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
++++ b/apps/desktop/src/renderer/settings/use-oauth-login-flow.ts
+@@ -37,7 +37,6 @@ export interface SubscriptionSnapshot {
+     | 'provider_rejected';
+   email?: string;
+   plan?: string;
+-  status?: 'preview';
+   errorMessage?: string;
+ }
+ 
+diff --git a/packages/core/src/__tests__/onboarding.test.ts b/packages/core/src/__tests__/onboarding.test.ts
+index fd6d4f08df..a7794fb858 100644
+--- a/packages/core/src/__tests__/onboarding.test.ts
++++ b/packages/core/src/__tests__/onboarding.test.ts
+@@ -104,7 +104,7 @@ describe('deriveOnboardingState', () => {
+     );
+   });
+ 
+-  it('accepts wired OAuth providers and ignores validation telemetry', () => {
++  it('accepts OAuth providers and ignores validation telemetry', () => {
+     for (const connection of [
+       realConnection({
+         slug: 'claude-subscription',
+diff --git a/packages/core/src/__tests__/provider-auth.test.ts b/packages/core/src/__tests__/provider-auth.test.ts
+index d605cfd18f..15673f303a 100644
+--- a/packages/core/src/__tests__/provider-auth.test.ts
++++ b/packages/core/src/__tests__/provider-auth.test.ts
+@@ -57,7 +57,7 @@ describe('ProviderAuth contract', () => {
+     expect(error.state).toBe('error');
+   });
+ 
+-  test('wired OAuth subscription providers expose real validation actions after login', () => {
++  test('OAuth subscription providers expose validation actions after login', () => {
+     const contract = deriveProviderAuthContract({
+       providerType: 'claude-subscription',
+       hasSecret: true,
+@@ -77,7 +77,7 @@ describe('ProviderAuth contract', () => {
+     expect(contract.actionAvailability.revoke_auth).toBe('available');
+   });
+ 
+-  test('a discovery-capable wired OAuth provider keeps fetch_models available after login', () => {
++  test('a discovery-capable OAuth provider keeps fetch_models available after login', () => {
+     const contract = deriveProviderAuthContract({
+       providerType: 'openai-codex',
+       hasSecret: true,
+@@ -88,7 +88,7 @@ describe('ProviderAuth contract', () => {
+     expect(contract.actionAvailability.fetch_models).toBe('available');
+   });
+ 
+-  test('wired OAuth subscription providers route missing login to the OAuth setup path', () => {
++  test('OAuth subscription providers route missing login to the OAuth setup path', () => {
+     const contract = deriveProviderAuthContract({
+       providerType: 'openai-codex',
+       hasSecret: false,
+diff --git a/packages/core/src/__tests__/runtime-policy-codec.test.ts b/packages/core/src/__tests__/runtime-policy-codec.test.ts
+index 88fdf1de92..491bb2d340 100644
+--- a/packages/core/src/__tests__/runtime-policy-codec.test.ts
++++ b/packages/core/src/__tests__/runtime-policy-codec.test.ts
+@@ -180,21 +180,6 @@ test('rejects new connections for the retired Gemini CLI account provider', () =
+   );
+ });
+ 
+-test('keeps ordinary Google API-key connections supported', () => {
+-  const input = normalizeCreateCatalogConnectionInput({
+-    expectedCatalogRevision: 0,
+-    connection: {
+-      slug: 'google-api',
+-      name: 'Google API',
+-      providerType: 'google',
+-      enabled: true,
+-      enabledModelIds: ['gemini-2.5-pro'],
+-    },
+-  });
+-
+-  assert.equal(input.connection.providerType, 'google');
+-});
+-
+ test('relay model profiles round-trip canonical entries and drafts, strictly', () => {
+   const table = {
+     'relay-reasoner': {
+diff --git a/packages/core/src/chat-model-choice.ts b/packages/core/src/chat-model-choice.ts
+index 46e215950f..aa886b275b 100644
+--- a/packages/core/src/chat-model-choice.ts
++++ b/packages/core/src/chat-model-choice.ts
+@@ -5,7 +5,6 @@ import {
+   CODEX_SUBSCRIPTION_UNSUPPORTED_CHATGPT_MODELS,
+   PROVIDER_DEFAULTS,
+   connectionEnabledModelIds,
+-  isWiredOAuthProvider,
+   type LlmConnection,
+   type ProviderType,
+ } from './llm-connections.js';
+@@ -41,12 +40,7 @@ export function buildChatModelChoices(connections: readonly LlmConnection[]): Ch
+   for (const rawConnection of connections) {
+     const connection = normalizeOpenAiCodexConnection(rawConnection);
+     const provider = PROVIDER_DEFAULTS[connection.providerType];
+-    if (
+-      !connection.enabled ||
+-      !provider ||
+-      provider.backendKind !== 'ai-sdk' ||
+-      (provider.authKind === 'oauth_token' && !isWiredOAuthProvider(connection.providerType))
+-    ) {
++    if (!connection.enabled || !provider || provider.backendKind !== 'ai-sdk') {
+       continue;
+     }
+     const enabledModelIds = new Set(connectionEnabledModelIds(connection));
+diff --git a/packages/core/src/connection-error-copy.ts b/packages/core/src/connection-error-copy.ts
+index e776195dbc..0ab7e9874d 100644
+--- a/packages/core/src/connection-error-copy.ts
++++ b/packages/core/src/connection-error-copy.ts
+@@ -36,8 +36,6 @@ const REASON_FIX_COPY: Record<ChatConfigurationReason, string> = {
+   model_not_enabled: '当前会话选择的模型未启用。请到 设置 · 模型 重新选择可用模型后再发送。',
+   model_not_chat_capable:
+     '当前会话选择的模型不能用于聊天。请到 设置 · 模型 重新选择支持聊天的模型后再发送。',
+-  oauth_subscription_not_wired:
+-    '这个订阅账号暂时不能作为聊天模型。请先选择可用的 API key 或已接入 OAuth 模型连接。',
+   fake_backend: '当前会话来自旧的本地模拟连接。请到 设置 · 模型 添加真实模型后新建会话。',
+ };
+ 
+diff --git a/packages/core/src/connection-readiness.ts b/packages/core/src/connection-readiness.ts
+index 871136cd29..477329c133 100644
+--- a/packages/core/src/connection-readiness.ts
++++ b/packages/core/src/connection-readiness.ts
+@@ -11,8 +11,6 @@
+  * The single helper here is the only place these criteria live:
+  *   - real backend (not `fake`)
+  *   - `enabled === true`
+- *   - provider auth path is send-wired (Claude subscription is wired;
+- *     other OAuth providers stay blocked until their runtime path lands)
+  *   - has usable secret OR provider's `authKind === 'none'`
+  *   - effective model exists (caller's `requestedModel` if provided,
+  *     otherwise `connection.defaultModel`)
+@@ -28,7 +26,6 @@ import {
+   CODEX_SUBSCRIPTION_UNSUPPORTED_CHATGPT_MODELS,
+   PROVIDER_DEFAULTS,
+   connectionEnabledModelIds,
+-  isWiredOAuthProvider,
+   providerAuthRequiresSecret,
+   type LlmConnection,
+ } from './llm-connections.js';
+@@ -51,7 +48,6 @@ export type ChatConfigurationReason =
+   | 'empty_model_list'
+   | 'model_not_enabled'
+   | 'model_not_chat_capable'
+-  | 'oauth_subscription_not_wired'
+   | 'fake_backend';
+ 
+ export type IsConnectionReadyResult =
+@@ -90,14 +86,13 @@ export interface IsConnectionReadyInput {
+  * Order:
+  *   1. backend is `fake` → `fake_backend`
+  *   2. `enabled === false` → `connection_disabled`
+- *   3. unsupported OAuth provider → `oauth_subscription_not_wired`
+- *   4. `authKind !== 'none' && !hasSecret` → `missing_api_key`
+- *   5. effective model is empty/missing → `missing_model`
+- *   6. no models are enabled → `empty_model_list`
+- *   7. effective model is not enabled → `model_not_enabled`
+- *   8. `connection.models` is enumerated but empty → `empty_model_list`
+- *   9. effective model is not in `connection.models` → `model_not_enabled`
+- *  10. effective model is explicitly not chat-capable → `model_not_chat_capable`
++ *   3. `authKind !== 'none' && !hasSecret` → `missing_api_key`
++ *   4. effective model is empty/missing → `missing_model`
++ *   5. no models are enabled → `empty_model_list`
++ *   6. effective model is not enabled → `model_not_enabled`
++ *   7. `connection.models` is enumerated but empty → `empty_model_list`
++ *   8. effective model is not in `connection.models` → `model_not_enabled`
++ *   9. effective model is explicitly not chat-capable → `model_not_chat_capable`
+  *
+  * "Effective model" = `requestedModel ?? connection.defaultModel`.
+  */
+@@ -110,10 +105,6 @@ export function isConnectionReady(input: IsConnectionReadyInput): IsConnectionRe
+   if (!connection.enabled) {
+     return { ready: false, reason: 'connection_disabled' };
+   }
+-  const authKind = PROVIDER_DEFAULTS[connection.providerType].authKind;
+-  if (authKind === 'oauth_token' && !isWiredOAuthProvider(connection.providerType)) {
+-    return { ready: false, reason: 'oauth_subscription_not_wired' };
+-  }
+   if (providerAuthRequiresSecret(connection.providerType) && !hasSecret) {
+     return { ready: false, reason: 'missing_api_key' };
+   }
+diff --git a/packages/core/src/llm-connections.ts b/packages/core/src/llm-connections.ts
+index 7db583b4b4..815a98a274 100644
+--- a/packages/core/src/llm-connections.ts
++++ b/packages/core/src/llm-connections.ts
+@@ -20,7 +20,6 @@ import {
+   PROVIDER_REGISTRY,
+   READY_PROVIDER_TYPES,
+   RECOMMENDED_PROVIDER_TYPES,
+-  isWiredOAuthProvider,
+   type ApplyPatchProtocol,
+   type ProviderCatalogGroup,
+   type ProviderCategory,
+@@ -38,7 +37,6 @@ export {
+   PROVIDER_REGISTRY,
+   READY_PROVIDER_TYPES,
+   RECOMMENDED_PROVIDER_TYPES,
+-  isWiredOAuthProvider,
+ };
+ export type {
+   ApplyPatchProtocol,
+diff --git a/packages/core/src/onboarding.ts b/packages/core/src/onboarding.ts
+index 636e803e18..eec0e5c843 100644
+--- a/packages/core/src/onboarding.ts
++++ b/packages/core/src/onboarding.ts
+@@ -89,7 +89,6 @@ export function deriveOnboardingState(input: DeriveOnboardingStateInput): Onboar
+       case 'fake_backend':
+       case 'connection_missing':
+       case 'missing_default_connection':
+-      case 'oauth_subscription_not_wired':
+         break;
+     }
+   }
+diff --git a/packages/core/src/provider-auth.ts b/packages/core/src/provider-auth.ts
+index 7052908694..0c78455f54 100644
+--- a/packages/core/src/provider-auth.ts
++++ b/packages/core/src/provider-auth.ts
+@@ -1,6 +1,5 @@
+ import {
+   PROVIDER_DEFAULTS,
+-  isWiredOAuthProvider,
+   providerAuthRequiresSecret,
+   providerSupportsModelDiscovery,
+   type ConnectionAuth,
+@@ -9,7 +8,7 @@ import {
+   type ProviderType,
+ } from './llm-connections.js';
+ 
+-export const PROVIDER_AUTH_SETUP_MODES = ['api_key', 'oauth', 'oauth_preview', 'none'] as const;
++export const PROVIDER_AUTH_SETUP_MODES = ['api_key', 'oauth', 'none'] as const;
+ export type ProviderAuthSetupMode = (typeof PROVIDER_AUTH_SETUP_MODES)[number];
+ 
+ export const PROVIDER_AUTH_STATES = [
+@@ -19,7 +18,6 @@ export const PROVIDER_AUTH_STATES = [
+   'validated',
+   'needs_reauth',
+   'error',
+-  'preview_only',
+ ] as const;
+ export type ProviderAuthState = (typeof PROVIDER_AUTH_STATES)[number];
+ 
+@@ -33,7 +31,7 @@ export const PROVIDER_AUTH_ACTIONS = [
+ ] as const;
+ export type ProviderAuthAction = (typeof PROVIDER_AUTH_ACTIONS)[number];
+ 
+-export type ProviderAuthActionAvailability = 'available' | 'preview_only' | 'hidden';
++export type ProviderAuthActionAvailability = 'available' | 'hidden';
+ 
+ export interface ProviderAuthContractInput {
+   providerType: ProviderType;
+@@ -107,44 +105,24 @@ export function deriveProviderAuthContract(input: ProviderAuthContractInput): Pr
+   }
+ 
+   if (defaults.authKind === 'oauth_token') {
+-    if (isWiredOAuthProvider(input.providerType)) {
+-      const validationStatus = input.lastTestStatus ?? 'not_run';
+-      const state: ProviderAuthState = authStateFromSecretAndTest(hasSecret, input.lastTestStatus);
+-      return {
+-        providerType: input.providerType,
+-        setupMode: 'oauth',
+-        state,
+-        validationStatus,
+-        requiresSecret: true,
+-        sendMayUseWithoutSecret: false,
+-        actionAvailability: {
+-          ...actionAvailability,
+-          test_credentials: hasSecret ? 'available' : 'hidden',
+-          fetch_models: hasSecret && supportsModelDiscovery ? 'available' : 'hidden',
+-          start_oauth: hasSecret ? 'hidden' : 'available',
+-          refresh_oauth: hasSecret ? 'available' : 'hidden',
+-          revoke_auth: hasSecret ? 'available' : 'hidden',
+-        },
+-        copy: copyForOAuth(defaults.label, state),
+-      };
+-    }
++    const validationStatus = input.lastTestStatus ?? 'not_run';
++    const state: ProviderAuthState = authStateFromSecretAndTest(hasSecret, input.lastTestStatus);
+     return {
+       providerType: input.providerType,
+-      setupMode: 'oauth_preview',
+-      state: 'preview_only',
+-      validationStatus: 'not_run',
++      setupMode: 'oauth',
++      state,
++      validationStatus,
+       requiresSecret: true,
+       sendMayUseWithoutSecret: false,
+       actionAvailability: {
+         ...actionAvailability,
+-        start_oauth: 'preview_only',
+-        refresh_oauth: 'preview_only',
+-        revoke_auth: 'preview_only',
+-      },
+-      copy: {
+-        label: `${defaults.label} 账号登录预览`,
+-        detail: '当前仅展示账号登录状态入口；普通模型密钥连接仍可在聊天模型中使用。',
++        test_credentials: hasSecret ? 'available' : 'hidden',
++        fetch_models: hasSecret && supportsModelDiscovery ? 'available' : 'hidden',
++        start_oauth: hasSecret ? 'hidden' : 'available',
++        refresh_oauth: hasSecret ? 'available' : 'hidden',
++        revoke_auth: hasSecret ? 'available' : 'hidden',
+       },
++      copy: copyForOAuth(defaults.label, state),
+     };
+   }
+ 
+@@ -248,14 +226,12 @@ function hiddenActions(): Record<ProviderAuthAction, ProviderAuthActionAvailabil
+ 
+ function setupModeForAuthKind(authKind: ConnectionAuth['kind']): ProviderAuthSetupMode {
+   if (authKind === 'none') return 'none';
+-  if (authKind === 'oauth_token') return 'oauth_preview';
++  if (authKind === 'oauth_token') return 'oauth';
+   return 'api_key';
+ }
+ 
+ function setupModeForProvider(providerType: ProviderType): ProviderAuthSetupMode {
+-  const authKind = PROVIDER_DEFAULTS[providerType]?.authKind;
+-  if (authKind === 'oauth_token' && isWiredOAuthProvider(providerType)) return 'oauth';
+-  return setupModeForAuthKind(authKind);
++  return setupModeForAuthKind(PROVIDER_DEFAULTS[providerType]?.authKind);
+ }
+ 
+ function copyForApiKey(label: string, state: ProviderAuthState): ProviderAuthContract['copy'] {
+@@ -286,7 +262,6 @@ function copyForApiKey(label: string, state: ProviderAuthState): ProviderAuthCon
+         detail: '凭据已保存，等待验证；测试通过前不要把它展示成运行可用。',
+       };
+     case 'disabled':
+-    case 'preview_only':
+       return {
+         label,
+         detail: '当前状态不走模型密钥凭据流程。',
+@@ -325,7 +300,6 @@ function copyForOptionalApiKey(
+       };
+     case 'not_configured':
+     case 'disabled':
+-    case 'preview_only':
+       return {
+         label,
+         detail: '当前状态不走可选模型密钥流程。',
+@@ -361,7 +335,6 @@ function copyForOAuth(label: string, state: ProviderAuthState): ProviderAuthCont
+         detail: '账号令牌已保存，等待验证；测试通过前不要把它展示成运行可用。',
+       };
+     case 'disabled':
+-    case 'preview_only':
+       return {
+         label,
+         detail: '当前状态不走 OAuth 账号流程。',
+diff --git a/packages/core/src/provider-contract-matrix.ts b/packages/core/src/provider-contract-matrix.ts
+index 4818924e4e..0f2f0ae44a 100644
+--- a/packages/core/src/provider-contract-matrix.ts
++++ b/packages/core/src/provider-contract-matrix.ts
+@@ -413,7 +413,7 @@ function reasoningReplayCell(
+ }
+ 
+ function isRow(def: ProviderDefaults): boolean {
+-  return def.status === 'ready' && def.runtimeAdapter.kind !== 'unavailable';
++  return def.status === 'ready';
+ }
+ 
+ export function buildProviderContractRow(
+diff --git a/packages/core/src/provider-registry.ts b/packages/core/src/provider-registry.ts
+index 30200a096b..4afd51289e 100644
+--- a/packages/core/src/provider-registry.ts
++++ b/packages/core/src/provider-registry.ts
+@@ -33,8 +33,7 @@ type ProviderRuntimeAdapterDefinition =
+       supportsOpenAiResponses?: true;
+       replayAssistantReasoningAs?: 'reasoning';
+       replayAssistantReasoningDetails?: true;
+-    }
+-  | { kind: 'unavailable' };
++    };
+ 
+ export type ProviderRuntimeAdapter = ProviderRuntimeAdapterDefinition & {
+   /** Provider wire contract for ApplyPatch. Model support is resolved separately. */
+@@ -1833,13 +1832,3 @@ function providerTypesByOrder(
+ export const READY_PROVIDER_TYPES = providerTypesByOrder('readyOrder');
+ export const CATALOG_PROVIDER_TYPES = providerTypesByOrder('catalogOrder');
+ export const RECOMMENDED_PROVIDER_TYPES = providerTypesByOrder('recommendedOrder');
+-
+-/**
+- * An OAuth provider is product-wired when its registry entry has both the
+- * OAuth credential contract and a runnable model adapter. OAuth entries whose
+- * adapter is unavailable remain preview-only.
+- */
+-export function isWiredOAuthProvider(providerType: ProviderType): boolean {
+-  const provider = PROVIDER_REGISTRY[providerType];
+-  return provider.authKind === 'oauth_token' && provider.runtimeAdapter.kind !== 'unavailable';
+-}
+diff --git a/packages/core/src/task-submission-readiness.ts b/packages/core/src/task-submission-readiness.ts
+index 94fc3d5b86..b2ccf15707 100644
+--- a/packages/core/src/task-submission-readiness.ts
++++ b/packages/core/src/task-submission-readiness.ts
+@@ -252,7 +252,6 @@ function modelRepairTarget(
+       return { kind: 'connection', connectionSlug };
+     case 'connection_disabled':
+     case 'missing_api_key':
+-    case 'oauth_subscription_not_wired':
+       return { kind: 'connection', connectionSlug };
+   }
+ }
+diff --git a/packages/runtime-host/src/server/execution-model-authority.ts b/packages/runtime-host/src/server/execution-model-authority.ts
+index 039fc79c11..67b85695b3 100644
+--- a/packages/runtime-host/src/server/execution-model-authority.ts
++++ b/packages/runtime-host/src/server/execution-model-authority.ts
+@@ -780,7 +780,7 @@ export async function resolveExecutionTarget(
+     );
+   }
+   const provider = PROVIDER_DEFAULTS[resolved.connection.providerType];
+-  if (!provider || provider.runtimeAdapter.kind === 'unavailable') {
++  if (!provider) {
+     throw new AuxiliaryModelCallConfigurationError('Runtime Host model provider is not executable');
+   }
+   const model = header.model.trim();
+diff --git a/packages/runtime/src/__tests__/responses-wire-contract.test.ts b/packages/runtime/src/__tests__/responses-wire-contract.test.ts
+index 4d5dea3780..c0e2a9c7fb 100644
+--- a/packages/runtime/src/__tests__/responses-wire-contract.test.ts
++++ b/packages/runtime/src/__tests__/responses-wire-contract.test.ts
+@@ -51,7 +51,6 @@ describe('responses wire contract', () => {
+     // encrypted content is the only dialect a provider may carry reasoning in.
+     const gaps: string[] = [];
+     for (const providerType of Object.keys(PROVIDER_REGISTRY) as LlmConnection['providerType'][]) {
+-      if (PROVIDER_REGISTRY[providerType].runtimeAdapter?.kind === 'unavailable') continue;
+       const modelIds = new Set([
+         ...PROVIDER_REGISTRY[providerType].fallbackModels,
+         ...modelMetadataIdsForProvider(providerType),
+diff --git a/packages/runtime/src/model-factory.ts b/packages/runtime/src/model-factory.ts
+index 01365e9168..65e3d44dba 100644
+--- a/packages/runtime/src/model-factory.ts
++++ b/packages/runtime/src/model-factory.ts
+@@ -116,9 +116,6 @@ export function getAIModel(input: ModelFactoryInput): LanguageModelV4 {
+       }).chatModel(modelId);
+     }
+ 
+-    case 'unavailable':
+-      throw new Error(`${connection.providerType} is experimental and not wired yet`);
+-
+     case 'openai': {
+       const openai = createOpenAI({
+         apiKey,
+diff --git a/packages/runtime/src/model-runtime.ts b/packages/runtime/src/model-runtime.ts
+index 0d49a2bc64..94a60ba7f8 100644
+--- a/packages/runtime/src/model-runtime.ts
++++ b/packages/runtime/src/model-runtime.ts
+@@ -13,8 +13,7 @@ export type ModelRuntimeWire =
+   | 'openai-chat'
+   | 'openai-responses'
+   | 'google-generate'
+-  | 'cohere-v2'
+-  | 'unavailable';
++  | 'cohere-v2';
+ 
+ export type ReasoningReplayContract =
+   | { kind: 'none' }
+@@ -148,8 +147,6 @@ function resolveModelRuntimeWire(
+       return 'google-generate';
+     case 'cohere':
+       return 'cohere-v2';
+-    case 'unavailable':
+-      return 'unavailable';
+   }
+ }
+ 
+@@ -176,7 +173,6 @@ function reasoningReplayContract(
+         : { kind: 'none' };
+     case 'google-generate':
+     case 'cohere-v2':
+-    case 'unavailable':
+       return { kind: 'none' };
+   }
+ }
+diff --git a/packages/runtime/src/test-connection.ts b/packages/runtime/src/test-connection.ts
+index f6087248eb..7558261369 100644
+--- a/packages/runtime/src/test-connection.ts
++++ b/packages/runtime/src/test-connection.ts
+@@ -211,8 +211,6 @@ async function testConnectionModel(
+       );
+     case 'cohere':
+       return await probeCohere(baseUrl, secret, testModel, t0, fetchFn);
+-    case 'unavailable':
+-      throw new Error(`${connection.providerType} is experimental and not wired yet`);
+   }
+ }
+ 

@@ -1,0 +1,254 @@
+{
+  "additions": 561,
+  "author": "me2seeks",
+  "base_sha": "b03b85e8596abfa448b119112197fadbfab6e1b8",
+  "body": "## Summary\n\n- add bounded Runtime Host reads for a root Session's current and historical Agent Graph epochs\n- let Desktop browse prior Graph runs while keeping historical controls read-only\n- add `/graph history` to the TUI without starting an agent Turn\n\nThe Runtime Host remains the only historical graph reader: clients request an epoch directory and an exact graph snapshot, while the Host validates that the requested graph belongs to the same root Session. Desktop follows the current epoch by default and fences stale refreshes when the user switches runs.\n\nThis is the historical-read slice of #2588 and builds on #2969.\n\nRefs #2588\n\nReady for review.\n\n## Verification\n\n- `npm run build:test`\n- `npm run typecheck`\n- Agent Graph, Desktop bridge/panel, and TUI tests on the latest-main stack \u2014 146 passed\n- Biome check on all changed files\n- `git diff --check`\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 Desktop and TUI can inspect earlier Agent Graph runs in a root Session\n- [ ] No\n\n<details>\n<summary>\u4e2d\u6587\u8bf4\u660e</summary>\n\n## \u6458\u8981\n\n- \u589e\u52a0\u7531 Runtime Host \u63d0\u4f9b\u7684\u6709\u754c Graph epoch \u5386\u53f2\u8bfb\u53d6\n- Desktop \u53ef\u4ee5\u5207\u6362\u67e5\u770b\u4e4b\u524d\u7684 Graph \u8fd0\u884c\uff0c\u5386\u53f2\u8fd0\u884c\u53ea\u8bfb\u4e14\u4e0d\u4f1a\u51fa\u73b0\u505c\u6b62\u6216\u5173\u95ed\u63a7\u5236\n- TUI \u589e\u52a0 `/graph history`\uff0c\u67e5\u770b\u5386\u53f2\u4e0d\u4f1a\u542f\u52a8 Agent Turn\n\n\u5ba2\u6237\u7aef\u4e0d\u4f1a\u76f4\u63a5\u8bfb\u53d6 SQLite\u3002Runtime Host \u4f1a\u9a8c\u8bc1\u6307\u5b9a graph \u786e\u5b9e\u5c5e\u4e8e\u540c\u4e00\u4e2a root Session\uff0c\u518d\u8fd4\u56de epoch \u76ee\u5f55\u548c\u7cbe\u786e\u5386\u53f2\u5feb\u7167\u3002Desktop \u9ed8\u8ba4\u8ddf\u968f\u5f53\u524d epoch\uff0c\u5e76\u901a\u8fc7 generation fence \u9632\u6b62\u8f83\u6162\u7684\u65e7\u8bf7\u6c42\u8986\u76d6\u7528\u6237\u521a\u9009\u62e9\u7684\u65b0\u9875\u9762\u3002\n\n\u8fd9\u662f #2588 \u7684\u5386\u53f2\u8bfb\u53d6\u90e8\u5206\uff0c\u5efa\u7acb\u5728 #2969 \u7684 epoch \u751f\u547d\u5468\u671f\u8fb9\u754c\u4e4b\u4e0a\u3002\n\n\u5df2\u8f6c\u4e3a Ready\uff0c\u8bf7\u6c42 review\u3002\n\n</details>\n\n## AI disclosure / AI \u62ab\u9732\n\nThis PR was implemented by Codex under me2seeks\u2019s direction and review. / \u672c PR \u7531 Codex \u5728 me2seeks \u7684\u6307\u5bfc\u4e0e\u5ba1\u6838\u4e0b\u5b8c\u6210\u3002\n\n## Visual evidence\n\nRepresentative Desktop capture using the PR copy and graph states. The historical selection is explicitly read-only and does not expose the current-run Stop action.\n\n| Before \u2014 current graph only | After \u2014 historical run selected |\n| --- | --- |\n| ![Agent Graph before historical browsing](https://raw.githubusercontent.com/me2seeks/maka-agent/437384a659e2b6f8c77eb2477bc9d14f0e5bb6b8/pr-2991-before.png) | ![Agent Graph historical run selected](https://raw.githubusercontent.com/me2seeks/maka-agent/437384a659e2b6f8c77eb2477bc9d14f0e5bb6b8/pr-2991-after.png) |\\n\\n## AI use\\n- [ ] No generative tool was used for implementation.\\n- [x] Generative tooling was used and the result was reviewed and verified by the author.\\n\\nTool(s) and scope: OpenAI Codex (Maka) assisted with implementation, review remediation, tests, and PR documentation.\\n\\nFinal squash trailer: `Generated-by: Maka`",
+  "captured_at": "2026-08-29T17:22:42+00:00",
+  "case_id": "maka-pr-2991",
+  "changed_files": 20,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build immutable tarball",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_sandbox_w0_protocol",
+      "status": "COMPLETED",
+      "workflowName": "Windows sandbox W0 evidence"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "astryx_surface",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate installed CLI Linux x64 / Node 22.19",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate installed CLI Linux x64 / Node 24",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate installed CLI macOS arm64 / Node 24",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate installed CLI Windows x64 / Node 24",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate installed CLI Eval",
+      "status": "COMPLETED",
+      "workflowName": "CLI package validation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "b03b85e8596abfa448b119112197fadbfab6e1b8",
+  "deletions": 60,
+  "files": [
+    {
+      "additions": 260,
+      "changeType": "MODIFIED",
+      "deletions": 17,
+      "path": "apps/desktop/src/main/__tests__/agent-graph-panel.test.ts"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-session-domains-ipc-main.test.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/runtime-host-client.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/main/runtime-host-session-domains-ipc-main.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/preload/bridge-contract.d.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/preload/preload.ts"
+    },
+    {
+      "additions": 66,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "apps/desktop/src/renderer/agent-graph-panel.tsx"
+    },
+    {
+      "additions": 49,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/cli/src/__tests__/pi-tui-runner.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/cli/src/pi-tui-runner.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/__tests__/agent-graph-protocol.test.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/__tests__/execution-composition.test.ts"
+    },
+    {
+      "additions": 51,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts"
+    },
+    {
+      "additions": 19,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/protocol/agent-graph.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/runtime-host/src/server/agent-graph-coordinator.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/server/execution-composition.ts"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 7,
+      "path": "packages/runtime-host/src/server/root-turn-coordinator.ts"
+    },
+    {
+      "additions": 16,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/stream-graph-coordinator.test.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/stream-graph-coordinator.ts"
+    }
+  ],
+  "head_sha": "d42bf37ee6986ae4375d35651df08e5c05e1cbf1",
+  "issues": [],
+  "patch_sha256": "7adea995d36894683d19568f212f19653bc9483ff525614d404ba28f9eac49a0",
+  "pr_number": 2991,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "feat(agent-graph): browse historical graph runs",
+  "url": "https://github.com/apache/maka/pull/2991"
+}

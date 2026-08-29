@@ -1,0 +1,216 @@
+From 308d5c8f2cb89b7d9c6df8312d29fdefa8034051 Mon Sep 17 00:00:00 2001
+From: jackwener <jakevingoo@gmail.com>
+Date: Wed, 12 Aug 2026 06:28:52 +0800
+Subject: [PATCH] test(core): trim search normalizer matrices
+
+---
+ packages/core/src/__tests__/search.test.ts    | 12 ++----
+ .../core/src/__tests__/web-search.test.ts     |  4 +-
+ packages/core/src/search.ts                   | 40 ++-----------------
+ packages/core/src/web-search.ts               | 34 ++--------------
+ 4 files changed, 12 insertions(+), 78 deletions(-)
+
+diff --git a/packages/core/src/__tests__/search.test.ts b/packages/core/src/__tests__/search.test.ts
+index 6d016d2d99..2b74164267 100644
+--- a/packages/core/src/__tests__/search.test.ts
++++ b/packages/core/src/__tests__/search.test.ts
+@@ -17,7 +17,7 @@ describe('search contract normalizers', () => {
+       ok: true,
+       value: '最新 AI 新闻',
+     });
+-    for (const input of [undefined, null, 42, true, {}, [], '   ']) {
++    for (const input of [undefined, '   ']) {
+       const result = normalizeSearchQuery(input);
+       assert.equal(result.ok, false);
+       if (!result.ok) assert.equal(result.reason, 'invalid_query');
+@@ -25,12 +25,10 @@ describe('search contract normalizers', () => {
+   });
+ 
+   it('defaults, truncates, bounds, and validates limits', () => {
+-    for (const input of [undefined, null]) {
+-      assert.deepEqual(normalizeSearchLimit(input), { ok: true, value: 5 });
+-    }
++    assert.deepEqual(normalizeSearchLimit(undefined), { ok: true, value: 5 });
+     assert.deepEqual(normalizeSearchLimit(3.8), { ok: true, value: 3 });
+     assert.deepEqual(normalizeSearchLimit(999), { ok: true, value: SEARCH_MAX_LIMIT });
+-    for (const input of ['5', Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
++    for (const input of ['5', Number.NaN, 0]) {
+       assert.equal(normalizeSearchLimit(input).ok, false);
+     }
+   });
+@@ -48,7 +46,7 @@ describe('search contract normalizers', () => {
+     assert.equal(searchDomainMatches('badexample.com', ['example.com']), false);
+     assert.equal(searchDomainMatches('example.com', ['example.com']), true);
+ 
+-    for (const input of [undefined, null, 42, {}, [], '', '   ', 'https://']) {
++    for (const input of [undefined, '   ', 'https://']) {
+       const result = normalizeSearchDomain(input);
+       assert.equal(result.ok, false);
+       if (!result.ok) assert.equal(result.reason, 'invalid_domain');
+@@ -66,9 +64,7 @@ describe('search contract normalizers', () => {
+     for (const input of [
+       'javascript:alert(1)',
+       'file:///tmp/a',
+-      'data:text/html,hi',
+       'blob:https://example.com/id',
+-      'chrome-extension://abc/index.html',
+     ]) {
+       const result = normalizeSearchUrl(input);
+       assert.equal(result.ok, false);
+diff --git a/packages/core/src/__tests__/web-search.test.ts b/packages/core/src/__tests__/web-search.test.ts
+index 3285c2ed92..c60734cccf 100644
+--- a/packages/core/src/__tests__/web-search.test.ts
++++ b/packages/core/src/__tests__/web-search.test.ts
+@@ -15,7 +15,7 @@ import {
+ describe('web search settings', () => {
+   it('normalizes bounded queries and result limits', () => {
+     assert.equal(normalizeWebSearchQuery('  hello world  '), 'hello world');
+-    for (const value of ['', '   ', undefined, 123, {}]) {
++    for (const value of ['   ', undefined]) {
+       assert.equal(normalizeWebSearchQuery(value), null);
+     }
+     assert.equal(normalizeWebSearchQuery('a'.repeat(201))?.length, 200);
+@@ -23,8 +23,6 @@ describe('web search settings', () => {
+     const limits: Array<[unknown, number]> = [
+       [undefined, 5],
+       [NaN, 5],
+-      ['5', 5],
+-      [-3, 1],
+       [0, 1],
+       [3.7, 3],
+       [11, 10],
+diff --git a/packages/core/src/search.ts b/packages/core/src/search.ts
+index c459e07cd9..29575e1f31 100644
+--- a/packages/core/src/search.ts
++++ b/packages/core/src/search.ts
+@@ -25,20 +25,7 @@ export type SearchErrorReason =
+   | 'needs_human_browser'
+   | 'provider_error'
+   | 'parse_error'
+-  // PR-SEARCH-2.5 (xuan msg `57ca05cd` + `a91c61c6`): incognito gate.
+-  // Returned when the workspace is currently incognito and search is
+-  // disabled by policy. ALSO returned when the workspace privacy
+-  // authority returned a malformed snapshot (`validateWorkspacePrivacyContext`
+-  // failed) — fail-closed behavior treats unverifiable state as
+-  // incognito to preserve privacy. The two paths share this reason so
+-  // consumers do not need an extra UI state; the `message` field
+-  // distinguishes them when needed:
+-  //   - active: "Search is disabled while incognito is active."
+-  //   - malformed: "Search is disabled because workspace privacy state could not be verified."
+-  // The state is user-visible (the user toggled incognito on, or the
+-  // system failed closed), so exposing the reason is intentional —
+-  // the data we don't expose is session content / result counts /
+-  // snippets.
++  // Malformed privacy state fails closed to the same user-visible reason.
+   | 'incognito_active';
+ 
+ export type SearchSourceSnapshot =
+@@ -72,23 +59,7 @@ export interface WebFetchRequest {
+   refresh?: boolean;
+ }
+ 
+-/**
+- * Optional navigation target for a `SearchResult`.
+- *
+- * PR-SEARCH-1.5 (@xuan msg `772d8198`): a closed discriminated union so
+- * source-kind-specific identifiers (thread sessionId / turnId, future
+- * memory entry id, future activity timestamp range, etc.) stay typed and
+- * isolated. Adding a new variant is an explicit contract change.
+- *
+- * Today only `'thread'` exists. `web` / `web_fetch` results continue to
+- * use `SearchResult.url` for navigation; they do NOT need a `target`.
+- *
+- * Note: thread navigation deliberately does NOT use `maka://session/<id>`
+- * URIs — `packages/ui/src/maka-uri.ts:24` defers that scheme until a real
+- * session navigation contract exists. Consumers of `SearchResultTarget`
+- * route via the existing renderer-side session-pane state (sessionId →
+- * load session, turnId → scroll-into-view), NOT via a URL router.
+- */
++/** Non-URL navigation target; web results continue to use `url`. */
+ export type SearchResultTarget = { kind: 'thread'; sessionId: string; turnId?: string };
+ 
+ export interface SearchResult {
+@@ -96,12 +67,7 @@ export interface SearchResult {
+   citationIndex?: number;
+   title: string;
+   url?: string;
+-  /**
+-   * Closed-union navigation target. Populated for source kinds whose
+-   * navigation does NOT map to a URL — currently only `thread`. Future
+-   * memory/activity variants extend this union without polluting the
+-   * top-level shape.
+-   */
++  /** Navigation target for source kinds that do not map to a URL. */
+   target?: SearchResultTarget;
+   snippet?: string;
+   summary?: string;
+diff --git a/packages/core/src/web-search.ts b/packages/core/src/web-search.ts
+index ff89c618c8..d64909b6c9 100644
+--- a/packages/core/src/web-search.ts
++++ b/packages/core/src/web-search.ts
+@@ -1,12 +1,4 @@
+-/**
+- * Pure WebSearch contracts shared by the explicit UI query and agent-tool
+- * paths. One configured provider handles a query; failures are returned as
+- * closed reasons rather than silently rotating providers.
+- *
+- * The active execution owner controls credentials, provider calls, and the
+- * incognito gate. Renderer results contain normalized title, URL, and snippet
+- * fields and never expose cleartext credentials or raw provider errors.
+- */
++/** Renderer-safe WebSearch contracts shared by UI and agent-tool paths. */
+ 
+ /** Closed enum of search execution sources. */
+ export const WEB_SEARCH_PROVIDERS = ['model', 'tavily'] as const;
+@@ -63,13 +55,7 @@ export type WebSearchCredentialStatus = (typeof WEB_SEARCH_CREDENTIAL_STATUSES)[
+ export const WEB_SEARCH_CREDENTIAL_SOURCES = ['none', 'saved', 'env'] as const;
+ export type WebSearchCredentialSource = (typeof WEB_SEARCH_CREDENTIAL_SOURCES)[number];
+ 
+-/**
+- * Settings-layer placeholder for a stored API key. The renderer may
+- * see this when the settings store mirrors back the current value;
+- * an update that comes back with exactly this token MUST preserve
+- * the existing token instead of overwriting it. Same pattern as the
+- * existing bot token / proxy password mask in Maka.
+- */
++/** A round-tripped sentinel preserves the stored API key. */
+ export const MASKED_TOKEN_SENTINEL = '••••••';
+ 
+ /** Returns `null` when the raw value isn't a usable query. */
+@@ -96,13 +82,7 @@ export function isWebSearchProvider(value: unknown): value is WebSearchProvider
+   return typeof value === 'string' && (WEB_SEARCH_PROVIDERS as readonly string[]).includes(value);
+ }
+ 
+-/**
+- * Settings shape persisted in `settings.json`. The `apiKey` field is
+- * stored in cleartext on disk (settings store sees the raw value);
+- * the IPC store boundary returns the masked sentinel to the renderer
+- * for display. An update where `apiKey === MASKED_TOKEN_SENTINEL`
+- * means "keep current" — the store preserves it.
+- */
++/** Stored provider settings; renderer-facing reads mask `apiKey`. */
+ export interface WebSearchProviderSettings {
+   readonly apiKey: string;
+   /** Renderer-safe credential source. Never carries the secret value. */
+@@ -156,8 +136,6 @@ export function mergeWebSearchSettings(
+   const nextProvider: WebSearchProvider = isWebSearchProvider(candidateProvider)
+     ? candidateProvider
+     : current.defaultProvider;
+-  // Mask-sentinel preservation lives here so the IPC boundary does
+-  // not have to special-case the round-tripped masked value.
+   const nextApiKey =
+     tavilyPatch && typeof tavilyPatch.apiKey === 'string'
+       ? reconcileMaskedToken(current.providers.tavily.apiKey, tavilyPatch.apiKey)
+@@ -247,11 +225,7 @@ export function normalizeWebSearchSettings(settings: WebSearchSettings): WebSear
+   };
+ }
+ 
+-/**
+- * Helper for the IPC store boundary: given a (possibly stale)
+- * persisted token and the renderer-sent update token, choose which
+- * to persist. Renderer sending exactly the mask means "keep current".
+- */
++/** Preserve the stored token when the renderer returns its mask. */
+ export function reconcileMaskedToken(persisted: string, candidate: string): string {
+   if (candidate === MASKED_TOKEN_SENTINEL) return persisted;
+   return candidate;

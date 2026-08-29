@@ -1,0 +1,122 @@
+{
+  "cases": [
+    {
+      "additions": 519,
+      "changed_files": 13,
+      "deletions": 29,
+      "number": 3046,
+      "stratum": "closed_unmerged",
+      "title": "fix(runtime): reject truncated history-compact summaries at load time (#3041)",
+      "url": "https://github.com/apache/maka/pull/3046"
+    },
+    {
+      "additions": 558,
+      "changed_files": 60,
+      "deletions": 2509,
+      "number": 2965,
+      "stratum": "closed_unmerged",
+      "title": "chore(runtime): retire the Claude subscription OAuth path",
+      "url": "https://github.com/apache/maka/pull/2965"
+    },
+    {
+      "additions": 0,
+      "changed_files": 1,
+      "deletions": 32,
+      "number": 2817,
+      "stratum": "test_docs_ci",
+      "title": "test(runtime): remove tool output happy paths",
+      "url": "https://github.com/apache/maka/pull/2817"
+    },
+    {
+      "additions": 12,
+      "changed_files": 4,
+      "deletions": 78,
+      "number": 2850,
+      "stratum": "test_docs_ci",
+      "title": "test(core): trim search normalizer matrices",
+      "url": "https://github.com/apache/maka/pull/2850"
+    },
+    {
+      "additions": 4,
+      "changed_files": 2,
+      "deletions": 3,
+      "number": 3263,
+      "stratum": "small",
+      "title": "fix(desktop): preserve side chat composer elevation",
+      "url": "https://github.com/apache/maka/pull/3263"
+    },
+    {
+      "additions": 258,
+      "changed_files": 3,
+      "deletions": 0,
+      "number": 3016,
+      "stratum": "small",
+      "title": "fix(runtime): fence node-pty writes at PTY exit",
+      "url": "https://github.com/apache/maka/pull/3016"
+    },
+    {
+      "additions": 462,
+      "changed_files": 14,
+      "deletions": 38,
+      "number": 3048,
+      "stratum": "medium",
+      "title": "fix(desktop): settle catch-up text before remounting a live conversation",
+      "url": "https://github.com/apache/maka/pull/3048"
+    },
+    {
+      "additions": 267,
+      "changed_files": 8,
+      "deletions": 59,
+      "number": 3176,
+      "stratum": "medium",
+      "title": "fix(eval): isolate the external metering checkpoint from the subject",
+      "url": "https://github.com/apache/maka/pull/3176"
+    },
+    {
+      "additions": 561,
+      "changed_files": 20,
+      "deletions": 60,
+      "number": 2991,
+      "stratum": "medium",
+      "title": "feat(agent-graph): browse historical graph runs",
+      "url": "https://github.com/apache/maka/pull/2991"
+    },
+    {
+      "additions": 1274,
+      "changed_files": 25,
+      "deletions": 117,
+      "number": 2969,
+      "stratum": "large",
+      "title": "feat(runtime): support sequential agent graph epochs",
+      "url": "https://github.com/apache/maka/pull/2969"
+    },
+    {
+      "additions": 1472,
+      "changed_files": 28,
+      "deletions": 78,
+      "number": 3230,
+      "stratum": "large",
+      "title": "feat(cli): set up managed remote Runtime Hosts",
+      "url": "https://github.com/apache/maka/pull/3230"
+    },
+    {
+      "additions": 219,
+      "changed_files": 42,
+      "deletions": 871,
+      "number": 3062,
+      "stratum": "large",
+      "title": "refactor: retire Gemini CLI account preview",
+      "url": "https://github.com/apache/maka/pull/3062"
+    }
+  ],
+  "pool_digest": "0bd04593cd316aeeb457e79402e01421a031a1b5b601d615ea5e883552c80c04",
+  "repeat_numbers": [
+    3046,
+    2850,
+    3016,
+    2991
+  ],
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "seed": "pr-review-real-holdout-v1-af79986"
+}

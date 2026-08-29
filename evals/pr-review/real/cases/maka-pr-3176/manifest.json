@@ -1,0 +1,144 @@
+{
+  "additions": 267,
+  "author": "1625567290",
+  "base_sha": "5d9ce0d2020b641b37eccbc89e25416358db2d55",
+  "body": "## Summary\n\nThe host recovers external-subject usage from `agent/<profile>.provider-usage.json`. That path is in the subject's writable log directory, so a symlink or an oversized write can become settlement evidence. The wrapper also chmodded the published file after rename, so a host that raced the publish could see a `0600` snapshot left by umask `077`.\n\n- The temporary snapshot is chmodded to `0644` before rename, so the published inode is already readable.\n- Recovery opens the path with `O_NOFOLLOW` and accepts only a regular file of at most 64 KiB.\n- Shared write/read helpers live in `metering-checkpoint.ts` so the wrapper and the host use one contract.\n\nFixes #3149\n\n## Verification\n\n- `node --test packages/eval/dist/__tests__/metering-checkpoint.test.js packages/eval/dist/__tests__/external-subject.test.js` \u2014 15/15\n- `@maka/eval` typecheck\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Focused lint/typecheck and the affected suites pass locally\n- [ ] Full workspace lint/format/typecheck\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 a subject-controlled symlink or oversized file at the checkpoint path is no longer treated as usage evidence; a host racing rename sees `0644`\n",
+  "captured_at": "2026-08-29T17:22:39+00:00",
+  "case_id": "maka-pr-3176",
+  "changed_files": 8,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "astryx_surface",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "a81719d836d1df9095b7342e252cb52ea89c4276",
+  "deletions": 59,
+  "files": [
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/eval/README.md"
+    },
+    {
+      "additions": 50,
+      "changeType": "MODIFIED",
+      "deletions": 32,
+      "path": "packages/eval/src/__tests__/external-subject.test.ts"
+    },
+    {
+      "additions": 112,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/eval/src/__tests__/metering-checkpoint.test.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/eval/src/__tests__/provider-admission-integration.test.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/eval/src/external-subject.ts"
+    },
+    {
+      "additions": 10,
+      "changeType": "MODIFIED",
+      "deletions": 20,
+      "path": "packages/eval/src/harbor-external-subject.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/eval/src/harness-executor.ts"
+    },
+    {
+      "additions": 75,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/eval/src/metering-checkpoint.ts"
+    }
+  ],
+  "head_sha": "d0916963ed3be7d3356f99b32680cb04e38615cc",
+  "issues": [
+    {
+      "body": "Follow-up from #2971 review. The subject container can write `/logs/agent/<profile>.provider-usage.json`; the host trusts it for usage/cost settlement. Authenticate or isolate the checkpoint from the subject, bound reads, and chmod the temp file before rename. (Raised by @M4n5ter in the approving review.)",
+      "number": 3149,
+      "title": "eval: harden the external-subject metering checkpoint boundary",
+      "url": "https://github.com/apache/maka/issues/3149"
+    }
+  ],
+  "patch_sha256": "f00c7a2aa1905ffe7a4b2203b84aed38f12948f622000e182461be32794f13b5",
+  "pr_number": 3176,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(eval): isolate the external metering checkpoint from the subject",
+  "url": "https://github.com/apache/maka/pull/3176"
+}

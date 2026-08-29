@@ -39,6 +39,18 @@ inspectable by the author, grading is phrase-based free-text evaluation, fixture
 live GitHub API, and only one model/reasoning configuration was tested. Keep those limits explicit
 when changing the skill or extrapolating to another model.
 
+## Real PR holdout
+
+The synthetic `prreview-*` fixtures remain regression tests; they are not evidence for a public
+percentage claim because several encode the decisive production fact directly in the prompt. The
+real-PR holdout under [`real/`](real/) instead freezes public PR metadata and a source patch at one
+exact head, then applies that patch to the full historical repository. It withholds reviews,
+outcomes, merge state, and the answer key from the executor.
+
+The public comparison is not runnable until independent adjudicators finish the private answer key.
+Do not reuse the design cases or live-review cases listed in the selection policy as holdouts, and
+do not publish a percentage from the existing phrase-based grader.
+
 ## Reachability decision
 
 Compare the frozen pre-revision skill at `3e9300fb74ebbecdcd07aad92c5e97a98457f55a`

@@ -1,0 +1,3146 @@
+From 7c46b9accac31ba4123812e523b925e62fe77eac Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Wed, 19 Aug 2026 10:08:12 +0800
+Subject: [PATCH 1/3] feat(cli): set up managed remote Runtime Hosts
+
+Provide one idempotent Host-side setup transaction for future Desktop and terminal onboarding. The command installs the exact invoking release into a Maka-owned deployment, composes the existing systemd lifecycle with stable Client credential replacement, and verifies the authenticated loopback Host before returning connection facts.
+
+Service uninstall removes the managed package while retaining the State Root, and interrupted setup remains safe to retry.
+
+Generated-by: Codex
+---
+ docs/runtime-host-remote-access.md            |  25 +-
+ docs/runtime-host-remote-access.zh-CN.md      |  20 +-
+ packages/cli/README.md                        |  13 +
+ packages/cli/README.zh-CN.md                  |  12 +
+ .../runtime-host-operator-command.test.ts     |   2 +
+ .../runtime-host-service-manager.test.ts      |  16 +
+ .../src/__tests__/runtime-host-setup.test.ts  | 240 ++++++++++++++
+ packages/cli/src/cli-core.ts                  |  29 ++
+ .../cli/src/runtime-host-access-command.ts    |  36 ++
+ packages/cli/src/runtime-host-cli.ts          |  94 +++++-
+ .../src/runtime-host-managed-deployment.ts    | 207 ++++++++++++
+ ...runtime-host-service-management-command.ts |  21 +-
+ .../cli/src/runtime-host-setup-command.ts     | 307 ++++++++++++++++++
+ .../__tests__/authenticated-websocket.test.ts |  30 +-
+ .../src/__tests__/websocket-listener.test.ts  |   1 +
+ packages/runtime-host/src/client/index.ts     |   7 +
+ .../runtime-host/src/client/setup-frame.ts    | 115 +++++++
+ .../src/protocol/access-authority.ts          |  14 +
+ .../src/server/access-authority.ts            |  75 ++++-
+ .../runtime-host/src/server/host-kernel.ts    |   3 +
+ .../src/server/operation-dispatcher.ts        |   7 +
+ 21 files changed, 1253 insertions(+), 21 deletions(-)
+ create mode 100644 packages/cli/src/__tests__/runtime-host-setup.test.ts
+ create mode 100644 packages/cli/src/runtime-host-managed-deployment.ts
+ create mode 100644 packages/cli/src/runtime-host-setup-command.ts
+ create mode 100644 packages/runtime-host/src/client/setup-frame.ts
+
+diff --git a/docs/runtime-host-remote-access.md b/docs/runtime-host-remote-access.md
+index d108678de6..1aa23db09f 100644
+--- a/docs/runtime-host-remote-access.md
++++ b/docs/runtime-host-remote-access.md
+@@ -4,7 +4,28 @@
+ 
+ Maka Desktop, TUI, and CLI can connect to a Runtime Host through TLS, SSH, or explicitly enabled plaintext WebSocket.
+ 
+-## Prepare the Host
++## Set up a Linux Host
++
++On a Linux machine with Node.js 22.19 or newer and a working systemd user manager, the released CLI
++can install and verify a persistent Runtime Host in one command:
++
++```sh
++npx --yes maka-agent@next runtime-host setup \
++  --principal my-desktop \
++  --preset desktop-client \
++  --root /srv/maka \
++  --project-root projects=/srv/projects
++```
++
++Use a stable identifier for `--principal`; rerunning the command replaces that Client's credential
++instead of accumulating credentials. The command installs its exact Maka package into a managed
++directory, starts a loopback-only service, verifies the new credential, and then prints the connection
++details once. Use `terminal-client` for TUI or CLI.
++
++Run `maka runtime-host service uninstall` on the Host to remove the service and managed package. The
++State Root and Project data are retained.
++
++## Manual Host setup
+ 
+ Build Maka on the remote machine, choose a persistent State Root, and register each Project remote Clients may use:
+ 
+@@ -37,7 +58,7 @@ npm --workspace maka-agent exec -- maka runtime-host access issue \
+ 
+ Use `terminal-client` for TUI or CLI. The command prints the credential once.
+ 
+-On Linux with a systemd user manager, the released CLI can keep the loopback Host running after the
++On Linux with a systemd user manager, a persistent CLI installation can keep the loopback Host running after the
+ SSH session ends:
+ 
+ ```sh
+diff --git a/docs/runtime-host-remote-access.zh-CN.md b/docs/runtime-host-remote-access.zh-CN.md
+index f4aee9bdea..a2c7c70a2c 100644
+--- a/docs/runtime-host-remote-access.zh-CN.md
++++ b/docs/runtime-host-remote-access.zh-CN.md
+@@ -4,7 +4,23 @@
+ 
+ Maka Desktop、TUI 和 CLI 可以通过 TLS、SSH 或明确启用的明文 WebSocket 连接 Runtime Host。
+ 
+-## 准备 Host
++## 设置 Linux Host
++
++在具备 Node.js 22.19 或更新版本以及可用 systemd user manager 的 Linux 机器上，发布版 CLI 可以用一个命令安装并验证持久 Runtime Host：
++
++```sh
++npx --yes maka-agent@next runtime-host setup \
++  --principal my-desktop \
++  --preset desktop-client \
++  --root /srv/maka \
++  --project-root projects=/srv/projects
++```
++
++`--principal` 应使用稳定标识；重复执行会替换该 Client 的 credential，不会不断累积 credential。命令会把当前精确版本的 Maka 安装到托管目录，启动仅监听 loopback 的服务，验证新 credential，然后只显示一次连接信息。TUI 或 CLI 使用 `terminal-client`。
++
++在 Host 上运行 `maka runtime-host service uninstall` 会删除 service 与托管 package，但保留 State Root 和 Project 数据。
++
++## 手动设置 Host
+ 
+ 在远程机器构建 Maka，选择持久的 State Root，并注册允许 remote Client 使用的 Project：
+ 
+@@ -37,7 +53,7 @@ npm --workspace maka-agent exec -- maka runtime-host access issue \
+ 
+ TUI 或 CLI 使用 `terminal-client`。命令只显示 credential 一次。
+ 
+-在使用 systemd user manager 的 Linux 上，发布版 CLI 可以让 loopback Host 在 SSH 会话结束后
++在使用 systemd user manager 的 Linux 上，持久安装的 CLI 可以让 loopback Host 在 SSH 会话结束后
+ 继续运行：
+ 
+ ```sh
+diff --git a/packages/cli/README.md b/packages/cli/README.md
+index c52a7617d3..277064e113 100644
+--- a/packages/cli/README.md
++++ b/packages/cli/README.md
+@@ -84,6 +84,19 @@ Do not use a bare `npm update --global maka-agent` for beta upgrades: global npm
+ `latest` tag and may select a different release line. After a stable release is available, install it
+ with `npm install --global maka-agent@latest`.
+ 
++## Remote Runtime Host setup
++
++To set up a persistent remote Runtime Host from an exact released package on Linux:
++
++```sh
++npx --yes maka-agent@next runtime-host setup \
++  --principal my-client \
++  --preset terminal-client
++```
++
++Rerunning setup safely rotates that Client credential. The service no longer depends on the temporary
++`npx` cache after setup succeeds.
++
+ ## Uninstall
+ 
+ ```sh
+diff --git a/packages/cli/README.zh-CN.md b/packages/cli/README.zh-CN.md
+index 374e9a7c4a..28c5040b2e 100644
+--- a/packages/cli/README.zh-CN.md
++++ b/packages/cli/README.zh-CN.md
+@@ -78,6 +78,18 @@ Beta 升级不要使用不带 tag 的 `npm update --global maka-agent`：npm 的
+ `latest`，可能选中不同的发布线。稳定版发布后，使用
+ `npm install --global maka-agent@latest` 安装。
+ 
++## 设置远程 Runtime Host
++
++在 Linux 上从精确的发布 package 设置持久 remote Runtime Host：
++
++```sh
++npx --yes maka-agent@next runtime-host setup \
++  --principal my-client \
++  --preset terminal-client
++```
++
++重复设置会安全轮换该 Client credential。设置成功后，service 不再依赖临时 `npx` cache。
++
+ ## 卸载
+ 
+ ```sh
+diff --git a/packages/cli/src/__tests__/runtime-host-operator-command.test.ts b/packages/cli/src/__tests__/runtime-host-operator-command.test.ts
+index f51f94175f..102f6e5908 100644
+--- a/packages/cli/src/__tests__/runtime-host-operator-command.test.ts
++++ b/packages/cli/src/__tests__/runtime-host-operator-command.test.ts
+@@ -103,6 +103,7 @@ describe('Runtime Host operator commands', () => {
+       assert.equal(resolved.principalKind, 'remote_owner');
+       assert.equal(resolved.canUseHostPaths, false);
+       assert.equal(resolved.operationGrants.includes('access.credential.issue'), false);
++      assert.equal(resolved.operationGrants.includes('access.credential.replace'), false);
+       assert.equal(resolved.operationGrants.includes('access.credential.revoke'), false);
+       assert.equal(resolved.operationGrants.includes('host.upgrade.prepare'), false);
+       assert.equal(resolved.operationGrants.includes('turn.start'), true);
+@@ -136,6 +137,7 @@ describe('Runtime Host operator commands', () => {
+         .sort(),
+       [
+         'access.credential.issue',
++        'access.credential.replace',
+         'access.credential.revoke',
+         'host.upgrade.prepare',
+         'hosted.execution.cancel',
+diff --git a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+index 4c6c211a69..270059fc75 100644
+--- a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
++++ b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+@@ -48,6 +48,22 @@ describe('managed Runtime Host service', () => {
+       json: true,
+     });
+     assert.equal(parseRuntimeHostCommand(['service', 'status', '--root', '/tmp']).kind, 'error');
++    assert.deepEqual(
++      parseRuntimeHostCommand([
++        'setup',
++        '--principal',
++        'desktop.client-1',
++        '--preset',
++        'desktop-client',
++        '--json',
++      ]),
++      {
++        kind: 'runtime-host-setup',
++        json: true,
++        principalId: 'desktop.client-1',
++        preset: 'desktop-client',
++      },
++    );
+   });
+ 
+   it('installs, reports, and cleanly uninstalls while retaining the State Root', async (t) => {
+diff --git a/packages/cli/src/__tests__/runtime-host-setup.test.ts b/packages/cli/src/__tests__/runtime-host-setup.test.ts
+new file mode 100644
+index 0000000000..f84c4f7ede
+--- /dev/null
++++ b/packages/cli/src/__tests__/runtime-host-setup.test.ts
+@@ -0,0 +1,240 @@
++import assert from 'node:assert/strict';
++import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { test } from 'node:test';
++import {
++  decodeRuntimeHostSetupFrame,
++  encodeRuntimeHostSetupFrame,
++  RUNTIME_HOST_SETUP_FRAME_PREFIX,
++} from '@maka/runtime-host/client';
++import {
++  prepareRuntimeHostManagedPackageDeployment,
++  removeRuntimeHostManagedDeployment,
++  resolveRuntimeHostManagedDeploymentRoot,
++} from '../runtime-host-managed-deployment.js';
++import { runRuntimeHostSetupCli } from '../runtime-host-setup-command.js';
++import {
++  RuntimeHostServiceManagerError,
++  type RuntimeHostManagedServiceConfig,
++  type RuntimeHostManagedServiceResult,
++  type RuntimeHostServiceBackend,
++} from '../runtime-host-service-manager.js';
++
++test('managed setup converges on one exact package and verified Client pairing', async (t) => {
++  const base = await mkdtemp(join(tmpdir(), 'maka-runtime-host-setup-'));
++  t.after(() => rm(base, { recursive: true, force: true }));
++  const sourcePackageRoot = await createReleasePackage(base, '0.2.0');
++  const clientDataRoot = join(base, 'config', 'Maka');
++  const stateRoot = join(clientDataRoot, 'workspaces', 'default');
++  const dataHome = join(base, 'data');
++  const deploymentPathOptions = {
++    env: { XDG_DATA_HOME: dataHome },
++    homeDir: join(base, 'home'),
++    platform: 'linux' as const,
++  };
++  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(
++    clientDataRoot,
++    deploymentPathOptions,
++  );
++  await mkdir(join(deploymentRoot, 'versions', '.0.2.0.interrupted.tmp'), { recursive: true });
++  let config: RuntimeHostManagedServiceConfig | null = null;
++  let installCount = 0;
++  let pairCount = 0;
++  let installedCliPath = '';
++  const outputs: string[] = [];
++  const options = {
++    json: true,
++    clientDataRoot,
++    defaultRootPath: stateRoot,
++    sourcePackageRoot,
++    version: '0.2.0',
++    principalId: 'desktop.client-1',
++    preset: 'desktop-client',
++  } as const;
++  const overrides = {
++    createBackend: () => unusedBackend(),
++    manageService: async (input: { readonly action: string; readonly cliPath: string }) => {
++      if (input.action === 'status') return serviceResult('status', config);
++      installCount += 1;
++      installedCliPath = input.cliPath;
++      config = {
++        schemaVersion: 1,
++        rootPath: stateRoot,
++        projectDirectoryRoots: [],
++        websocket: { host: '127.0.0.1', port: 42_111, path: '/runtime-host' },
++        launch: { nodePath: process.execPath, cliPath: input.cliPath },
++      };
++      return serviceResult('install', config);
++    },
++    prepareDeployment: (input: Parameters<typeof prepareRuntimeHostManagedPackageDeployment>[0]) =>
++      prepareRuntimeHostManagedPackageDeployment(input, deploymentPathOptions),
++    replaceCredential: async () => {
++      pairCount += 1;
++      return {
++        rootId: 'a'.repeat(64),
++        credential: `secret-${pairCount}`,
++        credentialId: `credential-${pairCount}`,
++        principalKind: 'remote_owner' as const,
++        principalId: 'desktop.client-1',
++        operationGrants: ['host.status'] as const,
++        canPublishClientCapabilities: true,
++        canUseHostPaths: false,
++      };
++    },
++    verifyCredential: async (input: { readonly endpoint: string; readonly credential: string }) => {
++      assert.equal(input.endpoint, 'ws://127.0.0.1:42111/runtime-host');
++      assert.match(input.credential, /^secret-/u);
++    },
++    writeOutput: (value: string) => outputs.push(value),
++  };
++
++  assert.equal(await runRuntimeHostSetupCli(options, overrides), 0);
++  assert.equal(await runRuntimeHostSetupCli(options, overrides), 0);
++  assert.equal(installCount, 2);
++  assert.equal(pairCount, 2);
++  assert.ok(installedCliPath.startsWith(dataHome));
++  assert.equal(
++    outputs.some((output) => output.includes('secret-')),
++    false,
++  );
++  const frames = outputs.map((output) => decodeRuntimeHostSetupFrame(output));
++  assert.equal(frames.filter((frame) => frame?.kind === 'complete').length, 2);
++  const complete = frames.find((frame) => frame?.kind === 'complete');
++  assert.equal(complete?.kind === 'complete' ? complete.credential : undefined, 'secret-1');
++
++  assert.deepEqual(await readdir(join(deploymentRoot, 'versions')), ['0.2.0']);
++  assert.equal(
++    JSON.parse(await readFile(join(deploymentRoot, 'versions', '0.2.0', 'package.json'), 'utf8'))
++      .version,
++    '0.2.0',
++  );
++  await removeRuntimeHostManagedDeployment(clientDataRoot, deploymentPathOptions);
++  await assert.rejects(access(deploymentRoot));
++});
++
++test('managed setup frames reject malformed machine output', () => {
++  assert.equal(
++    decodeRuntimeHostSetupFrame(
++      encodeRuntimeHostSetupFrame({
++        schemaVersion: 1,
++        sequence: 0,
++        kind: 'progress',
++        phase: 'checking_environment',
++      }),
++    )?.kind,
++    'progress',
++  );
++  assert.equal(
++    decodeRuntimeHostSetupFrame(
++      `${RUNTIME_HOST_SETUP_FRAME_PREFIX}${Buffer.from(
++        JSON.stringify({
++          schemaVersion: 1,
++          sequence: 0,
++          kind: 'complete',
++          version: '0.2.0',
++          rootId: 'root',
++          endpoint: 'ws://example.com/runtime-host',
++          serviceManager: 'systemd_user',
++          credentialId: 'credential',
++          credential: 'secret',
++        }),
++      ).toString('base64url')}\n`,
++    ),
++    undefined,
++  );
++});
++
++test('managed setup removes a newly copied package when service installation fails', async (t) => {
++  const base = await mkdtemp(join(tmpdir(), 'maka-runtime-host-setup-failure-'));
++  t.after(() => rm(base, { recursive: true, force: true }));
++  const sourcePackageRoot = await createReleasePackage(base, '0.2.0');
++  const clientDataRoot = join(base, 'config', 'Maka');
++  const dataHome = join(base, 'data');
++  const deploymentPathOptions = {
++    env: { XDG_DATA_HOME: dataHome },
++    homeDir: join(base, 'home'),
++    platform: 'linux' as const,
++  };
++  const outputs: string[] = [];
++  const exitCode = await runRuntimeHostSetupCli(
++    {
++      json: true,
++      clientDataRoot,
++      defaultRootPath: join(clientDataRoot, 'workspaces', 'default'),
++      sourcePackageRoot,
++      version: '0.2.0',
++      principalId: 'desktop.client-1',
++      preset: 'desktop-client',
++    },
++    {
++      createBackend: () => unusedBackend(),
++      manageService: async (input: { readonly action: string }) => {
++        if (input.action === 'status') return serviceResult('status', null);
++        throw new RuntimeHostServiceManagerError(
++          'service_manager_operation_failed',
++          'Injected service failure',
++        );
++      },
++      prepareDeployment: (input) =>
++        prepareRuntimeHostManagedPackageDeployment(input, deploymentPathOptions),
++      writeOutput: (value) => outputs.push(value),
++    },
++  );
++  assert.equal(exitCode, 1);
++  assert.equal(decodeRuntimeHostSetupFrame(outputs.at(-1) ?? '')?.kind, 'error');
++  await assert.rejects(
++    access(
++      join(
++        resolveRuntimeHostManagedDeploymentRoot(clientDataRoot, deploymentPathOptions),
++        'versions',
++        '0.2.0',
++      ),
++    ),
++  );
++});
++
++async function createReleasePackage(base: string, version: string): Promise<string> {
++  const root = join(base, 'source-package');
++  await mkdir(join(root, 'dist'), { recursive: true });
++  await mkdir(join(root, 'node_modules', '@maka', 'runtime-host'), { recursive: true });
++  await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'maka-agent', version }));
++  await writeFile(join(root, 'dist', 'cli.js'), '#!/usr/bin/env node\n');
++  await writeFile(
++    join(root, 'node_modules', '@maka', 'runtime-host', 'package.json'),
++    JSON.stringify({ name: '@maka/runtime-host', version: '0.1.0' }),
++  );
++  return root;
++}
++
++function serviceResult(
++  action: RuntimeHostManagedServiceResult['action'],
++  config: RuntimeHostManagedServiceConfig | null,
++): RuntimeHostManagedServiceResult {
++  return {
++    schemaVersion: 1,
++    action,
++    service: {
++      manager: 'systemd_user',
++      installed: config !== null,
++      enabled: config !== null,
++      active: config !== null,
++      state: config ? 'running' : 'not_installed',
++      pid: config ? 42 : null,
++      lastExitCode: null,
++      config,
++    },
++  };
++}
++
++function unusedBackend(): RuntimeHostServiceBackend {
++  return {
++    preflightInstall: async () => undefined,
++    install: async () => assert.fail('Backend is not expected'),
++    status: async () => assert.fail('Backend is not expected'),
++    start: async () => assert.fail('Backend is not expected'),
++    stop: async () => assert.fail('Backend is not expected'),
++    restart: async () => assert.fail('Backend is not expected'),
++    uninstall: async () => assert.fail('Backend is not expected'),
++  };
++}
+diff --git a/packages/cli/src/cli-core.ts b/packages/cli/src/cli-core.ts
+index a1809af8f6..df678f9bba 100644
+--- a/packages/cli/src/cli-core.ts
++++ b/packages/cli/src/cli-core.ts
+@@ -1,5 +1,6 @@
+ import { readFile } from 'node:fs/promises';
+ import { join } from 'node:path';
++import { fileURLToPath } from 'node:url';
+ import { formatMakaResumeHint } from './cli-invocation.js';
+ import { resolveMakaDataRoots } from './workspace-root.js';
+ import { parseRuntimeHostCommand, type RuntimeHostCliCommand } from './runtime-host-cli.js';
+@@ -100,6 +101,7 @@ function helpText(cliCommand: string): string {
+     `  ${cliCommand} -p ...       Alias for ${cliCommand} run`,
+     `  ${cliCommand} eval ...     Run one declarative multi-arm experiment`,
+     `  ${cliCommand} runtime-host serve [options]  Run a Runtime Host service`,
++    `  ${cliCommand} runtime-host setup --principal <id> --preset <desktop-client|terminal-client> [options]`,
+     `  ${cliCommand} runtime-host service install [options]`,
+     `  ${cliCommand} runtime-host service status|start|stop|restart|uninstall [--json]`,
+     `  ${cliCommand} runtime-host access issue --principal <id> --grant <operation>`,
+@@ -143,6 +145,15 @@ function helpText(cliCommand: string): string {
+     '  --websocket-path <path>       Persist the upgrade path (default: /runtime-host)',
+     '  --json                        Emit a machine-readable result',
+     '',
++    'Managed Runtime Host setup options (Linux):',
++    '  --principal <id>              Stable Client pairing identity',
++    '  --preset <name>               Pair a desktop-client or terminal-client',
++    '  --root <path>                 Select the canonical data root',
++    '  --project-root <label>=<path> Publish an absolute directory root (repeatable)',
++    '  --websocket-port <port>       Persist a loopback port (chosen automatically by default)',
++    '  --websocket-path <path>       Persist the upgrade path (default: /runtime-host)',
++    '  --json                        Emit framed machine-readable progress and result records',
++    '',
+     'Runtime Host access issue options:',
+     '  --root <path>                 Select the canonical data root',
+     '  --kind <kind>                 remote-owner or capability-provider',
+@@ -206,6 +217,24 @@ export async function runMakaCli(
+         ...(command.websocket ? { websocket: command.websocket } : {}),
+       });
+     }
++    case 'runtime-host-setup': {
++      const { runRuntimeHostSetupCli } = await import('./runtime-host-setup-command.js');
++      return runRuntimeHostSetupCli({
++        json: command.json,
++        clientDataRoot: dataRoots.clientDataRoot,
++        defaultRootPath: dataRoots.workspaceRoot,
++        sourcePackageRoot: fileURLToPath(new URL('..', import.meta.url)),
++        version,
++        principalId: command.principalId,
++        preset: command.preset,
++        ...(command.rootPath ? { rootPath: command.rootPath } : {}),
++        ...(command.projectDirectoryRoots
++          ? { projectDirectoryRoots: command.projectDirectoryRoots }
++          : {}),
++        ...(command.websocketPort === undefined ? {} : { websocketPort: command.websocketPort }),
++        ...(command.websocketPath ? { websocketPath: command.websocketPath } : {}),
++      });
++    }
+     case 'runtime-host-service-manage': {
+       const { runManagedRuntimeHostServiceCli } = await import(
+         './runtime-host-service-management-command.js'
+diff --git a/packages/cli/src/runtime-host-access-command.ts b/packages/cli/src/runtime-host-access-command.ts
+index 818e246b1e..aa47692d83 100644
+--- a/packages/cli/src/runtime-host-access-command.ts
++++ b/packages/cli/src/runtime-host-access-command.ts
+@@ -44,6 +44,17 @@ export interface RuntimeHostAccessRevokeOptions {
+   readonly credentialId: string;
+ }
+ 
++export interface ReplacedRuntimeHostAccessCredential {
++  readonly rootId: string;
++  readonly credential: string;
++  readonly credentialId: string;
++  readonly principalKind: AccessCredentialPrincipalKind;
++  readonly principalId: string;
++  readonly operationGrants: readonly OperationKey[];
++  readonly canPublishClientCapabilities: boolean;
++  readonly canUseHostPaths: boolean;
++}
++
+ export async function runRuntimeHostAccessIssueCli(
+   options: RuntimeHostAccessIssueOptions,
+ ): Promise<number> {
+@@ -70,6 +81,31 @@ export async function runRuntimeHostAccessIssueCli(
+   }
+ }
+ 
++export async function replaceRuntimeHostAccessCredential(
++  options: RuntimeHostAccessIssueOptions,
++): Promise<ReplacedRuntimeHostAccessCredential> {
++  const resolved = resolveRuntimeHostAccessIssue(options);
++  const connection = await connectLocalOwner(options.rootPath);
++  try {
++    const result = await connection.request('access.credential.replace', {
++      principalKind: resolved.principalKind,
++      principalId: options.principalId,
++      operationGrants: resolved.operationGrants,
++      canPublishClientCapabilities: resolved.canPublishClientCapabilities,
++      canUseHostPaths: resolved.canUseHostPaths,
++    });
++    const credential = await consumeAccessCredentialDelivery(
++      options.rootPath,
++      result.deliveryId,
++      result.credentialId,
++    );
++    const { deliveryId: _deliveryId, ...metadata } = result;
++    return { rootId: connection.rootId, credential, ...metadata };
++  } finally {
++    await connection.close();
++  }
++}
++
+ export function resolveRuntimeHostAccessIssue(
+   options: RuntimeHostAccessIssueOptions,
+ ): ResolvedRuntimeHostAccessIssue {
+diff --git a/packages/cli/src/runtime-host-cli.ts b/packages/cli/src/runtime-host-cli.ts
+index cb0aa80190..df9eda293e 100644
+--- a/packages/cli/src/runtime-host-cli.ts
++++ b/packages/cli/src/runtime-host-cli.ts
+@@ -22,6 +22,16 @@ export type RuntimeHostCliCommand =
+         allowInsecureRemote?: boolean;
+       };
+     }
++  | {
++      kind: 'runtime-host-setup';
++      json: boolean;
++      principalId: string;
++      preset: 'desktop-client' | 'terminal-client';
++      rootPath?: string;
++      projectDirectoryRoots?: { label: string; path: string }[];
++      websocketPort?: number;
++      websocketPath?: string;
++    }
+   | {
+       kind: 'runtime-host-service-manage';
+       action: 'install' | 'status' | 'start' | 'stop' | 'restart' | 'uninstall';
+@@ -79,6 +89,7 @@ export type RuntimeHostCliCommand =
+ 
+ export function parseRuntimeHostCommand(argv: string[]): RuntimeHostCliCommand {
+   if (argv[0] === 'serve') return parseServeCommand(argv.slice(1));
++  if (argv[0] === 'setup') return parseSetupCommand(argv.slice(1));
+   if (argv[0] === 'service') return parseServiceManagementCommand(argv.slice(1));
+   if (argv[0] === 'access') return parseAccessCommand(argv.slice(1));
+   if (argv[0] === 'project') return parseProjectCommand(argv.slice(1));
+@@ -89,10 +100,91 @@ export function parseRuntimeHostCommand(argv: string[]): RuntimeHostCliCommand {
+   return error(
+     argv[0]
+       ? `Unexpected runtime-host command: ${argv[0]}`
+-      : 'runtime-host requires the serve, service, access, project, profile, or capability-provider command',
++      : 'runtime-host requires the serve, setup, service, access, project, profile, or capability-provider command',
+   );
+ }
+ 
++function parseSetupCommand(argv: string[]): RuntimeHostCliCommand {
++  let json = false;
++  let principalId: string | undefined;
++  let preset: 'desktop-client' | 'terminal-client' | undefined;
++  let rootPath: string | undefined;
++  let websocketPort: number | undefined;
++  let websocketPath: string | undefined;
++  const projectDirectoryRoots: { label: string; path: string }[] = [];
++  for (let index = 0; index < argv.length; index += 1) {
++    const argument = argv[index];
++    if (argument === '--json') {
++      json = true;
++      continue;
++    }
++    if (
++      argument === '--principal' ||
++      argument === '--preset' ||
++      argument === '--root' ||
++      argument === '--websocket-port' ||
++      argument === '--websocket-path'
++    ) {
++      const parsed = optionValue(argv, index, argument);
++      if (typeof parsed !== 'string') return parsed;
++      if (argument === '--principal') principalId = parsed;
++      if (argument === '--preset') {
++        if (parsed !== 'desktop-client' && parsed !== 'terminal-client') {
++          return error('--preset must be desktop-client or terminal-client');
++        }
++        preset = parsed;
++      }
++      if (argument === '--root') rootPath = parsed;
++      if (argument === '--websocket-port') websocketPort = Number(parsed);
++      if (argument === '--websocket-path') websocketPath = parsed;
++      index += 1;
++      continue;
++    }
++    if (argument === '--project-root') {
++      const parsed = optionValue(argv, index, argument);
++      if (typeof parsed !== 'string') return parsed;
++      const root = parseProjectRoot(parsed);
++      if ('kind' in root) return root;
++      if (projectDirectoryRoots.length >= PROJECT_DIRECTORY_MAX_ROOTS) {
++        return error(`--project-root may be provided at most ${PROJECT_DIRECTORY_MAX_ROOTS} times`);
++      }
++      if (projectDirectoryRoots.some((candidate) => candidate.label === root.label)) {
++        return error(`Duplicate --project-root label: ${root.label}`);
++      }
++      projectDirectoryRoots.push(root);
++      index += 1;
++      continue;
++    }
++    return error(`Unexpected argument: ${argument ?? ''}`);
++  }
++  if (!principalId || !/^[A-Za-z0-9_.:-]{1,128}$/u.test(principalId)) {
++    return error('runtime-host setup requires a valid --principal');
++  }
++  if (!preset) return error('runtime-host setup requires --preset');
++  if (
++    websocketPort !== undefined &&
++    (!Number.isInteger(websocketPort) || websocketPort < 1 || websocketPort > 65_535)
++  ) {
++    return error('--websocket-port must be an integer between 1 and 65535');
++  }
++  if (
++    websocketPath !== undefined &&
++    (!websocketPath.startsWith('/') || websocketPath.includes('?') || websocketPath.includes('#'))
++  ) {
++    return error('--websocket-path must be an absolute URL path without a query or fragment');
++  }
++  return {
++    kind: 'runtime-host-setup',
++    json,
++    principalId,
++    preset,
++    ...(rootPath ? { rootPath } : {}),
++    ...(projectDirectoryRoots.length > 0 ? { projectDirectoryRoots } : {}),
++    ...(websocketPort === undefined ? {} : { websocketPort }),
++    ...(websocketPath === undefined ? {} : { websocketPath }),
++  };
++}
++
+ function parseServiceManagementCommand(argv: string[]): RuntimeHostCliCommand {
+   const action = argv[0];
+   if (
+diff --git a/packages/cli/src/runtime-host-managed-deployment.ts b/packages/cli/src/runtime-host-managed-deployment.ts
+new file mode 100644
+index 0000000000..0b677347b3
+--- /dev/null
++++ b/packages/cli/src/runtime-host-managed-deployment.ts
+@@ -0,0 +1,207 @@
++import { randomUUID } from 'node:crypto';
++import { cp, mkdir, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
++import { homedir } from 'node:os';
++import { isAbsolute, join, resolve } from 'node:path';
++import { resolveRuntimeHostManagedServiceId } from './runtime-host-service-manager.js';
++
++const PACKAGE_NAME = 'maka-agent';
++
++export class RuntimeHostManagedDeploymentError extends Error {
++  constructor(
++    readonly code: 'invalid_package' | 'deployment_failed' | 'uninstall_incomplete',
++    message: string,
++    options?: ErrorOptions,
++  ) {
++    super(message, options);
++    this.name = 'RuntimeHostManagedDeploymentError';
++  }
++}
++
++export interface RuntimeHostManagedPackageDeployment {
++  readonly version: string;
++  readonly cliPath: string;
++  rollback(): Promise<void>;
++}
++
++interface RuntimeHostManagedDeploymentPathOptions {
++  readonly env?: NodeJS.ProcessEnv;
++  readonly homeDir?: string;
++  readonly platform?: NodeJS.Platform;
++}
++
++export async function prepareRuntimeHostManagedPackageDeployment(
++  input: {
++    readonly clientDataRoot: string;
++    readonly sourcePackageRoot: string;
++    readonly version: string;
++  },
++  options: RuntimeHostManagedDeploymentPathOptions = {},
++): Promise<RuntimeHostManagedPackageDeployment> {
++  assertVersion(input.version);
++  const sourcePackageRoot = await validatePackage(input.sourcePackageRoot, input.version);
++  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(input.clientDataRoot, options);
++  const versionsRoot = join(deploymentRoot, 'versions');
++  const packageRoot = join(versionsRoot, input.version);
++  const cliPath = join(packageRoot, 'dist', 'cli.js');
++  if (await pathExists(packageRoot)) {
++    await validatePackage(packageRoot, input.version);
++    return deployment(input.version, packageRoot, cliPath, false);
++  }
++
++  await mkdir(versionsRoot, { recursive: true, mode: 0o700 });
++  await removeAbandonedStagingPackages(versionsRoot, input.version);
++  const stagingRoot = join(versionsRoot, `.${input.version}.${randomUUID()}.tmp`);
++  try {
++    await cp(sourcePackageRoot, stagingRoot, {
++      recursive: true,
++      force: false,
++      errorOnExist: true,
++      preserveTimestamps: true,
++    });
++    await validatePackage(stagingRoot, input.version);
++    try {
++      await rename(stagingRoot, packageRoot);
++    } catch (error) {
++      if (!isNodeError(error, 'EEXIST') && !isNodeError(error, 'ENOTEMPTY')) throw error;
++      await validatePackage(packageRoot, input.version);
++      await rm(stagingRoot, { recursive: true, force: true });
++      return deployment(input.version, packageRoot, cliPath, false);
++    }
++    return deployment(input.version, packageRoot, cliPath, true);
++  } catch (error) {
++    await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
++    if (error instanceof RuntimeHostManagedDeploymentError) throw error;
++    throw new RuntimeHostManagedDeploymentError(
++      'deployment_failed',
++      `Unable to install Maka ${input.version} into the managed Runtime Host deployment`,
++      { cause: error },
++    );
++  }
++}
++
++async function removeAbandonedStagingPackages(
++  versionsRoot: string,
++  version: string,
++): Promise<void> {
++  const prefix = `.${version}.`;
++  await Promise.all(
++    (await readdir(versionsRoot, { withFileTypes: true }))
++      .filter((entry) => entry.name.startsWith(prefix) && entry.name.endsWith('.tmp'))
++      .map((entry) => rm(join(versionsRoot, entry.name), { recursive: true, force: true })),
++  );
++}
++
++export function resolveRuntimeHostManagedDeploymentRoot(
++  clientDataRoot: string,
++  options: RuntimeHostManagedDeploymentPathOptions = {},
++): string {
++  const env = options.env ?? process.env;
++  const homeDir = options.homeDir ?? homedir();
++  const dataHome = resolveManagedDataHome(env, homeDir, options.platform ?? process.platform);
++  return join(
++    dataHome,
++    'Maka',
++    'runtime-host-services',
++    resolveRuntimeHostManagedServiceId(clientDataRoot),
++  );
++}
++
++export async function removeRuntimeHostManagedDeployment(
++  clientDataRoot: string,
++  options: RuntimeHostManagedDeploymentPathOptions = {},
++): Promise<void> {
++  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(clientDataRoot, options);
++  try {
++    await rm(deploymentRoot, { recursive: true, force: true });
++  } catch (error) {
++    throw new RuntimeHostManagedDeploymentError(
++      'uninstall_incomplete',
++      `Unable to remove the managed Runtime Host deployment at ${deploymentRoot}`,
++      { cause: error },
++    );
++  }
++}
++
++function resolveManagedDataHome(
++  env: NodeJS.ProcessEnv,
++  homeDir: string,
++  platform: NodeJS.Platform,
++): string {
++  if (platform === 'darwin') return join(homeDir, 'Library', 'Application Support');
++  if (platform === 'win32') {
++    return env.LOCALAPPDATA && isAbsolute(env.LOCALAPPDATA)
++      ? env.LOCALAPPDATA
++      : join(homeDir, 'AppData', 'Local');
++  }
++  return env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME)
++    ? env.XDG_DATA_HOME
++    : join(homeDir, '.local', 'share');
++}
++
++async function validatePackage(path: string, version: string): Promise<string> {
++  let packageRoot: string;
++  let manifest: unknown;
++  try {
++    packageRoot = await realpath(resolve(path));
++    manifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as unknown;
++    const cli = await stat(join(packageRoot, 'dist', 'cli.js'));
++    const runtimeHost = await stat(
++      join(packageRoot, 'node_modules', '@maka', 'runtime-host', 'package.json'),
++    );
++    if (!cli.isFile() || !runtimeHost.isFile()) throw new Error('Package payload is incomplete');
++  } catch (error) {
++    throw new RuntimeHostManagedDeploymentError(
++      'invalid_package',
++      `Maka ${version} is not a self-contained release package`,
++      { cause: error },
++    );
++  }
++  if (!isRecord(manifest) || manifest.name !== PACKAGE_NAME || manifest.version !== version) {
++    throw new RuntimeHostManagedDeploymentError(
++      'invalid_package',
++      `The setup package does not contain ${PACKAGE_NAME}@${version}`,
++    );
++  }
++  return packageRoot;
++}
++
++async function pathExists(path: string): Promise<boolean> {
++  try {
++    await stat(path);
++    return true;
++  } catch (error) {
++    if (isNodeError(error, 'ENOENT')) return false;
++    throw error;
++  }
++}
++
++function deployment(
++  version: string,
++  packageRoot: string,
++  cliPath: string,
++  created: boolean,
++): RuntimeHostManagedPackageDeployment {
++  return {
++    version,
++    cliPath,
++    rollback: () =>
++      created ? rm(packageRoot, { recursive: true, force: true }) : Promise.resolve(),
++  };
++}
++
++function assertVersion(version: string): void {
++  if (!/^[0-9A-Za-z][0-9A-Za-z.+-]{0,127}$/u.test(version)) {
++    throw new RuntimeHostManagedDeploymentError(
++      'invalid_package',
++      'The Maka package version cannot be used as a managed deployment identity',
++    );
++  }
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return value !== null && typeof value === 'object' && !Array.isArray(value);
++}
++
++function isNodeError(error: unknown, code: string): error is NodeJS.ErrnoException {
++  return error instanceof Error && 'code' in error && error.code === code;
++}
+diff --git a/packages/cli/src/runtime-host-service-management-command.ts b/packages/cli/src/runtime-host-service-management-command.ts
+index 304a76a440..9eb8945456 100644
+--- a/packages/cli/src/runtime-host-service-management-command.ts
++++ b/packages/cli/src/runtime-host-service-management-command.ts
+@@ -7,6 +7,10 @@ import {
+   type RuntimeHostServiceBackend,
+ } from './runtime-host-service-manager.js';
+ import { createSystemdUserRuntimeHostService } from './runtime-host-systemd-service.js';
++import {
++  removeRuntimeHostManagedDeployment,
++  RuntimeHostManagedDeploymentError,
++} from './runtime-host-managed-deployment.js';
+ 
+ export interface RuntimeHostServiceManagementCliOptions extends RuntimeHostManagedServiceInput {
+   readonly json: boolean;
+@@ -15,6 +19,7 @@ export interface RuntimeHostServiceManagementCliOptions extends RuntimeHostManag
+ export interface RuntimeHostServiceManagementCliDeps {
+   readonly manage: typeof manageRuntimeHostService;
+   readonly createBackend: (serviceId: string) => RuntimeHostServiceBackend;
++  readonly removeManagedDeployment: typeof removeRuntimeHostManagedDeployment;
+   readonly writeOutput: (value: string) => unknown;
+   readonly writeError: (value: string) => unknown;
+ }
+@@ -25,7 +30,8 @@ export async function runManagedRuntimeHostServiceCli(
+ ): Promise<number> {
+   const deps: RuntimeHostServiceManagementCliDeps = {
+     manage: manageRuntimeHostService,
+-    createBackend: createPlatformServiceBackend,
++    createBackend: createPlatformRuntimeHostServiceBackend,
++    removeManagedDeployment: removeRuntimeHostManagedDeployment,
+     writeOutput: (value) => process.stdout.write(value),
+     writeError: (value) => process.stderr.write(value),
+     ...overrides,
+@@ -34,13 +40,20 @@ export async function runManagedRuntimeHostServiceCli(
+     const { json: _json, ...input } = options;
+     const serviceId = resolveRuntimeHostManagedServiceId(options.clientDataRoot);
+     const result = await deps.manage(input, deps.createBackend(serviceId));
++    if (options.action === 'uninstall') {
++      await deps.removeManagedDeployment(options.clientDataRoot);
++    }
+     deps.writeOutput(
+       options.json ? `${JSON.stringify({ ...result, ok: true })}\n` : formatHumanResult(result),
+     );
+     return 0;
+   } catch (error) {
+     const code =
+-      error instanceof RuntimeHostServiceManagerError ? error.code : 'internal_service_error';
++      error instanceof RuntimeHostServiceManagerError
++        ? error.code
++        : error instanceof RuntimeHostManagedDeploymentError
++          ? error.code
++          : 'internal_service_error';
+     const message = error instanceof Error ? error.message : String(error);
+     if (options.json) {
+       deps.writeOutput(
+@@ -72,7 +85,9 @@ function formatHumanResult(result: RuntimeHostManagedServiceResult): string {
+   return `Runtime Host service is ${service.state}.\n`;
+ }
+ 
+-function createPlatformServiceBackend(serviceId: string): RuntimeHostServiceBackend {
++export function createPlatformRuntimeHostServiceBackend(
++  serviceId: string,
++): RuntimeHostServiceBackend {
+   if (process.platform === 'linux') return createSystemdUserRuntimeHostService(serviceId);
+   throw new RuntimeHostServiceManagerError(
+     'unsupported_platform',
+diff --git a/packages/cli/src/runtime-host-setup-command.ts b/packages/cli/src/runtime-host-setup-command.ts
+new file mode 100644
+index 0000000000..260669d891
+--- /dev/null
++++ b/packages/cli/src/runtime-host-setup-command.ts
+@@ -0,0 +1,307 @@
++import { mkdir, readFile, realpath } from 'node:fs/promises';
++import { dirname, join } from 'node:path';
++import {
++  connectRemoteRuntimeHost,
++  encodeRuntimeHostSetupFrame,
++  type RuntimeHostSetupFrame,
++  type RuntimeHostSetupPhase,
++} from '@maka/runtime-host/client';
++import {
++  INTERACTIVE_RUNTIME_HOST_COMPOSITION_ID,
++  RUNTIME_HOST_PROTOCOL_VERSION,
++} from '@maka/runtime-host/protocol';
++import { withFileUpdateLock } from '@maka/storage/file-update-lock';
++import {
++  replaceRuntimeHostAccessCredential,
++  type RuntimeHostAccessPreset,
++} from './runtime-host-access-command.js';
++import {
++  prepareRuntimeHostManagedPackageDeployment,
++  RuntimeHostManagedDeploymentError,
++} from './runtime-host-managed-deployment.js';
++import { createPlatformRuntimeHostServiceBackend } from './runtime-host-service-management-command.js';
++import {
++  manageRuntimeHostService,
++  resolveRuntimeHostManagedServiceId,
++  RuntimeHostServiceManagerError,
++  type RuntimeHostManagedServiceResult,
++  type RuntimeHostServiceBackend,
++} from './runtime-host-service-manager.js';
++
++const SETUP_LOCK_TIMEOUT_MS = 5 * 60_000;
++
++export interface RuntimeHostSetupCliOptions {
++  readonly json: boolean;
++  readonly clientDataRoot: string;
++  readonly defaultRootPath: string;
++  readonly sourcePackageRoot: string;
++  readonly version: string;
++  readonly principalId: string;
++  readonly preset: RuntimeHostAccessPreset;
++  readonly rootPath?: string;
++  readonly projectDirectoryRoots?: readonly { readonly label: string; readonly path: string }[];
++  readonly websocketPort?: number;
++  readonly websocketPath?: string;
++}
++
++interface RuntimeHostSetupDeps {
++  readonly manageService: typeof manageRuntimeHostService;
++  readonly createBackend: (serviceId: string) => RuntimeHostServiceBackend;
++  readonly prepareDeployment: typeof prepareRuntimeHostManagedPackageDeployment;
++  readonly replaceCredential: typeof replaceRuntimeHostAccessCredential;
++  readonly verifyCredential: typeof verifyRuntimeHostSetupCredential;
++  readonly writeOutput: (value: string) => unknown;
++  readonly writeError: (value: string) => unknown;
++}
++
++class RuntimeHostSetupError extends Error {
++  constructor(
++    readonly code: string,
++    message: string,
++    options?: ErrorOptions,
++  ) {
++    super(message, options);
++    this.name = 'RuntimeHostSetupError';
++  }
++}
++
++export async function runRuntimeHostSetupCli(
++  options: RuntimeHostSetupCliOptions,
++  overrides: Partial<RuntimeHostSetupDeps> = {},
++): Promise<number> {
++  const deps: RuntimeHostSetupDeps = {
++    manageService: manageRuntimeHostService,
++    createBackend: createPlatformRuntimeHostServiceBackend,
++    prepareDeployment: prepareRuntimeHostManagedPackageDeployment,
++    replaceCredential: replaceRuntimeHostAccessCredential,
++    verifyCredential: verifyRuntimeHostSetupCredential,
++    writeOutput: (value) => process.stdout.write(value),
++    writeError: (value) => process.stderr.write(value),
++    ...overrides,
++  };
++  const emit = createEmitter(options.json, deps);
++  try {
++    await mkdir(options.clientDataRoot, { recursive: true, mode: 0o700 });
++    await withFileUpdateLock(
++      join(options.clientDataRoot, 'runtime-host-setup'),
++      () => runRuntimeHostSetupLocked(options, deps, emit),
++      SETUP_LOCK_TIMEOUT_MS,
++    );
++    return 0;
++  } catch (error) {
++    const failure = setupFailure(error);
++    emit({ kind: 'error', error: failure });
++    return 1;
++  }
++}
++
++async function runRuntimeHostSetupLocked(
++  options: RuntimeHostSetupCliOptions,
++  deps: RuntimeHostSetupDeps,
++  emit: SetupEmitter,
++): Promise<void> {
++  emit({ kind: 'progress', phase: 'checking_environment' });
++  const serviceId = resolveRuntimeHostManagedServiceId(options.clientDataRoot);
++  const backend = deps.createBackend(serviceId);
++  const common = {
++    clientDataRoot: options.clientDataRoot,
++    defaultRootPath: options.defaultRootPath,
++    nodePath: process.execPath,
++    cliPath: join(options.sourcePackageRoot, 'dist', 'cli.js'),
++  } as const;
++  const status = await deps.manageService({ ...common, action: 'status' }, backend);
++  await assertCompatibleExistingVersion(status, options.version);
++
++  emit({ kind: 'progress', phase: 'installing_package' });
++  const deployment = await deps.prepareDeployment({
++    clientDataRoot: options.clientDataRoot,
++    sourcePackageRoot: options.sourcePackageRoot,
++    version: options.version,
++  });
++
++  emit({ kind: 'progress', phase: 'installing_service' });
++  let installed: RuntimeHostManagedServiceResult;
++  try {
++    installed = await deps.manageService(
++      {
++        ...common,
++        action: 'install',
++        cliPath: deployment.cliPath,
++        ...(options.rootPath ? { rootPath: options.rootPath } : {}),
++        ...(options.projectDirectoryRoots
++          ? { projectDirectoryRoots: options.projectDirectoryRoots }
++          : {}),
++        ...(options.websocketPort === undefined ? {} : { websocketPort: options.websocketPort }),
++        ...(options.websocketPath ? { websocketPath: options.websocketPath } : {}),
++      },
++      backend,
++    );
++  } catch (error) {
++    await deployment.rollback().catch(() => undefined);
++    throw error;
++  }
++  const config = installed.service.config;
++  if (!config || !installed.service.active) {
++    throw new RuntimeHostSetupError(
++      'service_not_ready',
++      'Managed Runtime Host service did not become ready',
++    );
++  }
++
++  emit({ kind: 'progress', phase: 'pairing_client' });
++  let paired: Awaited<ReturnType<typeof replaceRuntimeHostAccessCredential>>;
++  try {
++    paired = await deps.replaceCredential({
++      rootPath: config.rootPath,
++      principalKind: 'remote_owner',
++      principalId: options.principalId,
++      operationGrants: [],
++      canPublishClientCapabilities: false,
++      canUseHostPaths: false,
++      preset: options.preset,
++    });
++  } catch (error) {
++    throw new RuntimeHostSetupError(
++      'pairing_failed',
++      'Runtime Host could not pair the requested Client identity',
++      { cause: error },
++    );
++  }
++
++  const endpoint = websocketUrl(config.websocket);
++  emit({ kind: 'progress', phase: 'verifying_connection' });
++  await deps.verifyCredential({
++    endpoint,
++    rootId: paired.rootId,
++    credential: paired.credential,
++  });
++  emit({
++    kind: 'complete',
++    version: deployment.version,
++    rootId: paired.rootId,
++    endpoint,
++    serviceManager: installed.service.manager,
++    credentialId: paired.credentialId,
++    credential: paired.credential,
++  });
++}
++
++async function assertCompatibleExistingVersion(
++  status: RuntimeHostManagedServiceResult,
++  version: string,
++): Promise<void> {
++  const cliPath = status.service.config?.launch.cliPath;
++  if (!cliPath) return;
++  let existingVersion: unknown;
++  try {
++    const packageRoot = dirname(dirname(await realpath(cliPath)));
++    existingVersion = (
++      JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as {
++        version?: unknown;
++      }
++    ).version;
++  } catch (error) {
++    throw new RuntimeHostSetupError(
++      'existing_installation_unknown',
++      'The installed Runtime Host version could not be identified; repair it before setup',
++      { cause: error },
++    );
++  }
++  if (existingVersion !== version) {
++    throw new RuntimeHostSetupError(
++      'version_change_requires_update',
++      `Runtime Host ${String(existingVersion)} is already installed; changing to ${version} requires the update workflow`,
++    );
++  }
++}
++
++async function verifyRuntimeHostSetupCredential(input: {
++  readonly endpoint: string;
++  readonly rootId: string;
++  readonly credential: string;
++}): Promise<void> {
++  const result = await connectRemoteRuntimeHost({
++    url: input.endpoint,
++    credential: input.credential,
++    expectedRootId: input.rootId,
++    compositionId: INTERACTIVE_RUNTIME_HOST_COMPOSITION_ID,
++    surface: 'run',
++    protocol: { min: RUNTIME_HOST_PROTOCOL_VERSION, max: RUNTIME_HOST_PROTOCOL_VERSION },
++  });
++  if (result.kind !== 'connected') {
++    throw new RuntimeHostSetupError(
++      'verification_failed',
++      `The paired Runtime Host connection could not be verified (${result.kind})`,
++    );
++  }
++  try {
++    const status = await result.connection.status();
++    if (status.state !== 'ready') {
++      throw new RuntimeHostSetupError(
++        'verification_failed',
++        `The paired Runtime Host is ${status.state}`,
++      );
++    }
++  } finally {
++    await result.connection.close();
++  }
++}
++
++type SetupEmitter = (
++  frame:
++    | Omit<Extract<RuntimeHostSetupFrame, { kind: 'progress' }>, 'schemaVersion' | 'sequence'>
++    | Omit<Extract<RuntimeHostSetupFrame, { kind: 'complete' }>, 'schemaVersion' | 'sequence'>
++    | Omit<Extract<RuntimeHostSetupFrame, { kind: 'error' }>, 'schemaVersion' | 'sequence'>,
++) => void;
++
++function createEmitter(json: boolean, deps: RuntimeHostSetupDeps): SetupEmitter {
++  let sequence = 0;
++  return (input) => {
++    const frame = { schemaVersion: 1, sequence: sequence++, ...input } as RuntimeHostSetupFrame;
++    if (json) {
++      deps.writeOutput(encodeRuntimeHostSetupFrame(frame));
++      return;
++    }
++    if (frame.kind === 'progress') {
++      deps.writeOutput(`${humanPhase(frame.phase)}\n`);
++    } else if (frame.kind === 'complete') {
++      deps.writeOutput(`${JSON.stringify(frame, null, 2)}\n`);
++    } else {
++      deps.writeError(`${frame.error.message}\n`);
++    }
++  };
++}
++
++function setupFailure(error: unknown): { code: string; message: string } {
++  if (
++    error instanceof RuntimeHostSetupError ||
++    error instanceof RuntimeHostServiceManagerError ||
++    error instanceof RuntimeHostManagedDeploymentError
++  ) {
++    return { code: error.code, message: error.message };
++  }
++  return { code: 'internal_setup_failure', message: 'Runtime Host setup failed' };
++}
++
++function websocketUrl(input: {
++  readonly host: string;
++  readonly port: number;
++  readonly path: string;
++}) {
++  return `ws://${input.host}:${input.port}${input.path}`;
++}
++
++function humanPhase(phase: RuntimeHostSetupPhase): string {
++  switch (phase) {
++    case 'checking_environment':
++      return 'Checking the remote environment...';
++    case 'installing_package':
++      return 'Installing the managed Maka package...';
++    case 'installing_service':
++      return 'Installing the Runtime Host service...';
++    case 'pairing_client':
++      return 'Pairing the Client...';
++    case 'verifying_connection':
++      return 'Verifying the Runtime Host connection...';
++  }
++}
+diff --git a/packages/runtime-host/src/__tests__/authenticated-websocket.test.ts b/packages/runtime-host/src/__tests__/authenticated-websocket.test.ts
+index 77a7764df2..067c963940 100644
+--- a/packages/runtime-host/src/__tests__/authenticated-websocket.test.ts
++++ b/packages/runtime-host/src/__tests__/authenticated-websocket.test.ts
+@@ -341,9 +341,17 @@ test('one Local IPC owner and one authenticated WebSocket Client control the sam
+       'session',
+     );
+ 
+-    assert.deepEqual(
+-      await local.request('access.credential.revoke', { credentialId: issued.credentialId }),
+-      { credentialId: issued.credentialId, revoked: true },
++    const replaced = await local.request('access.credential.replace', {
++      principalKind: 'remote_owner',
++      principalId: 'remote-device',
++      operationGrants: issued.operationGrants,
++      canPublishClientCapabilities: false,
++      canUseHostPaths: false,
++    });
++    const replacementCredential = await consumeAccessCredentialDelivery(
++      root,
++      replaced.deliveryId,
++      replaced.credentialId,
+     );
+     await remote.closed;
+     remote = undefined;
+@@ -358,6 +366,22 @@ test('one Local IPC owner and one authenticated WebSocket Client control the sam
+       }),
+       { kind: 'unavailable', reason: 'authentication_failed' },
+     );
++    const replacementConnection = await connectRemoteRuntimeHost({
++      url,
++      credential: replacementCredential,
++      expectedRootId: capability.rootId,
++      compositionId: INTERACTIVE_RUNTIME_HOST_COMPOSITION_ID,
++      surface: 'tui',
++      protocol: PROTOCOL,
++    });
++    assert.equal(replacementConnection.kind, 'connected');
++    if (replacementConnection.kind === 'connected') {
++      await replacementConnection.connection.close();
++    }
++    assert.deepEqual(
++      await local.request('access.credential.revoke', { credentialId: replaced.credentialId }),
++      { credentialId: replaced.credentialId, revoked: true },
++    );
+   } finally {
+     await Promise.allSettled([remote?.close(), local?.close()]);
+     await host.close().catch(() => undefined);
+diff --git a/packages/runtime-host/src/__tests__/websocket-listener.test.ts b/packages/runtime-host/src/__tests__/websocket-listener.test.ts
+index 128b17f3c3..4e8bf86efa 100644
+--- a/packages/runtime-host/src/__tests__/websocket-listener.test.ts
++++ b/packages/runtime-host/src/__tests__/websocket-listener.test.ts
+@@ -168,6 +168,7 @@ test('credential revocation during WebSocket upgrade cannot admit stale authorit
+       });
+     },
+     issue: async () => assert.fail('Credential issue is not expected'),
++    replace: async () => assert.fail('Credential replacement is not expected'),
+     revoke: async () => assert.fail('Credential revoke is not expected'),
+     subscribeRevocations: () => () => undefined,
+   };
+diff --git a/packages/runtime-host/src/client/index.ts b/packages/runtime-host/src/client/index.ts
+index 6454b935be..9447df3bdc 100644
+--- a/packages/runtime-host/src/client/index.ts
++++ b/packages/runtime-host/src/client/index.ts
+@@ -70,6 +70,13 @@ export { type ClientCapabilityProvider } from './client-capability.js';
+ export { startRuntimeHostCapabilityProviderService } from './capability-provider-service.js';
+ export { loadOrCreateRuntimeHostClientInstanceId } from './client-instance-identity.js';
+ export { consumeAccessCredentialDelivery } from '../control/access-credential-delivery.js';
++export {
++  RUNTIME_HOST_SETUP_FRAME_PREFIX,
++  decodeRuntimeHostSetupFrame,
++  encodeRuntimeHostSetupFrame,
++  type RuntimeHostSetupFrame,
++  type RuntimeHostSetupPhase,
++} from './setup-frame.js';
+ export {
+   createOAuthPresentationClientProvider,
+   type OAuthPresentationBackend,
+diff --git a/packages/runtime-host/src/client/setup-frame.ts b/packages/runtime-host/src/client/setup-frame.ts
+new file mode 100644
+index 0000000000..f9626df043
+--- /dev/null
++++ b/packages/runtime-host/src/client/setup-frame.ts
+@@ -0,0 +1,115 @@
++import { z } from 'zod';
++
++export const RUNTIME_HOST_SETUP_FRAME_PREFIX = 'MAKA_RUNTIME_HOST_SETUP_V1 ';
++const SETUP_FRAME_MAX_BYTES = 16 * 1024;
++const SETUP_FIELD_MAX_BYTES = 1024;
++const SETUP_CREDENTIAL_MAX_BYTES = 8 * 1024;
++const SETUP_PHASES = [
++  'checking_environment',
++  'installing_package',
++  'installing_service',
++  'pairing_client',
++  'verifying_connection',
++] as const;
++
++export type RuntimeHostSetupPhase = (typeof SETUP_PHASES)[number];
++
++export type RuntimeHostSetupFrame =
++  | {
++      readonly schemaVersion: 1;
++      readonly sequence: number;
++      readonly kind: 'progress';
++      readonly phase: RuntimeHostSetupPhase;
++    }
++  | {
++      readonly schemaVersion: 1;
++      readonly sequence: number;
++      readonly kind: 'complete';
++      readonly version: string;
++      readonly rootId: string;
++      readonly endpoint: string;
++      readonly serviceManager: 'systemd_user' | 'launch_agent';
++      readonly credentialId: string;
++      readonly credential: string;
++    }
++  | {
++      readonly schemaVersion: 1;
++      readonly sequence: number;
++      readonly kind: 'error';
++      readonly error: { readonly code: string; readonly message: string };
++    };
++
++const boundedString = (maxBytes: number) =>
++  z
++    .string()
++    .min(1)
++    .refine((value) => Buffer.byteLength(value, 'utf8') <= maxBytes);
++const frameBase = {
++  schemaVersion: z.literal(1),
++  sequence: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
++} as const;
++const SETUP_FRAME_SCHEMA = z.discriminatedUnion('kind', [
++  z
++    .object({
++      ...frameBase,
++      kind: z.literal('progress'),
++      phase: z.enum(SETUP_PHASES),
++    })
++    .strict(),
++  z
++    .object({
++      ...frameBase,
++      kind: z.literal('complete'),
++      version: boundedString(128),
++      rootId: z.string().regex(/^[a-f0-9]{64}$/u),
++      endpoint: boundedString(SETUP_FIELD_MAX_BYTES).refine(isLoopbackWebSocketUrl),
++      serviceManager: z.enum(['systemd_user', 'launch_agent']),
++      credentialId: boundedString(SETUP_FIELD_MAX_BYTES),
++      credential: boundedString(SETUP_CREDENTIAL_MAX_BYTES),
++    })
++    .strict(),
++  z
++    .object({
++      ...frameBase,
++      kind: z.literal('error'),
++      error: z
++        .object({
++          code: boundedString(128),
++          message: boundedString(SETUP_FIELD_MAX_BYTES),
++        })
++        .strict(),
++    })
++    .strict(),
++]);
++
++export function encodeRuntimeHostSetupFrame(frame: RuntimeHostSetupFrame): string {
++  return `${RUNTIME_HOST_SETUP_FRAME_PREFIX}${Buffer.from(JSON.stringify(frame)).toString('base64url')}\n`;
++}
++
++export function decodeRuntimeHostSetupFrame(line: string): RuntimeHostSetupFrame | undefined {
++  const marker = line.indexOf(RUNTIME_HOST_SETUP_FRAME_PREFIX);
++  if (marker === -1) return undefined;
++  try {
++    const encoded = line.slice(marker + RUNTIME_HOST_SETUP_FRAME_PREFIX.length).trim();
++    if (encoded.length === 0 || Buffer.byteLength(encoded, 'utf8') > SETUP_FRAME_MAX_BYTES) {
++      return undefined;
++    }
++    const value: unknown = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
++    const decoded = SETUP_FRAME_SCHEMA.safeParse(value);
++    return decoded.success ? decoded.data : undefined;
++  } catch {
++    return undefined;
++  }
++}
++
++function isLoopbackWebSocketUrl(value: string): boolean {
++  try {
++    const url = new URL(value);
++    return (
++      url.protocol === 'ws:' &&
++      (url.hostname === '127.0.0.1' || url.hostname === '[::1]' || url.hostname === '::1')
++    );
++  } catch {
++    return false;
++  }
++}
+diff --git a/packages/runtime-host/src/protocol/access-authority.ts b/packages/runtime-host/src/protocol/access-authority.ts
+index 70d11debc2..bcdf24124e 100644
+--- a/packages/runtime-host/src/protocol/access-authority.ts
++++ b/packages/runtime-host/src/protocol/access-authority.ts
+@@ -34,6 +34,9 @@ export interface AccessCredentialIssueResult {
+   readonly canUseHostPaths: boolean;
+ }
+ 
++export type AccessCredentialReplaceInput = AccessCredentialIssueInput;
++export type AccessCredentialReplaceResult = AccessCredentialIssueResult;
++
+ export interface AccessCredentialRevokeInput {
+   readonly credentialId: string;
+ }
+@@ -55,6 +58,17 @@ export const ACCESS_AUTHORITY_OPERATION_SPECS = {
+     decodeInput: decodeAccessCredentialIssueInput,
+     decodeOutput: decodeAccessCredentialIssueResult,
+   }),
++  'access.credential.replace': defineOperation<
++    AccessCredentialReplaceInput,
++    AccessCredentialReplaceResult,
++    (typeof ACCESS_ERRORS)[number]
++  >({
++    mode: 'command',
++    availability: 'ready',
++    errors: ACCESS_ERRORS,
++    decodeInput: decodeAccessCredentialIssueInput,
++    decodeOutput: decodeAccessCredentialIssueResult,
++  }),
+   'access.credential.revoke': defineOperation<
+     AccessCredentialRevokeInput,
+     AccessCredentialRevokeResult,
+diff --git a/packages/runtime-host/src/server/access-authority.ts b/packages/runtime-host/src/server/access-authority.ts
+index 3cb12738c2..fb3eef329b 100644
+--- a/packages/runtime-host/src/server/access-authority.ts
++++ b/packages/runtime-host/src/server/access-authority.ts
+@@ -3,6 +3,8 @@ import { join } from 'node:path';
+ import {
+   type AccessCredentialIssueInput,
+   type AccessCredentialIssueResult,
++  type AccessCredentialReplaceInput,
++  type AccessCredentialReplaceResult,
+   type AccessCredentialRevokeInput,
+   type AccessCredentialRevokeResult,
+ } from '../protocol/index.js';
+@@ -38,6 +40,7 @@ const CAPABILITY_PROVIDER_GRANTS = new Set([
+ export interface RuntimeHostAccessAuthority {
+   authenticate(credential: string): RuntimeHostConnectionAuthority | undefined;
+   issue(input: AccessCredentialIssueInput): Promise<AccessCredentialIssueResult>;
++  replace(input: AccessCredentialReplaceInput): Promise<AccessCredentialReplaceResult>;
+   revoke(input: AccessCredentialRevokeInput): Promise<AccessCredentialRevokeResult>;
+   subscribeRevocations(listener: (credentialId: string) => void): () => void;
+ }
+@@ -89,6 +92,17 @@ class FileRuntimeHostAccessAuthority implements RuntimeHostAccessAuthority {
+   }
+ 
+   issue(input: AccessCredentialIssueInput): Promise<AccessCredentialIssueResult> {
++    return this.#issue(input, false);
++  }
++
++  replace(input: AccessCredentialReplaceInput): Promise<AccessCredentialReplaceResult> {
++    return this.#issue(input, true);
++  }
++
++  #issue(
++    input: AccessCredentialIssueInput,
++    replacePrincipal: boolean,
++  ): Promise<AccessCredentialIssueResult> {
+     return this.#mutate(async () => {
+       const operationGrants = issuedAccessGrants(input.operationGrants);
+       assertCredentialAuthority(input, operationGrants);
+@@ -113,7 +127,19 @@ class FileRuntimeHostAccessAuthority implements RuntimeHostAccessAuthority {
+         canUseHostPaths: input.canUseHostPaths,
+         createdAt: new Date().toISOString(),
+       };
+-      const nextFile = createAccessCredentialFile([...this.#file.credentials, stored]);
++      const replaced = replacePrincipal
++        ? this.#file.credentials.filter(
++            (candidate) =>
++              candidate.status === 'active' &&
++              candidate.principalKind === input.principalKind &&
++              candidate.principalId === input.principalId,
++          )
++        : [];
++      const retained =
++        replaced.length === 0
++          ? this.#file.credentials
++          : this.#file.credentials.filter((candidate) => !replaced.includes(candidate));
++      const nextFile = createAccessCredentialFile([...retained, stored]);
+       assertAccessCredentialFileCapacity(nextFile);
+       const deliveryId = await createAccessCredentialDelivery(
+         this.#controlDirectory,
+@@ -126,6 +152,9 @@ class FileRuntimeHostAccessAuthority implements RuntimeHostAccessAuthority {
+         await discardAccessCredentialDelivery(this.#controlDirectory, deliveryId);
+         throw error;
+       }
++      for (const replacedCredential of replaced) {
++        this.#publishRevocation(replacedCredential.credentialId);
++      }
+       return {
+         credentialId,
+         deliveryId,
+@@ -153,13 +182,7 @@ class FileRuntimeHostAccessAuthority implements RuntimeHostAccessAuthority {
+         revokedAt: new Date().toISOString(),
+       };
+       await this.#commit(createAccessCredentialFile(credentials));
+-      for (const listener of this.#revocationListeners) {
+-        try {
+-          listener(input.credentialId);
+-        } catch {
+-          // Revocation is already durable; an observer cannot roll it back.
+-        }
+-      }
++      this.#publishRevocation(input.credentialId);
+       return { credentialId: input.credentialId, revoked: true };
+     });
+   }
+@@ -182,6 +205,16 @@ class FileRuntimeHostAccessAuthority implements RuntimeHostAccessAuthority {
+     await writeAccessCredentialFile(this.#path, file);
+     this.#file = file;
+   }
++
++  #publishRevocation(credentialId: string): void {
++    for (const listener of this.#revocationListeners) {
++      try {
++        listener(credentialId);
++      } catch {
++        // Revocation is already durable; an observer cannot roll it back.
++      }
++    }
++  }
+ }
+ 
+ function assertCredentialAuthority(
+@@ -222,6 +255,24 @@ export async function issueAccessCredential(
+   }
+ }
+ 
++export async function replaceAccessCredential(
++  authority: RuntimeHostAccessAuthority | undefined,
++  input: AccessCredentialReplaceInput,
++): Promise<OperationOutcome<'access.credential.replace'>> {
++  if (!authority) return unavailable('replace');
++  try {
++    return { ok: true, result: await authority.replace(input) };
++  } catch (error) {
++    if (error instanceof RuntimeHostAccessInputError) {
++      return { ok: false, error: { code: 'invalid_request', message: error.message } };
++    }
++    return {
++      ok: false,
++      error: { code: 'persistence_failed', message: 'Access credential could not be replaced' },
++    };
++  }
++}
++
+ export async function revokeAccessCredential(
+   authority: RuntimeHostAccessAuthority | undefined,
+   input: AccessCredentialRevokeInput,
+@@ -238,10 +289,14 @@ export async function revokeAccessCredential(
+ }
+ 
+ function unavailable(operation: 'issue'): OperationOutcome<'access.credential.issue'>;
++function unavailable(operation: 'replace'): OperationOutcome<'access.credential.replace'>;
+ function unavailable(operation: 'revoke'): OperationOutcome<'access.credential.revoke'>;
+ function unavailable(
+-  _operation: 'issue' | 'revoke',
+-): OperationOutcome<'access.credential.issue'> | OperationOutcome<'access.credential.revoke'> {
++  _operation: 'issue' | 'replace' | 'revoke',
++):
++  | OperationOutcome<'access.credential.issue'>
++  | OperationOutcome<'access.credential.replace'>
++  | OperationOutcome<'access.credential.revoke'> {
+   return {
+     ok: false,
+     error: {
+diff --git a/packages/runtime-host/src/server/host-kernel.ts b/packages/runtime-host/src/server/host-kernel.ts
+index 0c956942bb..c0d9169b0d 100644
+--- a/packages/runtime-host/src/server/host-kernel.ts
++++ b/packages/runtime-host/src/server/host-kernel.ts
+@@ -39,6 +39,7 @@ import {
+ } from './operation-dispatcher.js';
+ import {
+   issueAccessCredential,
++  replaceAccessCredential,
+   revokeAccessCredential,
+   type RuntimeHostAccessAuthority,
+ } from './access-authority.js';
+@@ -631,6 +632,8 @@ export class RuntimeHostKernel {
+         },
+         'access.credential.issue': async (input) =>
+           issueAccessCredential(this.#options.accessAuthority, input),
++        'access.credential.replace': async (input) =>
++          replaceAccessCredential(this.#options.accessAuthority, input),
+         'access.credential.revoke': async (input) =>
+           revokeAccessCredential(this.#options.accessAuthority, input),
+       },
+diff --git a/packages/runtime-host/src/server/operation-dispatcher.ts b/packages/runtime-host/src/server/operation-dispatcher.ts
+index 32642edd91..4da7c1cc15 100644
+--- a/packages/runtime-host/src/server/operation-dispatcher.ts
++++ b/packages/runtime-host/src/server/operation-dispatcher.ts
+@@ -244,6 +244,13 @@ export function createUnavailableAccessAuthorityOperationHandlers(): AccessAutho
+         message: 'Runtime Host access credentials are unavailable',
+       },
+     }),
++    'access.credential.replace': async () => ({
++      ok: false,
++      error: {
++        code: 'operation_unavailable',
++        message: 'Runtime Host access credentials are unavailable',
++      },
++    }),
+     'access.credential.revoke': async () => ({
+       ok: false,
+       error: {
+
+From ba5a60b4a10e8f9ddad781ecdc7034994fa3d1a9 Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Wed, 19 Aug 2026 10:44:52 +0800
+Subject: [PATCH 2/3] fix(cli): harden managed Runtime Host setup
+
+Base service persistence on the final launch path, preserve the exact managed deployment identity, and apply one validation contract to setup frames and WebSocket paths. This keeps the documented npx setup and later uninstall reliable across environment changes.
+
+Generated-by: Codex
+---
+ .../runtime-host-profiles-section.tsx         |   3 +-
+ docs/runtime-host-remote-access.md            |   4 +-
+ docs/runtime-host-remote-access.zh-CN.md      |   2 +-
+ packages/cli/README.md                        |  15 +-
+ packages/cli/README.zh-CN.md                  |   8 +-
+ .../runtime-host-service-manager.test.ts      |  41 ++++-
+ .../src/__tests__/runtime-host-setup.test.ts  |  40 +++--
+ packages/cli/src/runtime-host-cli.ts          | 160 +++++++-----------
+ .../src/runtime-host-managed-deployment.ts    | 100 ++++++-----
+ ...runtime-host-service-management-command.ts |  15 +-
+ .../cli/src/runtime-host-service-manager.ts   |  60 +++++--
+ .../cli/src/runtime-host-setup-command.ts     |  19 ++-
+ .../runtime-host/src/client/host-profile.ts   |   5 +-
+ packages/runtime-host/src/client/index.ts     |   2 +
+ .../runtime-host/src/client/setup-frame.ts    |  42 ++---
+ .../runtime-host/src/client/ssh-tunnel.ts     |   5 +-
+ packages/runtime-host/src/protocol/index.ts   |   1 +
+ .../src/protocol/websocket-path.ts            |  18 ++
+ .../src/server/websocket-listener.ts          |   9 +-
+ 19 files changed, 311 insertions(+), 238 deletions(-)
+ create mode 100644 packages/runtime-host/src/protocol/websocket-path.ts
+
+diff --git a/apps/desktop/src/renderer/settings/runtime-host-profiles-section.tsx b/apps/desktop/src/renderer/settings/runtime-host-profiles-section.tsx
+index ef856c7940..eb8d5b39d2 100644
+--- a/apps/desktop/src/renderer/settings/runtime-host-profiles-section.tsx
++++ b/apps/desktop/src/renderer/settings/runtime-host-profiles-section.tsx
+@@ -9,6 +9,7 @@ import {
+   Switch,
+ } from "@astryxdesign/core";
+ import type { RuntimeHostRemoteTransport } from "@maka/runtime-host/client";
++import { isCanonicalRuntimeHostWebSocketPath } from "@maka/runtime-host/protocol";
+ import {
+   Badge,
+   Button,
+@@ -369,5 +370,5 @@ function validPort(value: string): boolean {
+ }
+ 
+ function validWebSocketPath(value: string): boolean {
+-  return value.startsWith("/") && !value.includes("?") && !value.includes("#");
++  return isCanonicalRuntimeHostWebSocketPath(value);
+ }
+diff --git a/docs/runtime-host-remote-access.md b/docs/runtime-host-remote-access.md
+index 1aa23db09f..0d861bbcc5 100644
+--- a/docs/runtime-host-remote-access.md
++++ b/docs/runtime-host-remote-access.md
+@@ -22,8 +22,8 @@ instead of accumulating credentials. The command installs its exact Maka package
+ directory, starts a loopback-only service, verifies the new credential, and then prints the connection
+ details once. Use `terminal-client` for TUI or CLI.
+ 
+-Run `maka runtime-host service uninstall` on the Host to remove the service and managed package. The
+-State Root and Project data are retained.
++Run `npx --yes maka-agent@next runtime-host service uninstall` on the Host to remove the service and
++managed package. The State Root and Project data are retained.
+ 
+ ## Manual Host setup
+ 
+diff --git a/docs/runtime-host-remote-access.zh-CN.md b/docs/runtime-host-remote-access.zh-CN.md
+index a2c7c70a2c..ecc66fcd8a 100644
+--- a/docs/runtime-host-remote-access.zh-CN.md
++++ b/docs/runtime-host-remote-access.zh-CN.md
+@@ -18,7 +18,7 @@ npx --yes maka-agent@next runtime-host setup \
+ 
+ `--principal` 应使用稳定标识；重复执行会替换该 Client 的 credential，不会不断累积 credential。命令会把当前精确版本的 Maka 安装到托管目录，启动仅监听 loopback 的服务，验证新 credential，然后只显示一次连接信息。TUI 或 CLI 使用 `terminal-client`。
+ 
+-在 Host 上运行 `maka runtime-host service uninstall` 会删除 service 与托管 package，但保留 State Root 和 Project 数据。
++在 Host 上运行 `npx --yes maka-agent@next runtime-host service uninstall` 会删除 service 与托管 package，但保留 State Root 和 Project 数据。
+ 
+ ## 手动设置 Host
+ 
+diff --git a/packages/cli/README.md b/packages/cli/README.md
+index 277064e113..7a41242a01 100644
+--- a/packages/cli/README.md
++++ b/packages/cli/README.md
+@@ -38,8 +38,9 @@ maka --help
+ ```
+ 
+ `maka-agent` is an alias for `maka`. For a one-off invocation, use
+-`npx --yes maka-agent@next`; the unrelated `maka` package on npm is not this project. A managed
+-Runtime Host service requires the persistent global installation above.
++`npx --yes maka-agent@next`; the unrelated `maka` package on npm is not this project.
++`runtime-host service install` uses the persistent global installation above; `runtime-host setup`
++creates its own managed copy from the exact package invoked by `npx`.
+ 
+ ## First run
+ 
+@@ -94,20 +95,22 @@ npx --yes maka-agent@next runtime-host setup \
+   --preset terminal-client
+ ```
+ 
+-Rerunning setup safely rotates that Client credential. The service no longer depends on the temporary
++Rerunning setup replaces that Client credential. The service no longer depends on the temporary
+ `npx` cache after setup succeeds.
+ 
+ ## Uninstall
+ 
+ ```sh
+ # Linux only, when a managed Runtime Host service was installed
+-maka runtime-host service uninstall
++npx --yes maka-agent@next runtime-host service uninstall
+ 
++# If Maka was installed globally
+ npm uninstall --global maka-agent
+ ```
+ 
+-Remove the managed service before removing the package so systemd does not retain a unit pointing to
+-the deleted CLI. Neither command deletes model connections, credentials, sessions, or artifacts.
++Remove the managed service before removing a global package so systemd does not retain a unit
++pointing to the deleted CLI. Neither command deletes model connections, credentials, sessions, or
++artifacts.
+ Those remain in the profile shared by the released CLI and Desktop app:
+ 
+ | Platform | Profile directory |
+diff --git a/packages/cli/README.zh-CN.md b/packages/cli/README.zh-CN.md
+index 28c5040b2e..f75bb431b0 100644
+--- a/packages/cli/README.zh-CN.md
++++ b/packages/cli/README.zh-CN.md
+@@ -36,7 +36,8 @@ maka --help
+ ```
+ 
+ `maka-agent` 是 `maka` 的别名。一次性运行请使用 `npx --yes maka-agent@next`；npm 上与本项目
+-无关的 `maka` 包不是本项目。Managed Runtime Host service 必须使用上面的持久全局安装。
++无关的 `maka` 包不是本项目。`runtime-host service install` 使用上面的持久全局安装；
++`runtime-host setup` 会从 `npx` 调用的精确 package 创建自己的托管副本。
+ 
+ ## 第一次运行
+ 
+@@ -88,14 +89,15 @@ npx --yes maka-agent@next runtime-host setup \
+   --preset terminal-client
+ ```
+ 
+-重复设置会安全轮换该 Client credential。设置成功后，service 不再依赖临时 `npx` cache。
++重复设置会替换该 Client credential。设置成功后，service 不再依赖临时 `npx` cache。
+ 
+ ## 卸载
+ 
+ ```sh
+ # 仅限安装过 managed Runtime Host service 的 Linux
+-maka runtime-host service uninstall
++npx --yes maka-agent@next runtime-host service uninstall
+ 
++# 如果曾全局安装 Maka
+ npm uninstall --global maka-agent
+ ```
+ 
+diff --git a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+index 270059fc75..eb4e5c97e8 100644
+--- a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
++++ b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
+ import { basename, dirname, join } from 'node:path';
+ import { describe, it } from 'node:test';
+ import { parseRuntimeHostCommand } from '../runtime-host-cli.js';
++import { resolveRuntimeHostManagedDeploymentRoot } from '../runtime-host-managed-deployment.js';
+ import { runManagedRuntimeHostServiceCli } from '../runtime-host-service-management-command.js';
+ import {
+   manageRuntimeHostService,
+@@ -48,6 +49,23 @@ describe('managed Runtime Host service', () => {
+       json: true,
+     });
+     assert.equal(parseRuntimeHostCommand(['service', 'status', '--root', '/tmp']).kind, 'error');
++    assert.equal(
++      parseRuntimeHostCommand([
++        'setup',
++        '--principal',
++        'desktop.client-1',
++        '--preset',
++        'desktop-client',
++        '--websocket-path',
++        '/runtime host',
++      ]).kind,
++      'error',
++    );
++    assert.equal(
++      parseRuntimeHostCommand(['service', 'install', '--websocket-path', `/${'x'.repeat(1_000)}`])
++        .kind,
++      'error',
++    );
+     assert.deepEqual(
+       parseRuntimeHostCommand([
+         'setup',
+@@ -73,13 +91,19 @@ describe('managed Runtime Host service', () => {
+     const clientDataRoot = join(base, 'config', 'Maka');
+     const rootPath = join(base, 'state root');
+     const projectPath = join(base, 'projects');
+-    const cliPath = join(base, 'maka cli.js');
+-    await writeFile(cliPath, '#!/usr/bin/env node\n', 'utf8');
+     await writeFile(join(base, 'placeholder'), '', 'utf8');
+     await mkdir(projectPath, { recursive: true });
+     const env = { XDG_CONFIG_HOME: join(base, 'xdg-config') };
+     const configPath = resolveRuntimeHostManagedServiceConfigPath(clientDataRoot);
+     const serviceId = resolveRuntimeHostManagedServiceId(clientDataRoot);
++    const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(serviceId, {
++      env: { XDG_DATA_HOME: join(base, 'xdg-data') },
++      homeDir,
++      platform: 'linux',
++    });
++    const cliPath = join(deploymentRoot, 'versions', '0.2.0', 'dist', 'cli.js');
++    await mkdir(dirname(cliPath), { recursive: true });
++    await writeFile(cliPath, '#!/usr/bin/env node\n', 'utf8');
+     const unitPath = resolveSystemdUserRuntimeHostServicePath(serviceId, env, homeDir);
+     const systemd = createFakeSystemd(unitPath);
+     const backend = () =>
+@@ -95,6 +119,7 @@ describe('managed Runtime Host service', () => {
+       defaultRootPath: rootPath,
+       nodePath: process.execPath,
+       cliPath,
++      managedDeploymentRoot: deploymentRoot,
+     } as const;
+     const managerDeps = {
+       allocateLoopbackPort: async () => 49_999,
+@@ -139,6 +164,7 @@ describe('managed Runtime Host service', () => {
+     await access(rootPath);
+     await assert.rejects(access(configPath));
+     await assert.rejects(access(unitPath));
++    await assert.rejects(access(deploymentRoot));
+ 
+     const repeated = await manageRuntimeHostService({ ...common, action: 'uninstall' }, backend());
+     assert.equal(repeated.service.installed, false);
+@@ -377,6 +403,17 @@ describe('managed Runtime Host service', () => {
+       (error: unknown) =>
+         error instanceof RuntimeHostServiceManagerError && error.code === 'invalid_launch',
+     );
++
++    const installedFromNpx = await manageRuntimeHostService(input, createReadyBackend(), {
++      environment: {
++        npm_command: 'exec',
++        npm_lifecycle_event: 'npx',
++        npm_config_cache: join(base, '.npm'),
++      },
++      homeDir: base,
++      waitForReady: async () => undefined,
++    });
++    assert.equal(installedFromNpx.service.config?.launch.cliPath, await realpath(cliPath));
+   });
+ 
+   it('reports an unavailable systemd manager instead of not installed', async () => {
+diff --git a/packages/cli/src/__tests__/runtime-host-setup.test.ts b/packages/cli/src/__tests__/runtime-host-setup.test.ts
+index f84c4f7ede..3db2bb9b7e 100644
+--- a/packages/cli/src/__tests__/runtime-host-setup.test.ts
++++ b/packages/cli/src/__tests__/runtime-host-setup.test.ts
+@@ -10,11 +10,11 @@ import {
+ } from '@maka/runtime-host/client';
+ import {
+   prepareRuntimeHostManagedPackageDeployment,
+-  removeRuntimeHostManagedDeployment,
+   resolveRuntimeHostManagedDeploymentRoot,
+ } from '../runtime-host-managed-deployment.js';
+ import { runRuntimeHostSetupCli } from '../runtime-host-setup-command.js';
+ import {
++  resolveRuntimeHostManagedServiceId,
+   RuntimeHostServiceManagerError,
+   type RuntimeHostManagedServiceConfig,
+   type RuntimeHostManagedServiceResult,
+@@ -27,16 +27,13 @@ test('managed setup converges on one exact package and verified Client pairing',
+   const sourcePackageRoot = await createReleasePackage(base, '0.2.0');
+   const clientDataRoot = join(base, 'config', 'Maka');
+   const stateRoot = join(clientDataRoot, 'workspaces', 'default');
+-  const dataHome = join(base, 'data');
++  const serviceId = resolveRuntimeHostManagedServiceId(clientDataRoot);
+   const deploymentPathOptions = {
+-    env: { XDG_DATA_HOME: dataHome },
++    env: { XDG_DATA_HOME: join(base, 'data') },
+     homeDir: join(base, 'home'),
+     platform: 'linux' as const,
+   };
+-  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(
+-    clientDataRoot,
+-    deploymentPathOptions,
+-  );
++  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(serviceId, deploymentPathOptions);
+   await mkdir(join(deploymentRoot, 'versions', '.0.2.0.interrupted.tmp'), { recursive: true });
+   let config: RuntimeHostManagedServiceConfig | null = null;
+   let installCount = 0;
+@@ -54,12 +51,19 @@ test('managed setup converges on one exact package and verified Client pairing',
+   } as const;
+   const overrides = {
+     createBackend: () => unusedBackend(),
+-    manageService: async (input: { readonly action: string; readonly cliPath: string }) => {
++    manageService: async (input: {
++      readonly action: string;
++      readonly cliPath: string;
++      readonly managedDeploymentRoot?: string;
++    }) => {
+       if (input.action === 'status') return serviceResult('status', config);
+       installCount += 1;
+       installedCliPath = input.cliPath;
+       config = {
+         schemaVersion: 1,
++        ...(input.managedDeploymentRoot
++          ? { managedDeploymentRoot: input.managedDeploymentRoot }
++          : {}),
+         rootPath: stateRoot,
+         projectDirectoryRoots: [],
+         websocket: { host: '127.0.0.1', port: 42_111, path: '/runtime-host' },
+@@ -93,7 +97,7 @@ test('managed setup converges on one exact package and verified Client pairing',
+   assert.equal(await runRuntimeHostSetupCli(options, overrides), 0);
+   assert.equal(installCount, 2);
+   assert.equal(pairCount, 2);
+-  assert.ok(installedCliPath.startsWith(dataHome));
++  assert.ok(installedCliPath.startsWith(deploymentRoot));
+   assert.equal(
+     outputs.some((output) => output.includes('secret-')),
+     false,
+@@ -109,8 +113,6 @@ test('managed setup converges on one exact package and verified Client pairing',
+       .version,
+     '0.2.0',
+   );
+-  await removeRuntimeHostManagedDeployment(clientDataRoot, deploymentPathOptions);
+-  await assert.rejects(access(deploymentRoot));
+ });
+ 
+ test('managed setup frames reject malformed machine output', () => {
+@@ -135,7 +137,6 @@ test('managed setup frames reject malformed machine output', () => {
+           version: '0.2.0',
+           rootId: 'root',
+           endpoint: 'ws://example.com/runtime-host',
+-          serviceManager: 'systemd_user',
+           credentialId: 'credential',
+           credential: 'secret',
+         }),
+@@ -150,9 +151,9 @@ test('managed setup removes a newly copied package when service installation fai
+   t.after(() => rm(base, { recursive: true, force: true }));
+   const sourcePackageRoot = await createReleasePackage(base, '0.2.0');
+   const clientDataRoot = join(base, 'config', 'Maka');
+-  const dataHome = join(base, 'data');
++  const serviceId = resolveRuntimeHostManagedServiceId(clientDataRoot);
+   const deploymentPathOptions = {
+-    env: { XDG_DATA_HOME: dataHome },
++    env: { XDG_DATA_HOME: join(base, 'data') },
+     homeDir: join(base, 'home'),
+     platform: 'linux' as const,
+   };
+@@ -173,7 +174,7 @@ test('managed setup removes a newly copied package when service installation fai
+         if (input.action === 'status') return serviceResult('status', null);
+         throw new RuntimeHostServiceManagerError(
+           'service_manager_operation_failed',
+-          'Injected service failure',
++          `Injected service failure ${'x'.repeat(2_000)}`,
+         );
+       },
+       prepareDeployment: (input) =>
+@@ -182,11 +183,16 @@ test('managed setup removes a newly copied package when service installation fai
+     },
+   );
+   assert.equal(exitCode, 1);
+-  assert.equal(decodeRuntimeHostSetupFrame(outputs.at(-1) ?? '')?.kind, 'error');
++  const failure = decodeRuntimeHostSetupFrame(outputs.at(-1) ?? '');
++  assert.equal(failure?.kind, 'error');
++  assert.equal(
++    failure?.kind === 'error' ? Buffer.byteLength(failure.error.message, 'utf8') : 0,
++    1_024,
++  );
+   await assert.rejects(
+     access(
+       join(
+-        resolveRuntimeHostManagedDeploymentRoot(clientDataRoot, deploymentPathOptions),
++        resolveRuntimeHostManagedDeploymentRoot(serviceId, deploymentPathOptions),
+         'versions',
+         '0.2.0',
+       ),
+diff --git a/packages/cli/src/runtime-host-cli.ts b/packages/cli/src/runtime-host-cli.ts
+index df9eda293e..aec8f3c5ed 100644
+--- a/packages/cli/src/runtime-host-cli.ts
++++ b/packages/cli/src/runtime-host-cli.ts
+@@ -1,5 +1,6 @@
+ import { isAbsolute } from 'node:path';
+ import {
++  isCanonicalRuntimeHostWebSocketPath,
+   PROJECT_DIRECTORY_MAX_ROOTS,
+   PROJECT_DIRECTORY_ROOT_LABEL_MAX_BYTES,
+ } from '@maka/runtime-host/protocol';
+@@ -105,83 +106,29 @@ export function parseRuntimeHostCommand(argv: string[]): RuntimeHostCliCommand {
+ }
+ 
+ function parseSetupCommand(argv: string[]): RuntimeHostCliCommand {
+-  let json = false;
+   let principalId: string | undefined;
+   let preset: 'desktop-client' | 'terminal-client' | undefined;
+-  let rootPath: string | undefined;
+-  let websocketPort: number | undefined;
+-  let websocketPath: string | undefined;
+-  const projectDirectoryRoots: { label: string; path: string }[] = [];
+-  for (let index = 0; index < argv.length; index += 1) {
+-    const argument = argv[index];
+-    if (argument === '--json') {
+-      json = true;
+-      continue;
+-    }
+-    if (
+-      argument === '--principal' ||
+-      argument === '--preset' ||
+-      argument === '--root' ||
+-      argument === '--websocket-port' ||
+-      argument === '--websocket-path'
+-    ) {
+-      const parsed = optionValue(argv, index, argument);
+-      if (typeof parsed !== 'string') return parsed;
+-      if (argument === '--principal') principalId = parsed;
+-      if (argument === '--preset') {
+-        if (parsed !== 'desktop-client' && parsed !== 'terminal-client') {
+-          return error('--preset must be desktop-client or terminal-client');
+-        }
+-        preset = parsed;
++  const options = parseManagedServiceOptions(argv, {
++    '--principal': (value) => {
++      principalId = value;
++    },
++    '--preset': (value) => {
++      if (value !== 'desktop-client' && value !== 'terminal-client') {
++        return error('--preset must be desktop-client or terminal-client');
+       }
+-      if (argument === '--root') rootPath = parsed;
+-      if (argument === '--websocket-port') websocketPort = Number(parsed);
+-      if (argument === '--websocket-path') websocketPath = parsed;
+-      index += 1;
+-      continue;
+-    }
+-    if (argument === '--project-root') {
+-      const parsed = optionValue(argv, index, argument);
+-      if (typeof parsed !== 'string') return parsed;
+-      const root = parseProjectRoot(parsed);
+-      if ('kind' in root) return root;
+-      if (projectDirectoryRoots.length >= PROJECT_DIRECTORY_MAX_ROOTS) {
+-        return error(`--project-root may be provided at most ${PROJECT_DIRECTORY_MAX_ROOTS} times`);
+-      }
+-      if (projectDirectoryRoots.some((candidate) => candidate.label === root.label)) {
+-        return error(`Duplicate --project-root label: ${root.label}`);
+-      }
+-      projectDirectoryRoots.push(root);
+-      index += 1;
+-      continue;
+-    }
+-    return error(`Unexpected argument: ${argument ?? ''}`);
+-  }
++      preset = value;
++    },
++  });
++  if ('kind' in options) return options;
+   if (!principalId || !/^[A-Za-z0-9_.:-]{1,128}$/u.test(principalId)) {
+     return error('runtime-host setup requires a valid --principal');
+   }
+   if (!preset) return error('runtime-host setup requires --preset');
+-  if (
+-    websocketPort !== undefined &&
+-    (!Number.isInteger(websocketPort) || websocketPort < 1 || websocketPort > 65_535)
+-  ) {
+-    return error('--websocket-port must be an integer between 1 and 65535');
+-  }
+-  if (
+-    websocketPath !== undefined &&
+-    (!websocketPath.startsWith('/') || websocketPath.includes('?') || websocketPath.includes('#'))
+-  ) {
+-    return error('--websocket-path must be an absolute URL path without a query or fragment');
+-  }
+   return {
+     kind: 'runtime-host-setup',
+-    json,
++    ...options,
+     principalId,
+     preset,
+-    ...(rootPath ? { rootPath } : {}),
+-    ...(projectDirectoryRoots.length > 0 ? { projectDirectoryRoots } : {}),
+-    ...(websocketPort === undefined ? {} : { websocketPort }),
+-    ...(websocketPath === undefined ? {} : { websocketPath }),
+   };
+ }
+ 
+@@ -202,45 +149,70 @@ function parseServiceManagementCommand(argv: string[]): RuntimeHostCliCommand {
+     );
+   }
+ 
++  const options = parseManagedServiceOptions(argv.slice(1), {}, action === 'install');
++  if ('kind' in options) return options;
++  return {
++    kind: 'runtime-host-service-manage',
++    action,
++    ...options,
++  };
++}
++
++interface ManagedServiceOptions {
++  readonly json: boolean;
++  readonly rootPath?: string;
++  readonly projectDirectoryRoots?: { readonly label: string; readonly path: string }[];
++  readonly websocketPort?: number;
++  readonly websocketPath?: string;
++}
++
++function parseManagedServiceOptions(
++  argv: string[],
++  additionalValueOptions: Readonly<
++    Record<string, (value: string) => RuntimeHostCliError | void>
++  > = {},
++  allowConfiguration = true,
++): ManagedServiceOptions | RuntimeHostCliError {
+   let json = false;
+   let rootPath: string | undefined;
+   let websocketPort: number | undefined;
+   let websocketPath: string | undefined;
+   const projectDirectoryRoots: { label: string; path: string }[] = [];
+-  for (let index = 1; index < argv.length; index += 1) {
++  for (let index = 0; index < argv.length; index += 1) {
+     const argument = argv[index];
+     if (argument === '--json') {
+       json = true;
+       continue;
+     }
+-    if (action !== 'install') {
+-      return error(`Unexpected argument: ${argument ?? ''}`);
+-    }
++    if (!allowConfiguration) return error(`Unexpected argument: ${argument ?? ''}`);
+     if (
+       argument === '--root' ||
+       argument === '--websocket-port' ||
+-      argument === '--websocket-path'
++      argument === '--websocket-path' ||
++      argument === '--project-root' ||
++      Object.hasOwn(additionalValueOptions, argument ?? '')
+     ) {
+-      const parsed = optionValue(argv, index, argument);
++      const parsed = optionValue(argv, index, argument ?? '');
+       if (typeof parsed !== 'string') return parsed;
+       if (argument === '--root') rootPath = parsed;
+-      if (argument === '--websocket-port') websocketPort = Number(parsed);
+-      if (argument === '--websocket-path') websocketPath = parsed;
+-      index += 1;
+-      continue;
+-    }
+-    if (argument === '--project-root') {
+-      const parsed = optionValue(argv, index, argument);
+-      if (typeof parsed !== 'string') return parsed;
+-      const root = parseProjectRoot(parsed);
+-      if ('kind' in root) return root;
+-      if (projectDirectoryRoots.length >= PROJECT_DIRECTORY_MAX_ROOTS) {
+-        return error(`--project-root may be provided at most ${PROJECT_DIRECTORY_MAX_ROOTS} times`);
+-      }
+-      if (projectDirectoryRoots.some((candidate) => candidate.label === root.label)) {
+-        return error(`Duplicate --project-root label: ${root.label}`);
++      else if (argument === '--websocket-port') websocketPort = Number(parsed);
++      else if (argument === '--websocket-path') websocketPath = parsed;
++      else if (argument === '--project-root') {
++        const root = parseProjectRoot(parsed);
++        if ('kind' in root) return root;
++        if (projectDirectoryRoots.length >= PROJECT_DIRECTORY_MAX_ROOTS) {
++          return error(
++            `--project-root may be provided at most ${PROJECT_DIRECTORY_MAX_ROOTS} times`,
++          );
++        }
++        if (projectDirectoryRoots.some((candidate) => candidate.label === root.label)) {
++          return error(`Duplicate --project-root label: ${root.label}`);
++        }
++        projectDirectoryRoots.push(root);
++      } else {
++        const optionError = additionalValueOptions[argument ?? '']?.(parsed);
++        if (optionError) return optionError;
+       }
+-      projectDirectoryRoots.push(root);
+       index += 1;
+       continue;
+     }
+@@ -252,15 +224,10 @@ function parseServiceManagementCommand(argv: string[]): RuntimeHostCliCommand {
+   ) {
+     return error('--websocket-port must be an integer between 1 and 65535');
+   }
+-  if (
+-    websocketPath !== undefined &&
+-    (!websocketPath.startsWith('/') || websocketPath.includes('?') || websocketPath.includes('#'))
+-  ) {
+-    return error('--websocket-path must be an absolute URL path without a query or fragment');
++  if (websocketPath !== undefined && !isCanonicalRuntimeHostWebSocketPath(websocketPath)) {
++    return error('--websocket-path must be a canonical absolute URL path');
+   }
+   return {
+-    kind: 'runtime-host-service-manage',
+-    action,
+     json,
+     ...(rootPath ? { rootPath } : {}),
+     ...(projectDirectoryRoots.length > 0 ? { projectDirectoryRoots } : {}),
+@@ -575,6 +542,9 @@ function parseServeCommand(argv: string[]): RuntimeHostCliCommand {
+   if (websocketConfigured && websocketPort === undefined) {
+     return error('--websocket-port is required for WebSocket options');
+   }
++  if (websocketPath !== undefined && !isCanonicalRuntimeHostWebSocketPath(websocketPath)) {
++    return error('--websocket-path must be a canonical absolute URL path');
++  }
+   return {
+     kind: 'runtime-host-serve',
+     json,
+diff --git a/packages/cli/src/runtime-host-managed-deployment.ts b/packages/cli/src/runtime-host-managed-deployment.ts
+index 0b677347b3..80384da518 100644
+--- a/packages/cli/src/runtime-host-managed-deployment.ts
++++ b/packages/cli/src/runtime-host-managed-deployment.ts
+@@ -1,14 +1,13 @@
+ import { randomUUID } from 'node:crypto';
+ import { cp, mkdir, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
+ import { homedir } from 'node:os';
+-import { isAbsolute, join, resolve } from 'node:path';
+-import { resolveRuntimeHostManagedServiceId } from './runtime-host-service-manager.js';
++import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+ 
+ const PACKAGE_NAME = 'maka-agent';
+ 
+ export class RuntimeHostManagedDeploymentError extends Error {
+   constructor(
+-    readonly code: 'invalid_package' | 'deployment_failed' | 'uninstall_incomplete',
++    readonly code: 'invalid_package' | 'deployment_failed',
+     message: string,
+     options?: ErrorOptions,
+   ) {
+@@ -19,19 +18,14 @@ export class RuntimeHostManagedDeploymentError extends Error {
+ 
+ export interface RuntimeHostManagedPackageDeployment {
+   readonly version: string;
++  readonly root: string;
+   readonly cliPath: string;
+   rollback(): Promise<void>;
+ }
+ 
+-interface RuntimeHostManagedDeploymentPathOptions {
+-  readonly env?: NodeJS.ProcessEnv;
+-  readonly homeDir?: string;
+-  readonly platform?: NodeJS.Platform;
+-}
+-
+ export async function prepareRuntimeHostManagedPackageDeployment(
+   input: {
+-    readonly clientDataRoot: string;
++    readonly serviceId: string;
+     readonly sourcePackageRoot: string;
+     readonly version: string;
+   },
+@@ -39,13 +33,13 @@ export async function prepareRuntimeHostManagedPackageDeployment(
+ ): Promise<RuntimeHostManagedPackageDeployment> {
+   assertVersion(input.version);
+   const sourcePackageRoot = await validatePackage(input.sourcePackageRoot, input.version);
+-  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(input.clientDataRoot, options);
++  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(input.serviceId, options);
+   const versionsRoot = join(deploymentRoot, 'versions');
+   const packageRoot = join(versionsRoot, input.version);
+   const cliPath = join(packageRoot, 'dist', 'cli.js');
+   if (await pathExists(packageRoot)) {
+     await validatePackage(packageRoot, input.version);
+-    return deployment(input.version, packageRoot, cliPath, false);
++    return deployment(input.version, deploymentRoot, packageRoot, cliPath, false);
+   }
+ 
+   await mkdir(versionsRoot, { recursive: true, mode: 0o700 });
+@@ -65,9 +59,9 @@ export async function prepareRuntimeHostManagedPackageDeployment(
+       if (!isNodeError(error, 'EEXIST') && !isNodeError(error, 'ENOTEMPTY')) throw error;
+       await validatePackage(packageRoot, input.version);
+       await rm(stagingRoot, { recursive: true, force: true });
+-      return deployment(input.version, packageRoot, cliPath, false);
++      return deployment(input.version, deploymentRoot, packageRoot, cliPath, false);
+     }
+-    return deployment(input.version, packageRoot, cliPath, true);
++    return deployment(input.version, deploymentRoot, packageRoot, cliPath, true);
+   } catch (error) {
+     await rm(stagingRoot, { recursive: true, force: true }).catch(() => undefined);
+     if (error instanceof RuntimeHostManagedDeploymentError) throw error;
+@@ -91,51 +85,63 @@ async function removeAbandonedStagingPackages(
+   );
+ }
+ 
++export interface RuntimeHostManagedDeploymentPathOptions {
++  readonly env?: NodeJS.ProcessEnv;
++  readonly homeDir?: string;
++  readonly platform?: NodeJS.Platform;
++}
++
+ export function resolveRuntimeHostManagedDeploymentRoot(
+-  clientDataRoot: string,
++  serviceId: string,
+   options: RuntimeHostManagedDeploymentPathOptions = {},
+ ): string {
+   const env = options.env ?? process.env;
+   const homeDir = options.homeDir ?? homedir();
+-  const dataHome = resolveManagedDataHome(env, homeDir, options.platform ?? process.platform);
+-  return join(
+-    dataHome,
+-    'Maka',
+-    'runtime-host-services',
+-    resolveRuntimeHostManagedServiceId(clientDataRoot),
++  const dataHome =
++    (options.platform ?? process.platform) === 'darwin'
++      ? join(homeDir, 'Library', 'Application Support')
++      : env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME)
++        ? env.XDG_DATA_HOME
++        : join(homeDir, '.local', 'share');
++  return join(dataHome, 'Maka', 'runtime-host-services', serviceId);
++}
++
++export function isRuntimeHostManagedDeploymentRoot(root: string, serviceId: string): boolean {
++  const canonical = resolve(root);
++  return (
++    isAbsolute(root) &&
++    basename(canonical) === serviceId &&
++    basename(dirname(canonical)) === 'runtime-host-services' &&
++    basename(dirname(dirname(canonical))) === 'Maka'
++  );
++}
++
++export function isRuntimeHostManagedDeploymentCli(
++  root: string,
++  serviceId: string,
++  cliPath: string,
++): boolean {
++  if (!isRuntimeHostManagedDeploymentRoot(root, serviceId)) return false;
++  const pathFromVersions = relative(join(resolve(root), 'versions'), resolve(cliPath));
++  return (
++    pathFromVersions !== '' &&
++    pathFromVersions !== '..' &&
++    !pathFromVersions.startsWith(`..${sep}`) &&
++    !isAbsolute(pathFromVersions)
+   );
+ }
+ 
+ export async function removeRuntimeHostManagedDeployment(
+-  clientDataRoot: string,
+-  options: RuntimeHostManagedDeploymentPathOptions = {},
++  root: string,
++  serviceId: string,
+ ): Promise<void> {
+-  const deploymentRoot = resolveRuntimeHostManagedDeploymentRoot(clientDataRoot, options);
+-  try {
+-    await rm(deploymentRoot, { recursive: true, force: true });
+-  } catch (error) {
++  if (!isRuntimeHostManagedDeploymentRoot(root, serviceId)) {
+     throw new RuntimeHostManagedDeploymentError(
+-      'uninstall_incomplete',
+-      `Unable to remove the managed Runtime Host deployment at ${deploymentRoot}`,
+-      { cause: error },
++      'deployment_failed',
++      'Refusing to remove an invalid managed Runtime Host deployment path',
+     );
+   }
+-}
+-
+-function resolveManagedDataHome(
+-  env: NodeJS.ProcessEnv,
+-  homeDir: string,
+-  platform: NodeJS.Platform,
+-): string {
+-  if (platform === 'darwin') return join(homeDir, 'Library', 'Application Support');
+-  if (platform === 'win32') {
+-    return env.LOCALAPPDATA && isAbsolute(env.LOCALAPPDATA)
+-      ? env.LOCALAPPDATA
+-      : join(homeDir, 'AppData', 'Local');
+-  }
+-  return env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME)
+-    ? env.XDG_DATA_HOME
+-    : join(homeDir, '.local', 'share');
++  await rm(root, { recursive: true, force: true });
+ }
+ 
+ async function validatePackage(path: string, version: string): Promise<string> {
+@@ -177,12 +183,14 @@ async function pathExists(path: string): Promise<boolean> {
+ 
+ function deployment(
+   version: string,
++  root: string,
+   packageRoot: string,
+   cliPath: string,
+   created: boolean,
+ ): RuntimeHostManagedPackageDeployment {
+   return {
+     version,
++    root,
+     cliPath,
+     rollback: () =>
+       created ? rm(packageRoot, { recursive: true, force: true }) : Promise.resolve(),
+diff --git a/packages/cli/src/runtime-host-service-management-command.ts b/packages/cli/src/runtime-host-service-management-command.ts
+index 9eb8945456..e6cd4489d2 100644
+--- a/packages/cli/src/runtime-host-service-management-command.ts
++++ b/packages/cli/src/runtime-host-service-management-command.ts
+@@ -7,10 +7,6 @@ import {
+   type RuntimeHostServiceBackend,
+ } from './runtime-host-service-manager.js';
+ import { createSystemdUserRuntimeHostService } from './runtime-host-systemd-service.js';
+-import {
+-  removeRuntimeHostManagedDeployment,
+-  RuntimeHostManagedDeploymentError,
+-} from './runtime-host-managed-deployment.js';
+ 
+ export interface RuntimeHostServiceManagementCliOptions extends RuntimeHostManagedServiceInput {
+   readonly json: boolean;
+@@ -19,7 +15,6 @@ export interface RuntimeHostServiceManagementCliOptions extends RuntimeHostManag
+ export interface RuntimeHostServiceManagementCliDeps {
+   readonly manage: typeof manageRuntimeHostService;
+   readonly createBackend: (serviceId: string) => RuntimeHostServiceBackend;
+-  readonly removeManagedDeployment: typeof removeRuntimeHostManagedDeployment;
+   readonly writeOutput: (value: string) => unknown;
+   readonly writeError: (value: string) => unknown;
+ }
+@@ -31,7 +26,6 @@ export async function runManagedRuntimeHostServiceCli(
+   const deps: RuntimeHostServiceManagementCliDeps = {
+     manage: manageRuntimeHostService,
+     createBackend: createPlatformRuntimeHostServiceBackend,
+-    removeManagedDeployment: removeRuntimeHostManagedDeployment,
+     writeOutput: (value) => process.stdout.write(value),
+     writeError: (value) => process.stderr.write(value),
+     ...overrides,
+@@ -40,20 +34,13 @@ export async function runManagedRuntimeHostServiceCli(
+     const { json: _json, ...input } = options;
+     const serviceId = resolveRuntimeHostManagedServiceId(options.clientDataRoot);
+     const result = await deps.manage(input, deps.createBackend(serviceId));
+-    if (options.action === 'uninstall') {
+-      await deps.removeManagedDeployment(options.clientDataRoot);
+-    }
+     deps.writeOutput(
+       options.json ? `${JSON.stringify({ ...result, ok: true })}\n` : formatHumanResult(result),
+     );
+     return 0;
+   } catch (error) {
+     const code =
+-      error instanceof RuntimeHostServiceManagerError
+-        ? error.code
+-        : error instanceof RuntimeHostManagedDeploymentError
+-          ? error.code
+-          : 'internal_service_error';
++      error instanceof RuntimeHostServiceManagerError ? error.code : 'internal_service_error';
+     const message = error instanceof Error ? error.message : String(error);
+     if (options.json) {
+       deps.writeOutput(
+diff --git a/packages/cli/src/runtime-host-service-manager.ts b/packages/cli/src/runtime-host-service-manager.ts
+index a5a10abbca..dc586e183d 100644
+--- a/packages/cli/src/runtime-host-service-manager.ts
++++ b/packages/cli/src/runtime-host-service-manager.ts
+@@ -4,12 +4,17 @@ import { mkdir, open, readFile, realpath, rename, rm, stat } from 'node:fs/promi
+ import { homedir } from 'node:os';
+ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+ import {
++  isCanonicalRuntimeHostWebSocketPath,
+   PROJECT_DIRECTORY_MAX_ROOTS,
+   PROJECT_DIRECTORY_ROOT_LABEL_MAX_BYTES,
+   RUNTIME_HOST_PROTOCOL_VERSION,
+ } from '@maka/runtime-host/protocol';
+ import { connectExistingRuntimeHost } from '@maka/runtime-host/client';
+ import { withFileUpdateLock } from '@maka/storage/file-update-lock';
++import {
++  isRuntimeHostManagedDeploymentCli,
++  removeRuntimeHostManagedDeployment,
++} from './runtime-host-managed-deployment.js';
+ 
+ const SERVICE_CONFIG_FILE = 'runtime-host-service.json';
+ const DEFAULT_WEBSOCKET_PATH = '/runtime-host';
+@@ -19,6 +24,7 @@ const SERVICE_READY_POLL_MS = 50;
+ 
+ export interface RuntimeHostManagedServiceConfig {
+   readonly schemaVersion: 1;
++  readonly managedDeploymentRoot?: string;
+   readonly rootPath: string;
+   readonly projectDirectoryRoots: readonly {
+     readonly label: string;
+@@ -93,6 +99,7 @@ export interface RuntimeHostManagedServiceInput {
+   readonly projectDirectoryRoots?: readonly { readonly label: string; readonly path: string }[];
+   readonly websocketPort?: number;
+   readonly websocketPath?: string;
++  readonly managedDeploymentRoot?: string;
+   readonly nodePath: string;
+   readonly cliPath: string;
+ }
+@@ -185,6 +192,20 @@ async function manageRuntimeHostServiceLocked(
+   if (input.action === 'uninstall') {
+     const before = await readServiceConfigForRepair(configPath);
+     await backend.uninstall();
++    if (before?.managedDeploymentRoot) {
++      try {
++        await removeRuntimeHostManagedDeployment(
++          before.managedDeploymentRoot,
++          resolveRuntimeHostManagedServiceId(input.clientDataRoot),
++        );
++      } catch (error) {
++        throw new RuntimeHostServiceManagerError(
++          'uninstall_incomplete',
++          `Unable to remove the managed Runtime Host deployment at ${before.managedDeploymentRoot}`,
++          { cause: error },
++        );
++      }
++    }
+     await removeRuntimeHostServiceFile(configPath, 'service config');
+     const service = await readServiceStatus(configPath, backend);
+     if (service.installed || service.active || service.enabled || service.config !== null) {
+@@ -293,14 +314,27 @@ async function prepareServiceConfig(
+   const port =
+     input.websocketPort ?? previous?.websocket.port ?? (await deps.allocateLoopbackPort());
+   const websocketPath = input.websocketPath ?? previous?.websocket.path ?? DEFAULT_WEBSOCKET_PATH;
++  const requestedManagedDeploymentRoot =
++    input.managedDeploymentRoot ??
++    (previous?.launch.cliPath === cliPath ? previous.managedDeploymentRoot : undefined);
++  const managedDeploymentRoot = requestedManagedDeploymentRoot
++    ? await realpath(requestedManagedDeploymentRoot).catch((error) => {
++        throw new RuntimeHostServiceManagerError(
++          'invalid_launch',
++          'The managed Runtime Host deployment is unavailable',
++          { cause: error },
++        );
++      })
++    : undefined;
+   const config: RuntimeHostManagedServiceConfig = {
+     schemaVersion: 1,
++    ...(managedDeploymentRoot ? { managedDeploymentRoot } : {}),
+     rootPath,
+     projectDirectoryRoots,
+     websocket: { host: '127.0.0.1', port, path: websocketPath },
+     launch: { nodePath, cliPath },
+   };
+-  validateServiceConfig(config);
++  validateServiceConfig(config, resolveRuntimeHostManagedServiceId(input.clientDataRoot));
+   return config;
+ }
+ 
+@@ -325,7 +359,7 @@ async function readServiceConfig(path: string): Promise<RuntimeHostManagedServic
+   }
+   try {
+     const parsed: unknown = JSON.parse(raw);
+-    validateServiceConfig(parsed);
++    validateServiceConfig(parsed, resolveRuntimeHostManagedServiceId(dirname(path)));
+     return parsed;
+   } catch (error) {
+     throw new RuntimeHostServiceManagerError(
+@@ -349,7 +383,10 @@ async function readServiceConfigForRepair(
+   }
+ }
+ 
+-function validateServiceConfig(value: unknown): asserts value is RuntimeHostManagedServiceConfig {
++function validateServiceConfig(
++  value: unknown,
++  serviceId: string,
++): asserts value is RuntimeHostManagedServiceConfig {
+   if (!isRecord(value) || value.schemaVersion !== 1) throw new TypeError('Invalid schemaVersion');
+   if (!isSafeAbsolutePath(value.rootPath)) throw new TypeError('Invalid rootPath');
+   if (
+@@ -384,11 +421,7 @@ function validateServiceConfig(value: unknown): asserts value is RuntimeHostMana
+     !Number.isInteger(websocket.port) ||
+     websocket.port < 1 ||
+     websocket.port > 65_535 ||
+-    typeof websocket.path !== 'string' ||
+-    !websocket.path.startsWith('/') ||
+-    websocket.path.includes('?') ||
+-    websocket.path.includes('#') ||
+-    hasControlCharacters(websocket.path)
++    !isCanonicalRuntimeHostWebSocketPath(websocket.path)
+   ) {
+     throw new TypeError('Invalid websocket config');
+   }
+@@ -400,6 +433,13 @@ function validateServiceConfig(value: unknown): asserts value is RuntimeHostMana
+   ) {
+     throw new TypeError('Invalid launch config');
+   }
++  if (
++    value.managedDeploymentRoot !== undefined &&
++    (typeof value.managedDeploymentRoot !== 'string' ||
++      !isRuntimeHostManagedDeploymentCli(value.managedDeploymentRoot, serviceId, launch.cliPath))
++  ) {
++    throw new TypeError('Invalid managed deployment root');
++  }
+ }
+ 
+ async function normalizeStateRoot(requestedRoot: string): Promise<string> {
+@@ -452,14 +492,12 @@ async function assertPersistentCliInstallation(
+   environment: NodeJS.ProcessEnv,
+   homeDir: string,
+ ): Promise<void> {
+-  const invokedByNpx =
+-    environment.npm_command === 'exec' || environment.npm_lifecycle_event === 'npx';
+   const cacheRoots = await Promise.all(
+     [environment.npm_config_cache, join(homeDir, '.npm')].flatMap((root) =>
+       root ? [realpath(resolve(root, '_npx')).catch(() => resolve(root, '_npx'))] : [],
+     ),
+   );
+-  if (invokedByNpx || cacheRoots.some((root) => isWithin(root, cliPath))) {
++  if (cacheRoots.some((root) => isWithin(root, cliPath))) {
+     throw new RuntimeHostServiceManagerError(
+       'invalid_launch',
+       'A persistent Runtime Host service cannot use a temporary npx installation; install Maka globally and retry',
+diff --git a/packages/cli/src/runtime-host-setup-command.ts b/packages/cli/src/runtime-host-setup-command.ts
+index 260669d891..64d847c814 100644
+--- a/packages/cli/src/runtime-host-setup-command.ts
++++ b/packages/cli/src/runtime-host-setup-command.ts
+@@ -1,8 +1,11 @@
+ import { mkdir, readFile, realpath } from 'node:fs/promises';
+ import { dirname, join } from 'node:path';
++import { truncateUtf8 } from '@maka/core/diagnostic-log';
+ import {
+   connectRemoteRuntimeHost,
+   encodeRuntimeHostSetupFrame,
++  RUNTIME_HOST_SETUP_ERROR_CODE_MAX_BYTES,
++  RUNTIME_HOST_SETUP_ERROR_MESSAGE_MAX_BYTES,
+   type RuntimeHostSetupFrame,
+   type RuntimeHostSetupPhase,
+ } from '@maka/runtime-host/client';
+@@ -114,7 +117,7 @@ async function runRuntimeHostSetupLocked(
+ 
+   emit({ kind: 'progress', phase: 'installing_package' });
+   const deployment = await deps.prepareDeployment({
+-    clientDataRoot: options.clientDataRoot,
++    serviceId,
+     sourcePackageRoot: options.sourcePackageRoot,
+     version: options.version,
+   });
+@@ -127,6 +130,7 @@ async function runRuntimeHostSetupLocked(
+         ...common,
+         action: 'install',
+         cliPath: deployment.cliPath,
++        managedDeploymentRoot: deployment.root,
+         ...(options.rootPath ? { rootPath: options.rootPath } : {}),
+         ...(options.projectDirectoryRoots
+           ? { projectDirectoryRoots: options.projectDirectoryRoots }
+@@ -180,7 +184,6 @@ async function runRuntimeHostSetupLocked(
+     version: deployment.version,
+     rootId: paired.rootId,
+     endpoint,
+-    serviceManager: installed.service.manager,
+     credentialId: paired.credentialId,
+     credential: paired.credential,
+   });
+@@ -273,14 +276,22 @@ function createEmitter(json: boolean, deps: RuntimeHostSetupDeps): SetupEmitter
+ }
+ 
+ function setupFailure(error: unknown): { code: string; message: string } {
++  let code = 'internal_setup_failure';
++  let message = 'Runtime Host setup failed';
+   if (
+     error instanceof RuntimeHostSetupError ||
+     error instanceof RuntimeHostServiceManagerError ||
+     error instanceof RuntimeHostManagedDeploymentError
+   ) {
+-    return { code: error.code, message: error.message };
++    code = error.code;
++    message = error.message;
+   }
+-  return { code: 'internal_setup_failure', message: 'Runtime Host setup failed' };
++  return {
++    code: truncateUtf8(code, RUNTIME_HOST_SETUP_ERROR_CODE_MAX_BYTES) || 'internal_setup_failure',
++    message:
++      truncateUtf8(message, RUNTIME_HOST_SETUP_ERROR_MESSAGE_MAX_BYTES) ||
++      'Runtime Host setup failed',
++  };
+ }
+ 
+ function websocketUrl(input: {
+diff --git a/packages/runtime-host/src/client/host-profile.ts b/packages/runtime-host/src/client/host-profile.ts
+index b17e70f80f..bcef1f40c4 100644
+--- a/packages/runtime-host/src/client/host-profile.ts
++++ b/packages/runtime-host/src/client/host-profile.ts
+@@ -5,6 +5,7 @@ import { createFileCredentialStore, type CredentialStore } from '@maka/storage';
+ import { withFileUpdateLock } from '@maka/storage/file-update-lock';
+ import {
+   INTERACTIVE_RUNTIME_HOST_COMPOSITION_ID,
++  isCanonicalRuntimeHostWebSocketPath,
+   RUNTIME_HOST_PROTOCOL_VERSION,
+   requireHostRootId,
+   type ClientSurface,
+@@ -644,8 +645,8 @@ function requirePort(value: unknown, label: string): number {
+ 
+ function requireWebSocketPath(value: unknown): string {
+   const path = requireString(value, 'Runtime Host SSH WebSocket path');
+-  if (!path.startsWith('/') || path.includes('?') || path.includes('#')) {
+-    throw new Error('Runtime Host SSH WebSocket path must be an absolute URL path');
++  if (!isCanonicalRuntimeHostWebSocketPath(path)) {
++    throw new Error('Runtime Host SSH WebSocket path must be a canonical absolute URL path');
+   }
+   return path;
+ }
+diff --git a/packages/runtime-host/src/client/index.ts b/packages/runtime-host/src/client/index.ts
+index 9447df3bdc..1c2371a998 100644
+--- a/packages/runtime-host/src/client/index.ts
++++ b/packages/runtime-host/src/client/index.ts
+@@ -72,6 +72,8 @@ export { loadOrCreateRuntimeHostClientInstanceId } from './client-instance-ident
+ export { consumeAccessCredentialDelivery } from '../control/access-credential-delivery.js';
+ export {
+   RUNTIME_HOST_SETUP_FRAME_PREFIX,
++  RUNTIME_HOST_SETUP_ERROR_CODE_MAX_BYTES,
++  RUNTIME_HOST_SETUP_ERROR_MESSAGE_MAX_BYTES,
+   decodeRuntimeHostSetupFrame,
+   encodeRuntimeHostSetupFrame,
+   type RuntimeHostSetupFrame,
+diff --git a/packages/runtime-host/src/client/setup-frame.ts b/packages/runtime-host/src/client/setup-frame.ts
+index f9626df043..6c3969910e 100644
+--- a/packages/runtime-host/src/client/setup-frame.ts
++++ b/packages/runtime-host/src/client/setup-frame.ts
+@@ -4,6 +4,8 @@ export const RUNTIME_HOST_SETUP_FRAME_PREFIX = 'MAKA_RUNTIME_HOST_SETUP_V1 ';
+ const SETUP_FRAME_MAX_BYTES = 16 * 1024;
+ const SETUP_FIELD_MAX_BYTES = 1024;
+ const SETUP_CREDENTIAL_MAX_BYTES = 8 * 1024;
++export const RUNTIME_HOST_SETUP_ERROR_CODE_MAX_BYTES = 128;
++export const RUNTIME_HOST_SETUP_ERROR_MESSAGE_MAX_BYTES = SETUP_FIELD_MAX_BYTES;
+ const SETUP_PHASES = [
+   'checking_environment',
+   'installing_package',
+@@ -14,31 +16,6 @@ const SETUP_PHASES = [
+ 
+ export type RuntimeHostSetupPhase = (typeof SETUP_PHASES)[number];
+ 
+-export type RuntimeHostSetupFrame =
+-  | {
+-      readonly schemaVersion: 1;
+-      readonly sequence: number;
+-      readonly kind: 'progress';
+-      readonly phase: RuntimeHostSetupPhase;
+-    }
+-  | {
+-      readonly schemaVersion: 1;
+-      readonly sequence: number;
+-      readonly kind: 'complete';
+-      readonly version: string;
+-      readonly rootId: string;
+-      readonly endpoint: string;
+-      readonly serviceManager: 'systemd_user' | 'launch_agent';
+-      readonly credentialId: string;
+-      readonly credential: string;
+-    }
+-  | {
+-      readonly schemaVersion: 1;
+-      readonly sequence: number;
+-      readonly kind: 'error';
+-      readonly error: { readonly code: string; readonly message: string };
+-    };
+-
+ const boundedString = (maxBytes: number) =>
+   z
+     .string()
+@@ -63,7 +40,6 @@ const SETUP_FRAME_SCHEMA = z.discriminatedUnion('kind', [
+       version: boundedString(128),
+       rootId: z.string().regex(/^[a-f0-9]{64}$/u),
+       endpoint: boundedString(SETUP_FIELD_MAX_BYTES).refine(isLoopbackWebSocketUrl),
+-      serviceManager: z.enum(['systemd_user', 'launch_agent']),
+       credentialId: boundedString(SETUP_FIELD_MAX_BYTES),
+       credential: boundedString(SETUP_CREDENTIAL_MAX_BYTES),
+     })
+@@ -74,16 +50,24 @@ const SETUP_FRAME_SCHEMA = z.discriminatedUnion('kind', [
+       kind: z.literal('error'),
+       error: z
+         .object({
+-          code: boundedString(128),
+-          message: boundedString(SETUP_FIELD_MAX_BYTES),
++          code: boundedString(RUNTIME_HOST_SETUP_ERROR_CODE_MAX_BYTES),
++          message: boundedString(RUNTIME_HOST_SETUP_ERROR_MESSAGE_MAX_BYTES),
+         })
+         .strict(),
+     })
+     .strict(),
+ ]);
+ 
++export type RuntimeHostSetupFrame = z.infer<typeof SETUP_FRAME_SCHEMA>;
++
+ export function encodeRuntimeHostSetupFrame(frame: RuntimeHostSetupFrame): string {
+-  return `${RUNTIME_HOST_SETUP_FRAME_PREFIX}${Buffer.from(JSON.stringify(frame)).toString('base64url')}\n`;
++  const encoded = Buffer.from(JSON.stringify(SETUP_FRAME_SCHEMA.parse(frame))).toString(
++    'base64url',
++  );
++  if (Buffer.byteLength(encoded, 'utf8') > SETUP_FRAME_MAX_BYTES) {
++    throw new RangeError('Runtime Host setup frame exceeds the encoded size limit');
++  }
++  return `${RUNTIME_HOST_SETUP_FRAME_PREFIX}${encoded}\n`;
+ }
+ 
+ export function decodeRuntimeHostSetupFrame(line: string): RuntimeHostSetupFrame | undefined {
+diff --git a/packages/runtime-host/src/client/ssh-tunnel.ts b/packages/runtime-host/src/client/ssh-tunnel.ts
+index 1287618bc9..0b5e6eb273 100644
+--- a/packages/runtime-host/src/client/ssh-tunnel.ts
++++ b/packages/runtime-host/src/client/ssh-tunnel.ts
+@@ -3,6 +3,7 @@ import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
+ import { createServer } from 'node:net';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
++import { isCanonicalRuntimeHostWebSocketPath } from '../protocol/index.js';
+ import type { RuntimeHostConnectionResource } from './connection.js';
+ 
+ const SSH_BATCH_START_TIMEOUT_MS = 15_000;
+@@ -432,8 +433,8 @@ function requirePort(value: number, label: string): number {
+ }
+ 
+ function requireWebSocketPath(value: string): string {
+-  if (!value.startsWith('/') || value.includes('?') || value.includes('#')) {
+-    throw new Error('Runtime Host SSH WebSocket path must be an absolute URL path');
++  if (!isCanonicalRuntimeHostWebSocketPath(value)) {
++    throw new Error('Runtime Host SSH WebSocket path must be a canonical absolute URL path');
+   }
+   return value;
+ }
+diff --git a/packages/runtime-host/src/protocol/index.ts b/packages/runtime-host/src/protocol/index.ts
+index 3e12622591..b8499c4ccf 100644
+--- a/packages/runtime-host/src/protocol/index.ts
++++ b/packages/runtime-host/src/protocol/index.ts
+@@ -66,6 +66,7 @@ export * from './session-transcript.js';
+ export * from './session-turns.js';
+ export * from './task-ledger.js';
+ export * from './workspace.js';
++export * from './websocket-path.js';
+ 
+ export const RUNTIME_HOST_REGISTRATION_SCHEMA_VERSION = 1 as const;
+ export const RUNTIME_HOST_PROTOCOL_VERSION = 0 as const;
+diff --git a/packages/runtime-host/src/protocol/websocket-path.ts b/packages/runtime-host/src/protocol/websocket-path.ts
+new file mode 100644
+index 0000000000..cd8b83140d
+--- /dev/null
++++ b/packages/runtime-host/src/protocol/websocket-path.ts
+@@ -0,0 +1,18 @@
++export const RUNTIME_HOST_WEBSOCKET_PATH_MAX_BYTES = 1_000;
++
++export function isCanonicalRuntimeHostWebSocketPath(value: unknown): value is string {
++  if (
++    typeof value !== 'string' ||
++    !value.startsWith('/') ||
++    new TextEncoder().encode(value).byteLength > RUNTIME_HOST_WEBSOCKET_PATH_MAX_BYTES ||
++    /[\u0000-\u001f\u007f]/u.test(value)
++  ) {
++    return false;
++  }
++  try {
++    const url = new URL(value, 'ws://runtime-host.invalid');
++    return url.origin === 'ws://runtime-host.invalid' && url.pathname === value && !url.search;
++  } catch {
++    return false;
++  }
++}
+diff --git a/packages/runtime-host/src/server/websocket-listener.ts b/packages/runtime-host/src/server/websocket-listener.ts
+index 387ebb2567..5b816a91d6 100644
+--- a/packages/runtime-host/src/server/websocket-listener.ts
++++ b/packages/runtime-host/src/server/websocket-listener.ts
+@@ -3,7 +3,10 @@ import { createServer as createHttpsServer, type Server as HttpsServer } from 'n
+ import type { Duplex } from 'node:stream';
+ import type { IncomingMessage, ServerResponse } from 'node:http';
+ import { WebSocketServer } from 'ws';
+-import { RUNTIME_HOST_MAX_MESSAGE_BYTES } from '../protocol/index.js';
++import {
++  isCanonicalRuntimeHostWebSocketPath,
++  RUNTIME_HOST_MAX_MESSAGE_BYTES,
++} from '../protocol/index.js';
+ import { WebSocketTransport } from '../transport/websocket-transport.js';
+ import type { RuntimeHostAccessAuthority } from './access-authority.js';
+ import type { RuntimeHostListener, RuntimeHostListenerConnection } from './listener-set.js';
+@@ -211,8 +214,8 @@ function validateWebSocketListenerOptions(options: StartRuntimeHostWebSocketList
+     throw new RangeError('Runtime Host WebSocket port must be between 0 and 65535');
+   }
+   const path = options.path ?? DEFAULT_WEBSOCKET_PATH;
+-  if (!path.startsWith('/') || path.includes('?') || path.includes('#')) {
+-    throw new Error('Runtime Host WebSocket path must be an absolute URL path');
++  if (!isCanonicalRuntimeHostWebSocketPath(path)) {
++    throw new Error('Runtime Host WebSocket path must be a canonical absolute URL path');
+   }
+   if (options.tls && options.allowInsecureRemote === true) {
+     throw new Error('Insecure Runtime Host listener opt-in cannot be combined with TLS');
+
+From 05ddec011d4f6bcb57b4497328549977113778f5 Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Wed, 19 Aug 2026 10:59:40 +0800
+Subject: [PATCH 3/3] fix(cli): preserve managed deployment cleanup
+
+Reject launch transitions that would discard ownership of a setup-managed package. Validate the persisted canonical deployment target before recursive uninstall so redirected paths cannot escape the managed tree.\n\nGenerated-by: Codex
+---
+ .../runtime-host-service-manager.test.ts      | 55 ++++++++++++++++++-
+ .../src/runtime-host-managed-deployment.ts    | 23 +++++++-
+ .../cli/src/runtime-host-service-manager.ts   | 25 ++++++++-
+ 3 files changed, 96 insertions(+), 7 deletions(-)
+
+diff --git a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+index eb4e5c97e8..3f6e5359c3 100644
+--- a/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
++++ b/packages/cli/src/__tests__/runtime-host-service-manager.test.ts
+@@ -1,10 +1,23 @@
+ import assert from 'node:assert/strict';
+-import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
++import {
++  access,
++  mkdir,
++  mkdtemp,
++  readFile,
++  realpath,
++  rename,
++  rm,
++  symlink,
++  writeFile,
++} from 'node:fs/promises';
+ import { tmpdir } from 'node:os';
+ import { basename, dirname, join } from 'node:path';
+ import { describe, it } from 'node:test';
+ import { parseRuntimeHostCommand } from '../runtime-host-cli.js';
+-import { resolveRuntimeHostManagedDeploymentRoot } from '../runtime-host-managed-deployment.js';
++import {
++  removeRuntimeHostManagedDeployment,
++  resolveRuntimeHostManagedDeploymentRoot,
++} from '../runtime-host-managed-deployment.js';
+ import { runManagedRuntimeHostServiceCli } from '../runtime-host-service-management-command.js';
+ import {
+   manageRuntimeHostService,
+@@ -153,6 +166,25 @@ describe('managed Runtime Host service', () => {
+     ]);
+     assert.equal(reinstalled.service.lastExitCode, 0);
+ 
++    const globalCliPath = join(base, 'global', 'cli.js');
++    await mkdir(dirname(globalCliPath), { recursive: true });
++    await writeFile(globalCliPath, '#!/usr/bin/env node\n', 'utf8');
++    await assert.rejects(
++      manageRuntimeHostService(
++        {
++          action: 'install',
++          clientDataRoot,
++          defaultRootPath: rootPath,
++          nodePath: process.execPath,
++          cliPath: globalCliPath,
++        },
++        backend(),
++        managerDeps,
++      ),
++      (error: unknown) =>
++        error instanceof RuntimeHostServiceManagerError && error.code === 'invalid_launch',
++    );
++
+     const uninstalled = await manageRuntimeHostService(
+       { ...common, action: 'uninstall' },
+       backend(),
+@@ -176,6 +208,25 @@ describe('managed Runtime Host service', () => {
+     await assert.rejects(access(configPath));
+   });
+ 
++  it('refuses to remove a managed deployment through a redirected ancestor', async (t) => {
++    const base = await mkdtemp(join(tmpdir(), 'maka-runtime-host-service-symlink-'));
++    t.after(() => rm(base, { recursive: true, force: true }));
++    const serviceId = 'maka-runtime-host-test';
++    const deploymentRoot = join(base, 'data', 'Maka', 'runtime-host-services', serviceId);
++    const outsideRoot = join(base, 'outside', 'Maka', 'runtime-host-services', serviceId);
++    await mkdir(deploymentRoot, { recursive: true });
++    await mkdir(outsideRoot, { recursive: true });
++    await writeFile(join(outsideRoot, 'sentinel'), 'outside', 'utf8');
++    await rename(join(base, 'data', 'Maka'), join(base, 'data', 'Maka-original'));
++    await symlink(join(base, 'outside', 'Maka'), join(base, 'data', 'Maka'));
++
++    await assert.rejects(
++      removeRuntimeHostManagedDeployment(deploymentRoot, serviceId),
++      /redirected managed Runtime Host deployment path/u,
++    );
++    assert.equal(await readFile(join(outsideRoot, 'sentinel'), 'utf8'), 'outside');
++  });
++
+   it('isolates managed services by Client Data Root without mutating on status', async (t) => {
+     const base = await mkdtemp(join(tmpdir(), 'maka-runtime-host-service-profile-'));
+     t.after(() => rm(base, { recursive: true, force: true }));
+diff --git a/packages/cli/src/runtime-host-managed-deployment.ts b/packages/cli/src/runtime-host-managed-deployment.ts
+index 80384da518..492d956cfc 100644
+--- a/packages/cli/src/runtime-host-managed-deployment.ts
++++ b/packages/cli/src/runtime-host-managed-deployment.ts
+@@ -1,5 +1,5 @@
+ import { randomUUID } from 'node:crypto';
+-import { cp, mkdir, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
++import { cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat } from 'node:fs/promises';
+ import { homedir } from 'node:os';
+ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+ 
+@@ -141,7 +141,26 @@ export async function removeRuntimeHostManagedDeployment(
+       'Refusing to remove an invalid managed Runtime Host deployment path',
+     );
+   }
+-  await rm(root, { recursive: true, force: true });
++  const requestedRoot = resolve(root);
++  let inspected: readonly [string, Awaited<ReturnType<typeof lstat>>];
++  try {
++    inspected = await Promise.all([realpath(requestedRoot), lstat(requestedRoot)]);
++  } catch (error) {
++    if (isNodeError(error, 'ENOENT')) return;
++    throw new RuntimeHostManagedDeploymentError(
++      'deployment_failed',
++      'Unable to inspect the managed Runtime Host deployment before removal',
++      { cause: error },
++    );
++  }
++  const [canonicalRoot, target] = inspected;
++  if (canonicalRoot !== requestedRoot || !target.isDirectory() || target.isSymbolicLink()) {
++    throw new RuntimeHostManagedDeploymentError(
++      'deployment_failed',
++      'Refusing to remove a redirected managed Runtime Host deployment path',
++    );
++  }
++  await rm(requestedRoot, { recursive: true, force: true });
+ }
+ 
+ async function validatePackage(path: string, version: string): Promise<string> {
+diff --git a/packages/cli/src/runtime-host-service-manager.ts b/packages/cli/src/runtime-host-service-manager.ts
+index dc586e183d..94201d7fcf 100644
+--- a/packages/cli/src/runtime-host-service-manager.ts
++++ b/packages/cli/src/runtime-host-service-manager.ts
+@@ -295,6 +295,7 @@ async function prepareServiceConfig(
+       'The current Maka CLI entry point could not be resolved',
+     );
+   }
++  const serviceId = resolveRuntimeHostManagedServiceId(input.clientDataRoot);
+   const requestedRoot = resolve(input.rootPath ?? previous?.rootPath ?? input.defaultRootPath);
+   const projectDirectoryRoots = await normalizeProjectDirectoryRoots(
+     input.projectDirectoryRoots ?? previous?.projectDirectoryRoots ?? [],
+@@ -315,8 +316,7 @@ async function prepareServiceConfig(
+     input.websocketPort ?? previous?.websocket.port ?? (await deps.allocateLoopbackPort());
+   const websocketPath = input.websocketPath ?? previous?.websocket.path ?? DEFAULT_WEBSOCKET_PATH;
+   const requestedManagedDeploymentRoot =
+-    input.managedDeploymentRoot ??
+-    (previous?.launch.cliPath === cliPath ? previous.managedDeploymentRoot : undefined);
++    input.managedDeploymentRoot ?? previous?.managedDeploymentRoot;
+   const managedDeploymentRoot = requestedManagedDeploymentRoot
+     ? await realpath(requestedManagedDeploymentRoot).catch((error) => {
+         throw new RuntimeHostServiceManagerError(
+@@ -326,6 +326,25 @@ async function prepareServiceConfig(
+         );
+       })
+     : undefined;
++  if (
++    previous?.managedDeploymentRoot &&
++    (managedDeploymentRoot !== previous.managedDeploymentRoot ||
++      !isRuntimeHostManagedDeploymentCli(previous.managedDeploymentRoot, serviceId, cliPath))
++  ) {
++    throw new RuntimeHostServiceManagerError(
++      'invalid_launch',
++      'Uninstall the managed Runtime Host service before replacing its managed package or launch path',
++    );
++  }
++  if (
++    managedDeploymentRoot &&
++    !isRuntimeHostManagedDeploymentCli(managedDeploymentRoot, serviceId, cliPath)
++  ) {
++    throw new RuntimeHostServiceManagerError(
++      'invalid_launch',
++      'The managed Runtime Host CLI must belong to its deployment root',
++    );
++  }
+   const config: RuntimeHostManagedServiceConfig = {
+     schemaVersion: 1,
+     ...(managedDeploymentRoot ? { managedDeploymentRoot } : {}),
+@@ -334,7 +353,7 @@ async function prepareServiceConfig(
+     websocket: { host: '127.0.0.1', port, path: websocketPath },
+     launch: { nodePath, cliPath },
+   };
+-  validateServiceConfig(config, resolveRuntimeHostManagedServiceId(input.clientDataRoot));
++  validateServiceConfig(config, serviceId);
+   return config;
+ }
+ 

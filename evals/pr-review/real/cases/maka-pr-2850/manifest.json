@@ -1,0 +1,107 @@
+{
+  "additions": 12,
+  "author": "jackwener",
+  "base_sha": "7fc533782964ab56e4e39122094876e74f7bb53b",
+  "body": "## Summary\n- collapse equivalent Search and WebSearch normalization matrices to one owner per production predicate\n- retain security, freshness-language, bound, and malformed-input boundaries\n- remove stale PR-history comments while preserving current privacy and credential invariants\n\n## Validation\n- `npx biome check packages/core/src/__tests__/web-search.test.ts packages/core/src/web-search.ts packages/core/src/__tests__/search.test.ts packages/core/src/search.ts`\n- `git diff --check`\n- static reference and predicate-ownership audit\n\nTest suites intentionally not run; CI owns execution.",
+  "captured_at": "2026-08-29T17:22:25+00:00",
+  "case_id": "maka-pr-2850",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "7fc533782964ab56e4e39122094876e74f7bb53b",
+  "deletions": 78,
+  "files": [
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "packages/core/src/__tests__/search.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/core/src/__tests__/web-search.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 37,
+      "path": "packages/core/src/search.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 30,
+      "path": "packages/core/src/web-search.ts"
+    }
+  ],
+  "head_sha": "308d5c8f2cb89b7d9c6df8312d29fdefa8034051",
+  "issues": [],
+  "patch_sha256": "a1b9d6af8538d3e3bbe5b3006c03e3b5c7d965f8bf06892c45fd03184d3cd6fb",
+  "pr_number": 2850,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "test(core): trim search normalizer matrices",
+  "url": "https://github.com/apache/maka/pull/2850"
+}

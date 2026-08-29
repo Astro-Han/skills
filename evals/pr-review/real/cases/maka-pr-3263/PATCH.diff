@@ -1,0 +1,40 @@
+From 3d719db8f822bc924e58e4737801f71327cdd1bf Mon Sep 17 00:00:00 2001
+From: chihumyum <yang@chihum.dev>
+Date: Thu, 20 Aug 2026 02:53:53 +0800
+Subject: [PATCH] fix(desktop): preserve side chat composer elevation
+
+Generated-by: Codex
+---
+ apps/desktop/e2e/session-workbar.spec.ts              | 2 ++
+ apps/desktop/src/renderer/styles/quote-side-panel.css | 5 ++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/apps/desktop/e2e/session-workbar.spec.ts b/apps/desktop/e2e/session-workbar.spec.ts
+index 6287ba9259..974f0377d5 100644
+--- a/apps/desktop/e2e/session-workbar.spec.ts
++++ b/apps/desktop/e2e/session-workbar.spec.ts
+@@ -68,6 +68,8 @@ test('narrow right workbar keeps launcher shortcuts and side-chat send button in
+   await setRightWorkbarWidth(page, 320);
+ 
+   const composerCard = companion.locator('.maka-composer-astryx');
++  // Keep ChatComposer's inner elevation visible.
++  await expect(composerCard).toHaveCSS('overflow', 'visible');
+   // Match the long model-label pressure from the reported side-chat screenshot
+   // without coupling the fixture's globally useful default model to this test.
+   await companion.locator('.maka-composer-model-chip-text').evaluate((element) => {
+diff --git a/apps/desktop/src/renderer/styles/quote-side-panel.css b/apps/desktop/src/renderer/styles/quote-side-panel.css
+index d184ab3ed1..e79dcc2be7 100644
+--- a/apps/desktop/src/renderer/styles/quote-side-panel.css
++++ b/apps/desktop/src/renderer/styles/quote-side-panel.css
+@@ -83,9 +83,8 @@
+   .maka-composer-astryx {
+   --_chat-composer-radius: var(--radius-surface);
+ 
+-  overflow: hidden;
+-  border-radius: var(--radius-surface);
+-  /* Leave elevation to ChatComposer; product shadow overrode hover/focus lift. */
++  /* Let ChatComposer paint its own radius and elevation. Clipping this wrapper
++     hides the body's hover/focus shadow against the white side panel. */
+ }
+ 
+ .maka-session-workbar-panel[data-placement="right"]

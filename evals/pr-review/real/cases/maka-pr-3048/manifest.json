@@ -1,0 +1,183 @@
+{
+  "additions": 462,
+  "author": "1625567290",
+  "base_sha": "e3885576be0970421289ed3538d53b7e56415d1b",
+  "body": "## Summary\n\nReturning to a live conversation remounted the streaming bubble with the leftover prefix as `settledText`, then painted the Runtime Host seed catch-up through the per-frame display batch. `useStreamingText` treated that catch-up as a new stream, so already-produced text replayed (`\u2026Acknowle` \u2192 `\u2026Acknowledged steer` \u2192 \u2026).\n\n- While a session is waiting to be seeded, `text_delta` / `thinking_delta` apply immediately instead of waiting for rAF.\n- Display readiness is keyed to the current observation generation, including A \u2192 B \u2192 A and Host recovery/restore, not only `sessionId + revision`.\n- `ChatMessageSurface` withholds the live bubble until that generation finishes seeding, and snapshots the full buffer in the same activation.\n\nFixes #3044\n\n## Verification\\n\\n- `npm --workspace @maka/desktop run typecheck`\\n- Desktop main suite \u2014 845/845 passed\\n- Focused candidate and observer suites \u2014 48/48 passed\\n- `streaming-remount.spec.ts --repeat-each=10` \u2014 20/20 passed\\n- `npm run format:check` and `git diff --check`\\n\\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Focused lint/typecheck and the affected suites pass locally\n- [ ] Full workspace lint/format/typecheck\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 switching back to a live conversation no longer replays already-accumulated assistant text\n\\n\\n## AI use\\n\\n- [ ] No generative tool made a substantive contribution\\n- [x] Generative tooling made a substantive contribution\\n\\nTool(s) and scope: Grok assisted the original implementation, as disclosed by the original contributor. Codex diagnosed the remaining review findings and implemented and tested the observation-restore failure follow-up under M4n5ter&apos;s direction.\\n\\n",
+  "captured_at": "2026-08-29T17:22:36+00:00",
+  "case_id": "maka-pr-3048",
+  "changed_files": 14,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-review",
+      "status": "COMPLETED",
+      "workflowName": "Copilot auto review"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "e3885576be0970421289ed3538d53b7e56415d1b",
+  "deletions": 38,
+  "files": [
+    {
+      "additions": 57,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/live-content-seed.test.ts"
+    },
+    {
+      "additions": 131,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-session-observer.test.ts"
+    },
+    {
+      "additions": 62,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/streaming-handoff.test.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/main/runtime-host-desktop-candidate.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/runtime-host-session-observation-registry.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/runtime-host-session-observer.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/preload/bridge-contract.d.ts"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/preload/preload.ts"
+    },
+    {
+      "additions": 16,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/src/renderer/app-shell-effects.ts"
+    },
+    {
+      "additions": 32,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/renderer/app-shell-session-events.ts"
+    },
+    {
+      "additions": 38,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "apps/desktop/src/renderer/app-shell.tsx"
+    },
+    {
+      "additions": 16,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "apps/desktop/src/renderer/chat-message-surface.tsx"
+    },
+    {
+      "additions": 52,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "apps/desktop/src/renderer/live-content-seed.ts"
+    }
+  ],
+  "head_sha": "2cead14b6034b95f4c47bdf62063e23ff5ef2ddd",
+  "issues": [
+    {
+      "body": "## Symptom\n\n`streaming-remount.spec.ts:65` (\"returning to a live conversation settles output accumulated while away\") fails intermittently on `main`: after switching back to a backgrounded live conversation, the output that accumulated while away is replayed progressively (partial-text paints) instead of appearing settled. This is a user-visible product regression, not only a flaky assertion: the transcript visibly re-streams content the model already produced.\n\nObserved failures on `main` CI: [run 31791670100](https://github.com/maka-agent/maka-agent/actions/runs/31791670100) (2026-08-14). It has also hit unrelated PRs twice (#3032).\n\n## Bisect\n\nLocally reproducible at high rate on macOS (Darwin 25.6.0, Node 24.18):\n\n| commit | result (`--repeat-each 4`) |\n| --- | --- |\n| `0f943f57e` (parent of #2975) | 4/4 pass |\n| `6b8e3db26` (**perf(ui): virtualize long chat transcripts, #2975**) | 1/4 fail |\n| current `main` (2632b8506) | 3/4 fail |\n\n## Evidence\n\nInstrumenting the spec's MutationObserver shows the streaming bubble's text after switching back growing in small per-paint steps until it reaches the full accumulated text (fail run):\n\n```\n\"\u2026stop the Turn.\"\n\"\u2026stop the Turn.Acknowle\"\n\"\u2026stop the Turn.Acknowledged steer\"\n\"\u2026stop the Turn.Acknowledged steering: backg\"\n\"\u2026stop the Turn.Acknowledged steering: background outp\"\n\u2026 (ends at the full string)\n```\n\nThe fake backend emits the steering echo as a **single** `text_delta`, and the projector's `seedActive` emits accumulated text as one cumulative delta \u2014 so these partials are not source chunks; the catch-up is being applied/painted incrementally after the remount.\n\nTwo mechanisms interact, both new or newly-exposed in #2975:\n\n1. `app-shell-session-events.ts` now defers active-session `text_delta`/`thinking_delta` application to a per-frame flush (`scheduleDisplayEvent`, rAF + 100ms fallback). A catch-up burst that spans multiple tasks/frames is committed in several partial paints.\n2. The virtualizer mounts the streaming turn (and paints) earlier on session switch than the previous progressive-mount path did, so the first paint now lands before the catch-up burst has finished arriving \u2014 pre-#2975 the burst had effectively completed before the streaming bubble mounted, which is why the same spec passed.\n\nAdditional diagnostic: holding a second persistent `window.maka.sessions.subscribeEvents(sessionId, \u2026)` subscription open across the switch makes the failure deterministic and total \u2014 the returning view then never receives the accumulated echo at all (bubble stuck at the pre-steer text past a 10s timeout). That experiment perturbs observer registration, but it points at the catch-up/seed path racing observer lifecycle rather than at paint timing alone.\n\n## Expected\n\nSwitching back to a live conversation renders everything that accumulated while away settled in the first paint (the spec's contract); only genuinely new output streams.\n\n## Notes\n\n- Reproduce: `cd apps/desktop && npm run build:with-deps && npm run build:test && npx playwright test e2e/streaming-remount.spec.ts:65 --config e2e/playwright.config.ts --repeat-each 4`.\n- A fix probably wants the session-activation path to drain/apply the pending catch-up for the newly active session atomically before the streaming bubble's first paint, rather than letting it trickle through the per-frame display batch \u2014 but that touches #2975's frame-batching design, so deferring the approach to its author.\n\nBisect and analysis by Claude Code.",
+      "number": 3044,
+      "title": "fix(ui): returning to a live conversation intermittently re-streams accumulated output \u2014 regression from #2975, flaking CI",
+      "url": "https://github.com/apache/maka/issues/3044"
+    }
+  ],
+  "patch_sha256": "41ad79f1729a19b00dbc06b3e0eded56c8830c7400cc5c920ab494d6f87f6fd9",
+  "pr_number": 3048,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(desktop): settle catch-up text before remounting a live conversation",
+  "url": "https://github.com/apache/maka/pull/3048"
+}

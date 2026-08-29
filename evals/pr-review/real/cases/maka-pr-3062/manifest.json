@@ -1,0 +1,357 @@
+{
+  "additions": 219,
+  "author": "Astro-Han",
+  "base_sha": "820a47b90ff052a726997819539fc382efa31ace",
+  "body": "## Summary\n\n- remove the non-executable `gemini-cli` provider from Core, generated metadata, Desktop settings, preload, and OAuth IPC\n- remove the provider-wide preview/unavailable adapter contract that lost its only consumer; every maintained OAuth provider now uses the normal executable auth and readiness paths\n- reject new Gemini CLI account connections while preserving the ordinary `google` Gemini API-key provider\n- filter legacy persisted `gemini-cli` entries from the active connection catalog and clear a retired default target; the next catalog mutation writes the maintained set\n- preserve retired connection identities during migration so duplicate ids or slugs still fail closed before credential resolution\n- update current credential-boundary documentation while retaining historical/upstream-only references\n\nFixes #3054\n\n## Verification\n\n- `node --test packages/storage/dist/__tests__/runtime-policy-stores.test.js` \u2014 41 passed\n- focused Core suites for codecs, auth, readiness, onboarding, and task submission \u2014 39 passed\n- focused Runtime provider/conformance suites \u2014 152 passed\n- focused Desktop readiness and model-catalog suites \u2014 22 passed\n- `npm run typecheck --workspace=@maka/core`\n- `npm run typecheck --workspace=@maka/runtime`\n- `npm run typecheck --workspace=@maka/runtime-host`\n- `npm run typecheck --workspace=@maka/desktop`\n- Biome check on all 24 files in the follow-up simplification commit\n- `git diff --check`\n\nThe create-boundary test failed before removal because `gemini-cli` was still registered. The duplicate-identity migration test then failed before the follow-up fix because retired records were filtered before uniqueness validation.\n\n## Migration\n\nOlder `connection-catalog.json` files may contain a `gemini-cli` entry. Reads validate its persisted id and slug, preserve catalog-wide identity uniqueness, omit the retired entry from the active snapshot, and clear the default target only when it referenced the retired connection. The raw file remains recoverable until the next catalog mutation writes the canonical supported set.\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary above\n- [ ] No\n\n## AI assistance\n\nCodex implemented the change, added the focused tests, and ran the checks listed above. Three independent AI reviewers performed adversarial deletion, migration, and holistic architecture reviews; Codex reproduced and fixed the concrete identity-collision finding and removed the now-unneeded preview contract. The human contributor approved the retirement decision and will review the final diff and commit messages before merge.\n",
+  "captured_at": "2026-08-29T17:22:52+00:00",
+  "case_id": "maka-pr-3062",
+  "changed_files": 42,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "request-review",
+      "status": "COMPLETED",
+      "workflowName": "Copilot auto review"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-review",
+      "status": "COMPLETED",
+      "workflowName": "Copilot auto review"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "820a47b90ff052a726997819539fc382efa31ace",
+  "deletions": 871,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "README.md"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "README.zh-CN.md"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "SECURITY.md"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-oauth-ipc-main.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/main/chat-readiness.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 30,
+      "path": "apps/desktop/src/main/runtime-host-oauth-ipc-main.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 20,
+      "path": "apps/desktop/src/preload/bridge-contract.d.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 37,
+      "path": "apps/desktop/src/preload/preload.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/src/renderer/locales/conversation-copy.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "apps/desktop/src/renderer/locales/settings-provider-copy.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/src/renderer/model-catalog-choices.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 7,
+      "path": "apps/desktop/src/renderer/settings/provider-add-form.tsx"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/settings/provider-brand-marks.tsx"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "apps/desktop/src/renderer/settings/provider-connection-detail.tsx"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/src/renderer/settings/provider-display-copy.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "apps/desktop/src/renderer/settings/use-connection-detail.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/renderer/settings/use-oauth-login-flow.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "apps/desktop/stories/settings/provider-settings.stories.tsx"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/__tests__/onboarding.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 23,
+      "path": "packages/core/src/__tests__/provider-auth.test.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/src/__tests__/runtime-policy-codec.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "packages/core/src/chat-model-choice.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/core/src/connection-error-copy.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "packages/core/src/connection-readiness.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/core/src/llm-connections.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 552,
+      "path": "packages/core/src/model-metadata.generated.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 7,
+      "path": "packages/core/src/model-metadata.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/core/src/model-web-search.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/onboarding.ts"
+    },
+    {
+      "additions": 15,
+      "changeType": "MODIFIED",
+      "deletions": 42,
+      "path": "packages/core/src/provider-auth.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/provider-contract-matrix.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 27,
+      "path": "packages/core/src/provider-registry.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/core/src/task-submission-readiness.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/server/execution-model-authority.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/__tests__/responses-wire-contract.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime/src/model-factory.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "packages/runtime/src/model-runtime.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/runtime/src/test-connection.ts"
+    },
+    {
+      "additions": 106,
+      "changeType": "MODIFIED",
+      "deletions": 7,
+      "path": "packages/storage/src/__tests__/runtime-policy-stores.test.ts"
+    },
+    {
+      "additions": 40,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/storage/src/runtime-policy/connection-catalog-document.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/ui/src/chat-model-helpers.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "scripts/sync-model-metadata.mjs"
+    }
+  ],
+  "head_sha": "06f1f908f7425d043ab6e768e42abfc608248b50",
+  "issues": [
+    {
+      "body": "## Problem\n\nMaka still maintains a Gemini CLI / Antigravity account-provider surface that has never been executable. The provider has no Runtime OAuth enrollment contract or runnable adapter, and Desktop only retains disabled IPC, preload, copy, metadata, and compatibility branches.\n\nThe project has decided to retire this preview instead of completing it.\n\n## Scope\n\n- Remove `gemini-cli` from the maintained provider registry and generated metadata.\n- Remove the Antigravity Desktop IPC, preload bridge, typed contract, settings branches, fixtures, and current documentation.\n- Reject creation of new `gemini-cli` connections.\n- Retire legacy persisted `gemini-cli` entries without preventing the remaining connection catalog from loading; clear the default target when it referenced a retired entry.\n- Preserve the ordinary `google` Gemini API-key provider unchanged.\n\n## Acceptance criteria\n\n- [ ] `gemini-cli` is no longer a supported provider type.\n- [ ] No Antigravity login or disabled preview bridge remains in current product surfaces.\n- [ ] A legacy persisted entry cannot block supported connections from loading.\n- [ ] The ordinary Google Gemini API-key path remains available.\n- [ ] Focused tests, affected typechecks, and formatting checks pass.\n\n## Non-goals\n\n- Changing the ordinary Google Gemini API-key provider.\n- Adding a replacement Google account OAuth integration.\n- Removing historical references that only document upstream Gemini CLI behavior or archived architecture.\n\n---\n\n*This issue was identified and updated with AI assistance (Codex). A human contributor reviewed the decision and owns the submission.*",
+      "number": 3054,
+      "title": "Retire the Gemini CLI / Antigravity preview",
+      "url": "https://github.com/apache/maka/issues/3054"
+    }
+  ],
+  "patch_sha256": "cf44693c8c2a86029394f206c067bae3a4713d3e1e8c2b9260080c45bf7282a9",
+  "pr_number": 3062,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "refactor: retire Gemini CLI account preview",
+  "url": "https://github.com/apache/maka/pull/3062"
+}

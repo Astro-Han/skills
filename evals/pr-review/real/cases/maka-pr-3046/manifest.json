@@ -1,0 +1,117 @@
+{
+  "additions": 519,
+  "author": "me2seeks",
+  "base_sha": "820a47b90ff052a726997819539fc382efa31ace",
+  "body": "## Summary\n\nCloses #3041. #3029 (PR #3040) added validation at the two checkpoint **write** gates, but a checkpoint whose truncated summary was persisted **before** that gate \u2014 incident checkpoint `hcheckpoint-981ceab8\u2026` in session `fbdb3fd3`, plus two more in `d282f6ac` \u2014 still loads and replays. This PR closes the load side.\n\n## What changed\n\n- Extracts a writer-agnostic `isHistoryCompactSummaryTruncated` from `validateHistoryCompactSummary` (fence count + tail punctuation).\n- Applies it in **both** load paths of `loadLatestHistoryCompactCheckpointFromRunLedger`: the bounded projection fast path and the canonical ledger recovery path.\n- A rejected checkpoint falls back to the previous valid checkpoint (or raw events when none), and the stale projection is repaired via `repairEventProjection`. No data is lost: raw events are append-only, and the next high-water fold rewrites a fresh checkpoint.\n- **Deliberately does NOT apply the `missing_sections` check at load**: legacy checkpoints predate the sectioned summarizer contract and remain usable without sections. Only truncation is load-bearing regardless of writer era.\n\n## Review fixes (first-principles + Occam double review)\n\n- **MAJOR**: the shared tail heuristic counted a trailing backtick as truncation, which would also match a *closed* ``` fence. At load time that would reject complete legacy summaries ending in a code fence and force a re-compaction. Dropped the backtick from the tail class (the even fence count already proves a closed block), added the `\u2026` signal, and renamed the predicate to `isHistoryCompactSummaryTruncated`.\n- Trimmed lockstep unit tests to three distinct contract points.\n\n## Validation\n\n- runtime suite: **2816 tests, 2810 pass, 0 fail, 6 skipped**; biome + tsc clean.\n- New tests cover: ledger fallback on a truncated checkpoint, projection repair from the canonical ledger, and the closed-fence false-positive regression.\n\n## Stacking\n\nStacked on **#3040** (`maka/history-compact-summary-validation`), which is not yet merged; this branch contains those 3 commits plus 2 new ones. Merge **after** #3040, at which point the diff reduces to the 2 new commits.",
+  "captured_at": "2026-08-29T17:22:14+00:00",
+  "case_id": "maka-pr-3046",
+  "changed_files": 13,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-review",
+      "status": "COMPLETED",
+      "workflowName": "Copilot auto review"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "2f76c310944c13791657c17ef491c4ed127eb30d",
+  "deletions": 29,
+  "files": [
+    {
+      "additions": 91,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/ai-sdk-backend.test.ts"
+    },
+    {
+      "additions": 63,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/history-compact-checkpoint.test.ts"
+    },
+    {
+      "additions": 135,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/history-compact-summary-validation.test.ts"
+    },
+    {
+      "additions": 40,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/runtime/src/__tests__/mid-turn-capacity-backend.test.ts"
+    },
+    {
+      "additions": 20,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/runtime/src/__tests__/mid-turn-capacity-compact.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/__tests__/overflow-reactive-recovery.test.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/__tests__/session-manager.test.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/ai-sdk-compaction.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime/src/history-compact-error.ts"
+    },
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/runtime/src/history-compact-ledger.ts"
+    },
+    {
+      "additions": 24,
+      "changeType": "MODIFIED",
+      "deletions": 18,
+      "path": "packages/runtime/src/history-compact-summarizer.ts"
+    },
+    {
+      "additions": 94,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/runtime/src/history-compact-summary-validation.ts"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/mid-turn-capacity-compact.ts"
+    }
+  ],
+  "head_sha": "621f1d535556c3a4cbdb356904cec97b778f39bf",
+  "issues": [
+    {
+      "body": "## Background\n\n#3029 added validation at the two checkpoint **write** gates: a malformed/truncated LLM summary can no longer replace folded history going forward. The fix is write-only.\n\n## Gap\n\nA checkpoint whose summary was persisted **before** the gate (e.g. the incident checkpoint `hcheckpoint-981ceab8\u2026` in session `fbdb3fd3`) still loads and replays: `loadLatestHistoryCompactCheckpointFromRunLedger` only checks `validateHistoryCompactCheckpointShape` (non-empty summary), not the summary contract. The already-poisoned session keeps serving the fragment until a later successful fold happens to supersede it.\n\n## Why not just reuse the same validator\n\nLoad-time validation is **asymmetric** to write-time: at write time the summary was just produced by the sectioned summarizer prompt, so a missing `## Goal` heading means degraded output. At load time the ledger may contain checkpoints written by older binaries whose summaries never followed the sectioned contract but are still usable. Applying `validateHistoryCompactSummary` verbatim would silently discard those and force a fallback to raw events (safe but wasteful/surprising), or loop re-compaction.\n\n## Suggested direction\n\n- Only validate checkpoints whose shape/metadata indicates the sectioned writer (e.g. a schema `version` bump or an explicit `summaryFormat` field), leaving legacy checkpoints to the existing shape check.\n- Or validate but treat \"section-less yet non-trivially-long\" as a distinct case from \"fragment/truncated\" and migrate rather than discard.\n- Add load-path tests mirroring the existing `history-compact-checkpoint.test.ts` fixtures (which currently use section-less synthetic summaries \u2014 they would all need to keep passing for legacy).\n\n## Related\n\n- #3029 (write-gate validation, merged in PR #3040)\n- #3030 (parallel tool-call message merge)",
+      "number": 3041,
+      "title": "Validate history-compact checkpoint summaries at load time (repair poisoned sessions)",
+      "url": "https://github.com/apache/maka/issues/3041"
+    }
+  ],
+  "patch_sha256": "da698f8578340de7779750191429a922e60795dd1bda869ae43411a737030869",
+  "pr_number": 3046,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(runtime): reject truncated history-compact summaries at load time (#3041)",
+  "url": "https://github.com/apache/maka/pull/3046"
+}

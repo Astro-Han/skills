@@ -1,0 +1,1099 @@
+From 5c0f981ebb33bda4f01442ddea2fccbe6850f5d7 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=83=AD=E5=90=89=E6=B5=A9?= <1625567290@qq.com>
+Date: Sat, 15 Aug 2026 13:58:01 +0800
+Subject: [PATCH 1/4] fix(desktop): settle catch-up text before remounting a
+ live conversation
+
+Switching back to a live session captured the leftover prefix as
+settledText, then painted the seed catch-up through the per-frame
+display batch. useStreamingText treated that as a new stream. Hold
+the live bubble until Runtime Host has seeded, apply those deltas
+immediately, and snapshot the full buffer in the same activation.
+
+Fixes #3044
+
+Generated-by: Grok
+---
+ .../main/__tests__/streaming-handoff.test.ts  | 62 +++++++++++++++++++
+ .../desktop/src/renderer/app-shell-effects.ts |  2 +
+ .../src/renderer/app-shell-session-events.ts  | 34 +++++++++-
+ apps/desktop/src/renderer/app-shell.tsx       | 12 +++-
+ .../src/renderer/chat-message-surface.tsx     | 26 ++++----
+ 5 files changed, 122 insertions(+), 14 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/streaming-handoff.test.ts b/apps/desktop/src/main/__tests__/streaming-handoff.test.ts
+index 8a7676ac38..7f69ba7b0e 100644
+--- a/apps/desktop/src/main/__tests__/streaming-handoff.test.ts
++++ b/apps/desktop/src/main/__tests__/streaming-handoff.test.ts
+@@ -252,6 +252,68 @@ describe('single live-turn handoff', () => {
+     assert.equal(publications, 2);
+   });
+ 
++  it('applies catch-up deltas immediately until the returning session is seeded', () => {
++    const liveTurns = createStateSetter<Record<string, LiveTurnProjection>>({
++      'session-1': armLiveTurn('turn-1'),
++    });
++    const liveTurnBySessionRef = { current: liveTurns.get() };
++    const interactions = createStateSetter<InteractionQueues>({});
++    const frames: Array<() => void> = [];
++    let publications = 0;
++    const handlers = createAppShellSessionEventHandlers({
++      uiLocale: 'zh',
++      activeIdRef: { current: 'session-1' },
++      liveTurnBySessionRef,
++      refreshMessages: async () => true,
++      refreshSessions: async () => [],
++      setLiveTurnBySession: (updater) => {
++        publications += 1;
++        liveTurns.set(updater);
++        liveTurnBySessionRef.current = liveTurns.get();
++      },
++      setInteractionBySession: interactions.set,
++      showModelSetupToast: () => {},
++      toastApi: { error: () => {} },
++      scheduleFrame: (callback) => { frames.push(callback); },
++    });
++
++    handlers.markDisplayPending('session-1');
++    handlers.handleEvent('session-1', {
++      type: 'text_delta',
++      id: 'seed',
++      turnId: 'turn-1',
++      messageId: 'assistant-1',
++      ts: 1,
++      startOffset: 0,
++      text: 'prefix accumulated while away',
++    });
++    assert.equal(publications, 1);
++    assert.equal(frames.length, 0);
++    assert.equal(
++      liveTurns.get()['session-1']?.steps[0]?.text?.text,
++      'prefix accumulated while away',
++    );
++
++    handlers.flushDisplayEvents('session-1');
++    handlers.markDisplayReady('session-1');
++    handlers.handleEvent('session-1', {
++      type: 'text_delta',
++      id: 'live',
++      turnId: 'turn-1',
++      messageId: 'assistant-1',
++      ts: 2,
++      text: ' new',
++    });
++    assert.equal(publications, 1);
++    assert.equal(frames.length, 1);
++    frames.shift()?.();
++    assert.equal(publications, 2);
++    assert.equal(
++      liveTurns.get()['session-1']?.steps[0]?.text?.text,
++      'prefix accumulated while away new',
++    );
++  });
++
+   it('shares pending display events across handler replacement', () => {
+     const liveTurns = createStateSetter<Record<string, LiveTurnProjection>>({
+       'session-1': armLiveTurn('turn-1'),
+diff --git a/apps/desktop/src/renderer/app-shell-effects.ts b/apps/desktop/src/renderer/app-shell-effects.ts
+index 1dc8075bbe..bc4d30e3c2 100644
+--- a/apps/desktop/src/renderer/app-shell-effects.ts
++++ b/apps/desktop/src/renderer/app-shell-effects.ts
+@@ -420,6 +420,7 @@ export function useActiveSessionEvents(options: {
+   activeIdRef: RefBox<string | undefined>;
+   handleEvent: (sessionId: string, event: SessionEvent) => void;
+   markSessionReadLocally: (sessionId: string, readMessages: readonly StoredMessage[]) => void;
++  markDisplayPending?: (sessionId: string) => void;
+   onEventSeeded?: (sessionId: string) => void;
+   setMessageLoadErrorBySession: (updater: (current: Record<string, string>) => Record<string, string>) => void;
+   setMessageLoadPending: (pending: boolean) => void;
+@@ -485,6 +486,7 @@ export function useActiveSessionEvents(options: {
+ 
+   useLayoutEffect(() => {
+     if (!activeId) return;
++    options.markDisplayPending?.(activeId);
+     let disposed = false;
+     const transcript = new DesktopTranscriptRangeStore();
+     const subscribedAt = Date.now();
+diff --git a/apps/desktop/src/renderer/app-shell-session-events.ts b/apps/desktop/src/renderer/app-shell-session-events.ts
+index 066367e248..bbbafe9a95 100644
+--- a/apps/desktop/src/renderer/app-shell-session-events.ts
++++ b/apps/desktop/src/renderer/app-shell-session-events.ts
+@@ -37,15 +37,19 @@ export interface AppShellSessionEventHandlers {
+   handleEvent(sessionId: string, event: SessionEvent): void;
+   reconcilePersistedMessages(sessionId: string, messages: readonly StoredMessage[]): void;
+   settleAssistantStreaming(sessionId: string, messageId?: string): Promise<void>;
++  flushDisplayEvents(sessionId: string): void;
++  markDisplayPending(sessionId: string): void;
++  markDisplayReady(sessionId: string): void;
+ }
+ 
+ export interface AppShellSessionDisplayBatch {
+   readonly pendingEvents: Map<string, SessionEvent[]>;
++  readonly displayPendingSessions: Set<string>;
+   framePending: boolean;
+ }
+ 
+ export function createAppShellSessionDisplayBatch(): AppShellSessionDisplayBatch {
+-  return { pendingEvents: new Map(), framePending: false };
++  return { pendingEvents: new Map(), displayPendingSessions: new Set(), framePending: false };
+ }
+ 
+ export function createAppShellSessionEventHandlers(options: {
+@@ -140,6 +144,24 @@ export function createAppShellSessionEventHandlers(options: {
+     });
+   }
+ 
++  function flushDisplayEvents(sessionId: string): void {
++    const events = takePendingDisplayEvents(sessionId);
++    if (events.length === 0) return;
++    updateLiveTurn(sessionId, events);
++  }
++
++  function markDisplayPending(sessionId: string): void {
++    displayBatch.displayPendingSessions.add(sessionId);
++  }
++
++  function markDisplayReady(sessionId: string): void {
++    displayBatch.displayPendingSessions.delete(sessionId);
++  }
++
++  function canBatchDisplayEvents(sessionId: string): boolean {
++    return !displayBatch.displayPendingSessions.has(sessionId);
++  }
++
+   function updateLiveTurn(sessionId: string, events: readonly SessionEvent[]): void {
+     setLiveTurnBySession((current) => replaceLiveTurns(current, new Map([[sessionId, events]])));
+   }
+@@ -190,6 +212,7 @@ export function createAppShellSessionEventHandlers(options: {
+     if (
+       scheduleFrame
+       && activeIdRef.current === sessionId
++      && canBatchDisplayEvents(sessionId)
+       && (event.type === 'text_delta' || event.type === 'thinking_delta')
+     ) {
+       scheduleDisplayEvent(sessionId, event);
+@@ -275,7 +298,14 @@ export function createAppShellSessionEventHandlers(options: {
+     }
+   }
+ 
+-  return { handleEvent, reconcilePersistedMessages, settleAssistantStreaming };
++  return {
++    handleEvent,
++    reconcilePersistedMessages,
++    settleAssistantStreaming,
++    flushDisplayEvents,
++    markDisplayPending,
++    markDisplayReady,
++  };
+ }
+ 
+ function sessionEventDiagnosticDetails(
+diff --git a/apps/desktop/src/renderer/app-shell.tsx b/apps/desktop/src/renderer/app-shell.tsx
+index bf18ff70c4..63a659f5b2 100644
+--- a/apps/desktop/src/renderer/app-shell.tsx
++++ b/apps/desktop/src/renderer/app-shell.tsx
+@@ -2186,7 +2186,14 @@ function AppShellContent({
+   });
+ 
+   const [sessionDisplayBatch] = useState(createAppShellSessionDisplayBatch);
+-  const { handleEvent, reconcilePersistedMessages, settleAssistantStreaming } = useStableActions(createAppShellSessionEventHandlers, {
++  const {
++    handleEvent,
++    reconcilePersistedMessages,
++    settleAssistantStreaming,
++    flushDisplayEvents,
++    markDisplayPending,
++    markDisplayReady,
++  } = useStableActions(createAppShellSessionEventHandlers, {
+     uiLocale,
+     activeIdRef,
+     liveTurnBySessionRef,
+@@ -2337,11 +2344,14 @@ function AppShellContent({
+     handleEvent,
+     markSessionReadLocally,
+     onEventSeeded: (sessionId) => {
++      flushDisplayEvents(sessionId);
++      markDisplayReady(sessionId);
+       setActiveEventSeed((current) => ({
+         sessionId,
+         revision: current.revision + 1,
+       }));
+     },
++    markDisplayPending,
+     setMessageLoadErrorBySession,
+     setMessageLoadPending,
+     setMessages,
+diff --git a/apps/desktop/src/renderer/chat-message-surface.tsx b/apps/desktop/src/renderer/chat-message-surface.tsx
+index 5719dd55f9..a865d6c1fa 100644
+--- a/apps/desktop/src/renderer/chat-message-surface.tsx
++++ b/apps/desktop/src/renderer/chat-message-surface.tsx
+@@ -141,26 +141,30 @@ export function ChatMessageSurface({
+     isDeepResearchSession(activeSession?.labels),
+   );
+   const liveTurn = useAppShellSessionUiSelector(sessionUiController, selectLiveTurn, activeSessionId);
++  const seededLiveTurn = liveContentSeedRevision > 0 ? liveTurn : undefined;
+   const [activation, setActivation] = useState(() => ({
+     sessionId: activeSessionId,
+     seedRevision: liveContentSeedRevision,
+-    initialLiveContent: captureLiveContent(liveTurn),
++    initialLiveContent: liveContentSeedRevision > 0 ? captureLiveContent(liveTurn) : undefined,
+   }));
+-  if (
+-    activation.sessionId !== activeSessionId
+-    || activation.seedRevision !== liveContentSeedRevision
+-  ) {
++  if (activation.sessionId !== activeSessionId) {
++    setActivation({
++      sessionId: activeSessionId,
++      seedRevision: liveContentSeedRevision,
++      initialLiveContent: liveContentSeedRevision > 0 ? captureLiveContent(liveTurn) : undefined,
++    });
++  } else if (activation.seedRevision !== liveContentSeedRevision) {
+     setActivation({
+       sessionId: activeSessionId,
+       seedRevision: liveContentSeedRevision,
+-      initialLiveContent: captureLiveContent(liveTurn),
++      initialLiveContent: liveContentSeedRevision > 0 ? captureLiveContent(liveTurn) : undefined,
+     });
+   } else if (
+     activation.initialLiveContent
+     && (
+-      !liveTurn
+-      || liveTurn.terminal
+-      || liveTurn.turnId !== activation.initialLiveContent.turnId
++      !seededLiveTurn
++      || seededLiveTurn.terminal
++      || seededLiveTurn.turnId !== activation.initialLiveContent.turnId
+     )
+   ) {
+     setActivation({
+@@ -216,10 +220,10 @@ export function ChatMessageSurface({
+     <>
+       <ChatView
+         {...chatViewRest}
+-        liveTurn={liveTurn}
++        liveTurn={seededLiveTurn}
+         initialLiveContentSnapshot={activation.sessionId === activeSessionId
+           ? activation.initialLiveContent
+-          : captureLiveContent(liveTurn)}
++          : liveContentSeedRevision > 0 ? captureLiveContent(liveTurn) : undefined}
+         shellRunUpdates={shellRunUpdates}
+         deepResearchRun={deepResearchRun}
+         emptyOverride={emptyOverride}
+
+From 2ff7c1bfe2095e33fdab2438b290e412acb3969a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=83=AD=E5=90=89=E6=B5=A9?= <1625567290@qq.com>
+Date: Sat, 15 Aug 2026 17:28:20 +0800
+Subject: [PATCH 2/4] fix(desktop): bind live catch-up readiness to observation
+ generation
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+sessionId plus a monotonic revision let A → B → A reuse the previous
+ready seed, and Host recovery replayed catch-up without a new renderer
+seed boundary. Key pending and ready to each observation generation,
+including subscription recovery and candidate restore.
+
+Fixes #3044
+
+Generated-by: Grok
+---
+ .../main/__tests__/live-content-seed.test.ts  | 57 +++++++++++++++++++
+ .../runtime-host-desktop-candidate.test.ts    | 14 +++++
+ .../runtime-host-session-observer.test.ts     | 17 ++++++
+ .../main/runtime-host-desktop-candidate.ts    |  6 ++
+ ...ntime-host-session-observation-registry.ts |  4 ++
+ .../src/main/runtime-host-session-observer.ts |  8 +++
+ apps/desktop/src/preload/bridge-contract.d.ts |  1 +
+ apps/desktop/src/preload/preload.ts           | 11 ++++
+ .../desktop/src/renderer/app-shell-effects.ts | 22 +++++--
+ apps/desktop/src/renderer/app-shell.tsx       | 46 +++++++++------
+ .../src/renderer/chat-message-surface.tsx     |  2 +-
+ .../desktop/src/renderer/live-content-seed.ts | 52 +++++++++++++++++
+ 12 files changed, 217 insertions(+), 23 deletions(-)
+ create mode 100644 apps/desktop/src/main/__tests__/live-content-seed.test.ts
+ create mode 100644 apps/desktop/src/renderer/live-content-seed.ts
+
+diff --git a/apps/desktop/src/main/__tests__/live-content-seed.test.ts b/apps/desktop/src/main/__tests__/live-content-seed.test.ts
+new file mode 100644
+index 0000000000..1f3dda6fe0
+--- /dev/null
++++ b/apps/desktop/src/main/__tests__/live-content-seed.test.ts
+@@ -0,0 +1,57 @@
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import {
++  EMPTY_LIVE_CONTENT_SEED,
++  beginLiveContentSeed,
++  completeLiveContentSeed,
++  liveContentSeedRevision,
++} from '../../renderer/live-content-seed.js';
++
++test('withholds live content until the current observation generation is ready', () => {
++  const first = beginLiveContentSeed(EMPTY_LIVE_CONTENT_SEED, 'session-a');
++  assert.equal(liveContentSeedRevision(first, 'session-a'), 0);
++
++  const ready = completeLiveContentSeed(first, 'session-a', first.generation);
++  assert.equal(liveContentSeedRevision(ready, 'session-a'), first.generation);
++  assert.equal(liveContentSeedRevision(ready, 'session-b'), 0);
++});
++
++test('A → B → A does not reuse the previous ready generation', () => {
++  const firstReady = completeLiveContentSeed(
++    beginLiveContentSeed(EMPTY_LIVE_CONTENT_SEED, 'session-a'),
++    'session-a',
++    1,
++  );
++  assert.equal(liveContentSeedRevision(firstReady, 'session-a'), 1);
++
++  const pendingB = beginLiveContentSeed(firstReady, 'session-b');
++  assert.equal(liveContentSeedRevision(pendingB, 'session-b'), 0);
++  assert.equal(liveContentSeedRevision(pendingB, 'session-a'), 0);
++
++  const pendingA = beginLiveContentSeed(pendingB, 'session-a');
++  assert.equal(pendingA.generation, 3);
++  assert.equal(liveContentSeedRevision(pendingA, 'session-a'), 0);
++
++  const staleFirstSeed = completeLiveContentSeed(pendingA, 'session-a', 1);
++  assert.equal(staleFirstSeed, pendingA);
++  assert.equal(liveContentSeedRevision(staleFirstSeed, 'session-a'), 0);
++
++  const recovered = completeLiveContentSeed(pendingA, 'session-a', pendingA.generation);
++  assert.equal(liveContentSeedRevision(recovered, 'session-a'), 3);
++});
++
++test('a recovery generation only exposes live content after that generation completes', () => {
++  const firstReady = completeLiveContentSeed(
++    beginLiveContentSeed(EMPTY_LIVE_CONTENT_SEED, 'session-a'),
++    'session-a',
++    1,
++  );
++  const recovering = beginLiveContentSeed(firstReady, 'session-a');
++  assert.equal(liveContentSeedRevision(recovering, 'session-a'), 0);
++
++  const stale = completeLiveContentSeed(recovering, 'session-a', firstReady.generation);
++  assert.equal(liveContentSeedRevision(stale, 'session-a'), 0);
++
++  const ready = completeLiveContentSeed(recovering, 'session-a', recovering.generation);
++  assert.equal(liveContentSeedRevision(ready, 'session-a'), 2);
++});
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+index fcd5cf84b4..0fb0859b01 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+@@ -495,6 +495,20 @@ test('resyncs Goal, exact interaction, and sidecar state after candidate replace
+     observations,
+   );
+ 
++  const seedPendingAt = resyncs.findIndex(
++    ({ channel, payload }) =>
++      channel === 'sessions:observation-seed'
++      && (payload as { sessionId?: unknown; phase?: unknown }).sessionId === 'session-1'
++      && (payload as { phase?: unknown }).phase === 'pending',
++  );
++  const seedReadyAt = resyncs.findIndex(
++    ({ channel, payload }) =>
++      channel === 'sessions:observation-seed'
++      && (payload as { sessionId?: unknown; phase?: unknown }).sessionId === 'session-1'
++      && (payload as { phase?: unknown }).phase === 'ready',
++  );
++  assert.ok(seedPendingAt >= 0);
++  assert.ok(seedReadyAt > seedPendingAt);
+   assert.ok(
+     resyncs.some(
+       ({ channel, payload }) =>
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-session-observer.test.ts b/apps/desktop/src/main/__tests__/runtime-host-session-observer.test.ts
+index 3c9e8776a5..98d9be7e8b 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-session-observer.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-session-observer.test.ts
+@@ -1040,6 +1040,7 @@ test("ignores a stale seed failure after its replacement succeeds", async () =>
+   assert.deepEqual(await attaching, ["session-1"]);
+   await observing;
+   assert.equal(ready, true);
++  assert.deepEqual(observations.observedSessionIds(), ["session-1"]);
+   await observations.close();
+ });
+ 
+@@ -1779,6 +1780,7 @@ test("reconciles terminal, Goal, interaction, and sidecar state after subscripti
+   const finishedTurns: Array<[string, "completed" | "abandoned"]> = [];
+   const interactionSnapshots: Array<readonly { requestId: string }[]> = [];
+   const recoveredSessions: string[] = [];
++  const seedTimeline: string[] = [];
+   const sessionChanges: string[] = [];
+   const firstInteraction = pendingQuestion("interaction-1", "turn-1", "run-1");
+   const secondInteraction = pendingQuestion("interaction-2", "turn-2", "run-2");
+@@ -1848,9 +1850,17 @@ test("reconciles terminal, Goal, interaction, and sidecar state after subscripti
+     emitSubscriptionRecovered: (sessionId) => {
+       recoveredSessions.push(sessionId);
+     },
++    emitObservationSeed: (sessionId, phase) => {
++      seedTimeline.push(`${phase}:${sessionId}`);
++    },
+     now: () => 50,
+   });
+   const target = eventTarget(15);
++  const originalSend = target.send.bind(target);
++  target.send = (channel, event) => {
++    seedTimeline.push(`event:${event.type}`);
++    originalSend(channel, event);
++  };
+   await observer.observe("session-1", "observer-1", target);
+   await observer.watchTurn("session-1", "turn-1");
+ 
+@@ -1865,6 +1875,13 @@ test("reconciles terminal, Goal, interaction, and sidecar state after subscripti
+ 
+   assert.deepEqual(finishedTurns, [["session-1", "completed"]]);
+   assert.deepEqual(recoveredSessions, ["session-1"]);
++  const pendingAt = seedTimeline.indexOf("pending:session-1");
++  const readyAt = seedTimeline.indexOf("ready:session-1");
++  assert.ok(pendingAt >= 0);
++  assert.ok(readyAt > pendingAt);
++  assert.ok(
++    seedTimeline.slice(pendingAt + 1, readyAt).some((entry) => entry.startsWith("event:")),
++  );
+   assert.ok(sessionChanges.includes("goal-change"));
+   assert.deepEqual(
+     interactionSnapshots.at(-1)?.map((interaction) => interaction.requestId),
+diff --git a/apps/desktop/src/main/runtime-host-desktop-candidate.ts b/apps/desktop/src/main/runtime-host-desktop-candidate.ts
+index 5bf3094278..539a8335e3 100644
+--- a/apps/desktop/src/main/runtime-host-desktop-candidate.ts
++++ b/apps/desktop/src/main/runtime-host-desktop-candidate.ts
+@@ -440,6 +440,8 @@ export async function createDesktopRuntimeHostCandidate(
+       emitActiveInteractionsChanged,
+       emitSubscriptionRecovered: (sessionId) =>
+         domains?.sessionSubscriptionRecovered(sessionId),
++      emitObservationSeed: (sessionId, phase) =>
++        sendToRenderer?.('sessions:observation-seed', { sessionId, phase }),
+       onWatchedTurnFinished: (sessionId, outcome) =>
+         outcome === "completed"
+           ? deps.completeComputerUseTurn(
+@@ -465,6 +467,9 @@ export async function createDesktopRuntimeHostCandidate(
+       ipc,
+     );
+     closeSessionDomains = domains.close;
++    for (const sessionId of sessionObservations.observedSessionIds()) {
++      sendToRenderer('sessions:observation-seed', { sessionId, phase: 'pending' });
++    }
+     const restoredSessionIds = await sessionObservations.attach(
+       sessionObserver,
+       (target) => ({
+@@ -481,6 +486,7 @@ export async function createDesktopRuntimeHostCandidate(
+     );
+     observationsAttached = true;
+     for (const sessionId of restoredSessionIds) {
++      sendToRenderer('sessions:observation-seed', { sessionId, phase: 'ready' });
+       emitSessionsChanged("message-appended", sessionId);
+       emitSessionsChanged("goal-change", sessionId);
+       domains.sessionSubscriptionRecovered(sessionId);
+diff --git a/apps/desktop/src/main/runtime-host-session-observation-registry.ts b/apps/desktop/src/main/runtime-host-session-observation-registry.ts
+index 6dae077cc1..e24e8af897 100644
+--- a/apps/desktop/src/main/runtime-host-session-observation-registry.ts
++++ b/apps/desktop/src/main/runtime-host-session-observation-registry.ts
+@@ -184,6 +184,10 @@ export class RuntimeHostSessionObservationRegistry {
+     return [...new Set(restored.filter((sessionId): sessionId is string => !!sessionId))];
+   }
+ 
++  observedSessionIds(): string[] {
++    return [...new Set([...this.#registrations.values()].map((registration) => registration.sessionId))];
++  }
++
+   detach(source: SessionObservationSource): void {
+     if (this.#source === source) {
+       this.#source = undefined;
+diff --git a/apps/desktop/src/main/runtime-host-session-observer.ts b/apps/desktop/src/main/runtime-host-session-observer.ts
+index a3ce7e7d6c..02c220ebdf 100644
+--- a/apps/desktop/src/main/runtime-host-session-observer.ts
++++ b/apps/desktop/src/main/runtime-host-session-observer.ts
+@@ -76,6 +76,7 @@ export interface RuntimeHostSessionObserverDeps {
+     interactions: readonly ActiveInteractionRequestEvent[],
+   ) => void;
+   emitSubscriptionRecovered?: (sessionId: string) => void;
++  emitObservationSeed?: (sessionId: string, phase: 'pending' | 'ready') => void;
+   recoverConnectionClosed?: boolean;
+   now?: () => number;
+ }
+@@ -180,6 +181,10 @@ export class RuntimeHostSessionObserver {
+     interactions: readonly ActiveInteractionRequestEvent[],
+   ) => void;
+   readonly #emitSubscriptionRecovered: (sessionId: string) => void;
++  readonly #emitObservationSeed: (
++    sessionId: string,
++    phase: 'pending' | 'ready',
++  ) => void;
+   readonly #recoverConnectionClosed: boolean;
+   readonly #now: () => number;
+   #closed = false;
+@@ -201,6 +206,7 @@ export class RuntimeHostSessionObserver {
+       deps.emitActiveInteractionsChanged ?? (() => undefined);
+     this.#emitSubscriptionRecovered =
+       deps.emitSubscriptionRecovered ?? (() => undefined);
++    this.#emitObservationSeed = deps.emitObservationSeed ?? (() => undefined);
+     this.#recoverConnectionClosed = deps.recoverConnectionClosed ?? false;
+     this.#now = deps.now ?? Date.now;
+   }
+@@ -805,6 +811,7 @@ export class RuntimeHostSessionObserver {
+       this.#touchReplica(state);
+ 
+       if (replacement) {
++        this.#emitObservationSeed(state.sessionId, 'pending');
+         for (const event of replacement.terminalEvents) {
+           this.#broadcast(state.sessionId, event);
+         }
+@@ -812,6 +819,7 @@ export class RuntimeHostSessionObserver {
+           this.#broadcast(state.sessionId, event);
+         }
+         for (const group of state.targets.values()) group.seeded = true;
++        this.#emitObservationSeed(state.sessionId, 'ready');
+         for (const turnId of replacement.terminalTurnIds) {
+           this.#finishWatchedTurn(state, turnId, "completed");
+           this.#emitSessionsChanged("turn-status-change", state.sessionId, {
+diff --git a/apps/desktop/src/preload/bridge-contract.d.ts b/apps/desktop/src/preload/bridge-contract.d.ts
+index 56aec7f324..56da0a5df4 100644
+--- a/apps/desktop/src/preload/bridge-contract.d.ts
++++ b/apps/desktop/src/preload/bridge-contract.d.ts
+@@ -463,6 +463,7 @@ export interface MakaBridge {
+       sessionId: string,
+       handler: (event: SessionEvent) => void,
+       onSeeded?: () => void,
++      onObservationSeed?: (phase: 'pending' | 'ready') => void,
+     ): () => void;
+     subscribeChanges(handler: (event: SessionChangedEvent) => void): () => void;
+     archive(sessionId: string, options?: { revisionFamily?: boolean }): Promise<void>;
+diff --git a/apps/desktop/src/preload/preload.ts b/apps/desktop/src/preload/preload.ts
+index 7c789e09a8..3204954f97 100644
+--- a/apps/desktop/src/preload/preload.ts
++++ b/apps/desktop/src/preload/preload.ts
+@@ -743,6 +743,7 @@ const makaBridge = {
+       sessionId: string,
+       handler: (event: SessionEvent) => void,
+       onSeeded?: () => void,
++      onObservationSeed?: (phase: 'pending' | 'ready') => void,
+     ): () => void {
+       const channel = `sessions:event:${sessionId}`;
+       const unsubscribeEvents = subscribeActiveRuntimeHostEvent(channel, handler);
+@@ -753,8 +754,18 @@ const makaBridge = {
+       }));
+       const observing = observeDispatch.then(({ completion }) => completion);
+       const disposeSeedNotification = notifyWhenSeeded(observing, onSeeded);
++      const unsubscribeObservationSeed = subscribeActiveRuntimeHostEvent(
++        'sessions:observation-seed',
++        (payload: { sessionId?: string; phase?: string }) => {
++          if (payload.sessionId !== sessionId) return;
++          if (payload.phase === 'pending' || payload.phase === 'ready') {
++            onObservationSeed?.(payload.phase);
++          }
++        },
++      );
+       return () => {
+         disposeSeedNotification();
++        unsubscribeObservationSeed();
+         unsubscribeEvents();
+         void releaseSessionObservation(observeDispatch, () =>
+           ipcRenderer.invoke('sessions:unobserve', observerId),
+diff --git a/apps/desktop/src/renderer/app-shell-effects.ts b/apps/desktop/src/renderer/app-shell-effects.ts
+index bc4d30e3c2..2508b25b5d 100644
+--- a/apps/desktop/src/renderer/app-shell-effects.ts
++++ b/apps/desktop/src/renderer/app-shell-effects.ts
+@@ -420,8 +420,8 @@ export function useActiveSessionEvents(options: {
+   activeIdRef: RefBox<string | undefined>;
+   handleEvent: (sessionId: string, event: SessionEvent) => void;
+   markSessionReadLocally: (sessionId: string, readMessages: readonly StoredMessage[]) => void;
+-  markDisplayPending?: (sessionId: string) => void;
+-  onEventSeeded?: (sessionId: string) => void;
++  beginObservationSeed?: (sessionId: string) => number;
++  completeObservationSeed?: (sessionId: string, generation?: number) => void;
+   setMessageLoadErrorBySession: (updater: (current: Record<string, string>) => Record<string, string>) => void;
+   setMessageLoadPending: (pending: boolean) => void;
+   setMessages: (messages: StoredMessage[]) => void;
+@@ -465,8 +465,14 @@ export function useActiveSessionEvents(options: {
+     });
+     options.handleEvent(sessionId, event);
+   });
+-  const markEventSeeded = useEffectEvent((sessionId: string) => {
+-    options.onEventSeeded?.(sessionId);
++  const beginObservationSeed = useEffectEvent((sessionId: string) => {
++    return options.beginObservationSeed?.(sessionId) ?? 0;
++  });
++  const completeObservationSeed = useEffectEvent((
++    sessionId: string,
++    generation?: number,
++  ) => {
++    options.completeObservationSeed?.(sessionId, generation);
+   });
+   const markSessionEventStreamClosed = useEffectEvent((sessionId: string) => {
+     options.setSessionEventHealthBySession((current) => {
+@@ -486,7 +492,7 @@ export function useActiveSessionEvents(options: {
+ 
+   useLayoutEffect(() => {
+     if (!activeId) return;
+-    options.markDisplayPending?.(activeId);
++    const observationGeneration = beginObservationSeed(activeId);
+     let disposed = false;
+     const transcript = new DesktopTranscriptRangeStore();
+     const subscribedAt = Date.now();
+@@ -531,7 +537,11 @@ export function useActiveSessionEvents(options: {
+       (event) => {
+         handleSessionEvent(activeId, event);
+       },
+-      () => markEventSeeded(activeId),
++      () => completeObservationSeed(activeId, observationGeneration),
++      (phase) => {
++        if (phase === 'pending') beginObservationSeed(activeId);
++        else completeObservationSeed(activeId);
++      },
+     );
+     return () => {
+       disposed = true;
+diff --git a/apps/desktop/src/renderer/app-shell.tsx b/apps/desktop/src/renderer/app-shell.tsx
+index 63a659f5b2..4a56e05d05 100644
+--- a/apps/desktop/src/renderer/app-shell.tsx
++++ b/apps/desktop/src/renderer/app-shell.tsx
+@@ -173,6 +173,13 @@ import {
+   useShellRunUpdates,
+   useSettledSessionTransientReconcile,
+ } from './app-shell-effects';
++import {
++  EMPTY_LIVE_CONTENT_SEED,
++  beginLiveContentSeed,
++  completeLiveContentSeed,
++  liveContentSeedRevision,
++  type LiveContentSeed,
++} from './live-content-seed';
+ import { loadComposerDefaults, saveComposerDefaults } from './composer-defaults';
+ import { useKeyedPendingRegistry } from './use-pending-action-registry';
+ import { useAppShellComposerAttachments } from './use-app-shell-composer-attachments';
+@@ -2333,25 +2340,34 @@ function AppShellContent({
+     themePalette,
+     themePref,
+   });
+-  const [activeEventSeed, setActiveEventSeed] = useState({
+-    sessionId: undefined as string | undefined,
+-    revision: 0,
+-  });
++  const [activeEventSeed, setActiveEventSeed] = useState<LiveContentSeed>(EMPTY_LIVE_CONTENT_SEED);
++  const activeEventSeedRef = useRef(activeEventSeed);
++  activeEventSeedRef.current = activeEventSeed;
++  const beginObservationSeed = (sessionId: string): number => {
++    const next = beginLiveContentSeed(activeEventSeedRef.current, sessionId);
++    activeEventSeedRef.current = next;
++    markDisplayPending(sessionId);
++    setActiveEventSeed(next);
++    return next.generation;
++  };
++  const completeObservationSeed = (sessionId: string, generation?: number): void => {
++    const current = activeEventSeedRef.current;
++    const expected = generation ?? current.generation;
++    if (current.sessionId !== sessionId || current.generation !== expected) return;
++    flushDisplayEvents(sessionId);
++    markDisplayReady(sessionId);
++    const next = completeLiveContentSeed(current, sessionId, expected);
++    activeEventSeedRef.current = next;
++    setActiveEventSeed(next);
++  };
+   useActiveSessionEvents({
+     uiLocale,
+     activeId,
+     activeIdRef,
+     handleEvent,
+     markSessionReadLocally,
+-    onEventSeeded: (sessionId) => {
+-      flushDisplayEvents(sessionId);
+-      markDisplayReady(sessionId);
+-      setActiveEventSeed((current) => ({
+-        sessionId,
+-        revision: current.revision + 1,
+-      }));
+-    },
+-    markDisplayPending,
++    beginObservationSeed,
++    completeObservationSeed,
+     setMessageLoadErrorBySession,
+     setMessageLoadPending,
+     setMessages,
+@@ -3086,9 +3102,7 @@ function AppShellContent({
+                 historyLoadPending={historyLoadPendingSessionId === activeId}
+                 onLoadEarlierHistory={() => loadTranscriptHistory('earlier')}
+                 onReturnToLatestHistory={() => loadTranscriptHistory('latest')}
+-                liveContentSeedRevision={activeEventSeed.sessionId === activeId
+-                  ? activeEventSeed.revision
+-                  : 0}
++                liveContentSeedRevision={liveContentSeedRevision(activeEventSeed, activeId)}
+                 messages={messages}
+                 messageLoading={activeMessageLoading}
+                 runningStatus={showRunningStatus}
+diff --git a/apps/desktop/src/renderer/chat-message-surface.tsx b/apps/desktop/src/renderer/chat-message-surface.tsx
+index a865d6c1fa..f3a22377ee 100644
+--- a/apps/desktop/src/renderer/chat-message-surface.tsx
++++ b/apps/desktop/src/renderer/chat-message-surface.tsx
+@@ -53,7 +53,7 @@ interface ChatMessageSurfaceProps extends Omit<
+   sessionUiController: AppShellSessionUiStateController;
+   /** The shell's selected session. Not derived from `activeSession`, which the shell substitutes for an unsaved chat. */
+   activeSessionId: string | undefined;
+-  /** Advances after Runtime Host has seeded the active session's current live projection. */
++  /** Advances after the active session's current observation generation finishes seeding. */
+   liveContentSeedRevision: number;
+   sessionHealthNotice?: SessionHealthNoticeView;
+   workspaceReadinessRecovery?: WorkspaceReadinessRecovery;
+diff --git a/apps/desktop/src/renderer/live-content-seed.ts b/apps/desktop/src/renderer/live-content-seed.ts
+new file mode 100644
+index 0000000000..f3721f5946
+--- /dev/null
++++ b/apps/desktop/src/renderer/live-content-seed.ts
+@@ -0,0 +1,52 @@
++export interface LiveContentSeed {
++  readonly sessionId: string | undefined;
++  readonly generation: number;
++  readonly readyGeneration: number;
++}
++
++export const EMPTY_LIVE_CONTENT_SEED: LiveContentSeed = {
++  sessionId: undefined,
++  generation: 0,
++  readyGeneration: 0,
++};
++
++export function beginLiveContentSeed(
++  current: LiveContentSeed,
++  sessionId: string,
++): LiveContentSeed {
++  return {
++    sessionId,
++    generation: current.generation + 1,
++    readyGeneration: 0,
++  };
++}
++
++export function completeLiveContentSeed(
++  current: LiveContentSeed,
++  sessionId: string,
++  generation: number,
++): LiveContentSeed {
++  if (current.sessionId !== sessionId || current.generation !== generation) {
++    return current;
++  }
++  return {
++    sessionId,
++    generation,
++    readyGeneration: generation,
++  };
++}
++
++export function liveContentSeedRevision(
++  seed: LiveContentSeed,
++  activeSessionId: string | undefined,
++): number {
++  if (
++    !activeSessionId
++    || seed.sessionId !== activeSessionId
++    || seed.generation === 0
++    || seed.readyGeneration !== seed.generation
++  ) {
++    return 0;
++  }
++  return seed.generation;
++}
+
+From e6f9c0e7daa9d80cdc9d1a3a9a86323c0af2f08c Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Sat, 15 Aug 2026 20:43:57 +0800
+Subject: [PATCH 3/4] fix(desktop): retry failed observation restores
+
+Reject a replacement candidate when any retained renderer observation fails to seed, allowing the existing reconnect path to retry instead of leaving live content hidden indefinitely. Strengthen recovery tests to require catch-up delivery between pending and ready.
+
+Generated-by: Codex
+---
+ .../runtime-host-desktop-candidate.test.ts    | 114 +++++++++++++++++-
+ .../main/runtime-host-desktop-candidate.ts    |  14 ++-
+ 2 files changed, 121 insertions(+), 7 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+index 0fb0859b01..b3e35889d8 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+@@ -10,6 +10,7 @@ import type {
+   ClientCapabilityCallFrame,
+   OperationInput,
+   OperationKey,
++  SessionAssistantStreamIdentity,
+   SessionCatalogProjection,
+   SessionContinuitySnapshot,
+   SubscriptionFrame,
+@@ -435,7 +436,10 @@ test('does not release or report a Revision the Host retained during cleanup', a
+ test('resyncs Goal, exact interaction, and sidecar state after candidate replacement', async () => {
+   const ref = 'maka://runtime/background-tasks/shell-1';
+   const observations = new RuntimeHostSessionObservationRegistry();
+-  const firstIpc = ipcHarness();
++  const resyncs: Array<{ channel: string; payload: unknown }> = [];
++  const firstIpc = ipcHarness((channel, payload) => {
++    resyncs.push({ channel, payload });
++  });
+   const firstHost = connectionHarness('first-observer', {
+     subscriptionSnapshot: continuitySnapshot({
+       interactions: { pending: [pendingQuestion()] },
+@@ -465,13 +469,14 @@ test('resyncs Goal, exact interaction, and sidecar state after candidate replace
+     'before replacement',
+   );
+   await firstCandidate.close();
++  resyncs.length = 0;
+ 
+   const secondIpc = ipcHarness();
+-  const resyncs: Array<{ channel: string; payload: unknown }> = [];
+   const sessionChanges: Array<{ reason: string; sessionId?: string }> = [];
+   let terminalReattach: Promise<unknown> | undefined;
+   const secondHost = connectionHarness('second-observer', {
+     subscriptionSnapshot: continuitySnapshot({ interactions: { pending: [] } }),
++    activeAssistantStreams: [activeText('message-1')],
+     runtimeResourcePty: ptySnapshot(ref, 'after replacement'),
+   });
+   const secondCandidate = await createDesktopRuntimeHostCandidate(
+@@ -509,6 +514,11 @@ test('resyncs Goal, exact interaction, and sidecar state after candidate replace
+   );
+   assert.ok(seedPendingAt >= 0);
+   assert.ok(seedReadyAt > seedPendingAt);
++  assert.ok(
++    resyncs
++      .slice(seedPendingAt + 1, seedReadyAt)
++      .some(({ channel }) => channel === 'sessions:event:session-1'),
++  );
+   assert.ok(
+     resyncs.some(
+       ({ channel, payload }) =>
+@@ -568,9 +578,94 @@ test('resyncs Goal, exact interaction, and sidecar state after candidate replace
+   await observations.close();
+ });
+ 
++test('retries candidate startup when a restored observation cannot seed', async () => {
++  const observations = new RuntimeHostSessionObservationRegistry();
++  const seedEvents: Array<{ channel: string; payload: unknown }> = [];
++  const firstIpc = ipcHarness((channel, payload) => {
++    seedEvents.push({ channel, payload });
++  });
++  const firstHost = connectionHarness('restore-source', {
++    sessionId: 'session-1',
++    subscriptionSnapshot: continuitySnapshot(),
++  });
++  const firstCandidate = await createDesktopRuntimeHostCandidate(
++    firstHost.connection,
++    deps(firstIpc),
++    observations,
++  );
++  await firstIpc.invoke('sessions:observe', 'session-1', 'observer-1');
++  await firstCandidate.close();
++  seedEvents.length = 0;
++
++  const failingHost = connectionHarness('restore-failure', {
++    sessionId: 'session-1',
++    subscriptionError: new Error('restore failed'),
++  });
++  await assert.rejects(
++    () =>
++      createDesktopRuntimeHostCandidate(
++        failingHost.connection,
++        {
++          ...deps(ipcHarness()),
++          renderer: {
++            send(channel, _host, payload) {
++              seedEvents.push({ channel, payload });
++            },
++          },
++        },
++        observations,
++      ),
++    /Failed to restore Session observations: session-1/,
++  );
++  assert.deepEqual(
++    seedEvents
++      .filter(({ channel }) => channel === 'sessions:observation-seed')
++      .map(({ payload }) => (payload as { phase?: unknown }).phase),
++    ['pending'],
++  );
++  seedEvents.length = 0;
++
++  const recoveredHost = connectionHarness('restore-recovered', {
++    sessionId: 'session-1',
++    subscriptionSnapshot: continuitySnapshot(),
++    activeAssistantStreams: [activeText('message-1')],
++  });
++  const recoveredCandidate = await createDesktopRuntimeHostCandidate(
++    recoveredHost.connection,
++    {
++      ...deps(ipcHarness()),
++      renderer: {
++        send(channel, _host, payload) {
++          seedEvents.push({ channel, payload });
++        },
++      },
++    },
++    observations,
++  );
++  const pendingAt = seedEvents.findIndex(
++    ({ channel, payload }) =>
++      channel === 'sessions:observation-seed'
++      && (payload as { phase?: unknown }).phase === 'pending',
++  );
++  const readyAt = seedEvents.findIndex(
++    ({ channel, payload }) =>
++      channel === 'sessions:observation-seed'
++      && (payload as { phase?: unknown }).phase === 'ready',
++  );
++  assert.ok(pendingAt >= 0);
++  assert.ok(
++    seedEvents
++      .slice(pendingAt + 1, readyAt)
++      .some(({ channel }) => channel === 'sessions:event:session-1'),
++  );
++  assert.ok(readyAt > pendingAt);
++  await recoveredCandidate.close();
++  await observations.close();
++});
++
+ type IpcHandler = Parameters<Pick<IpcMain, 'handle'>['handle']>[1];
+ 
+-function ipcHarness() {
++function ipcHarness(onSend?: (channel: string, payload: unknown) => void) {
+   const handlers = new Map<string, IpcHandler>();
+   let epoch = TEST_TARGET_EPOCH;
+   const sender = Object.assign(new EventEmitter(), {
+@@ -578,11 +673,13 @@ function ipcHarness() {
+     sent: [] as Array<{ channel: string; hostId?: string; payload: unknown }>,
+     send(channel: string, ...args: unknown[]): void {
+       const hostId = (args[0] as { hostId?: unknown } | undefined)?.hostId;
++      const payload = args.at(-1);
+       sender.sent.push({
+         channel,
+         ...(typeof hostId === 'string' ? { hostId } : {}),
+-        payload: args.at(-1),
++        payload,
+       });
++      onSend?.(channel, payload);
+     },
+   });
+   return {
+@@ -682,6 +779,8 @@ function connectionHarness(
+     sessionId?: string;
+     revisionAbandon?: 'abandoned' | 'retained';
+     subscriptionSnapshot?: SessionContinuitySnapshot;
++    activeAssistantStreams?: readonly SessionAssistantStreamIdentity[];
++    subscriptionError?: Error;
+     runtimeResourcePty?: ReturnType<typeof ptySnapshot>;
+   } = {},
+ ) {
+@@ -791,6 +890,7 @@ function connectionHarness(
+       throw new Error(`Unexpected operation: ${operation}`);
+     },
+     openSessionSubscription: async ({ sessionId }: { sessionId: string }) => {
++      if (options.subscriptionError) throw options.subscriptionError;
+       const subscriptionFrames = new AsyncFrameQueue();
+       activeSubscriptionFrames = subscriptionFrames;
+       const closeSubscription = () => subscriptionFrames.end();
+@@ -812,7 +912,7 @@ function connectionHarness(
+           projectionRevision: 1,
+           session: { sessionId },
+         },
+-        activeAssistantStreams: [],
++        activeAssistantStreams: options.activeAssistantStreams ?? [],
+         transcriptBootstrap: {
+           throughSequence: null,
+           overlayMessageCount: 0,
+@@ -908,6 +1008,10 @@ function continuitySnapshot(
+   };
+ }
+ 
++function activeText(messageId: string): SessionAssistantStreamIdentity {
++  return { kind: 'text', turnId: 'turn-1', messageId };
++}
++
+ function pendingQuestion() {
+   return {
+     schemaVersion: 1 as const,
+diff --git a/apps/desktop/src/main/runtime-host-desktop-candidate.ts b/apps/desktop/src/main/runtime-host-desktop-candidate.ts
+index 539a8335e3..e0ef9da523 100644
+--- a/apps/desktop/src/main/runtime-host-desktop-candidate.ts
++++ b/apps/desktop/src/main/runtime-host-desktop-candidate.ts
+@@ -467,9 +467,11 @@ export async function createDesktopRuntimeHostCandidate(
+       ipc,
+     );
+     closeSessionDomains = domains.close;
+-    for (const sessionId of sessionObservations.observedSessionIds()) {
++    const observedSessionIds = sessionObservations.observedSessionIds();
++    for (const sessionId of observedSessionIds) {
+       sendToRenderer('sessions:observation-seed', { sessionId, phase: 'pending' });
+     }
++    observationsAttached = true;
+     const restoredSessionIds = await sessionObservations.attach(
+       sessionObserver,
+       (target) => ({
+@@ -484,7 +486,15 @@ export async function createDesktopRuntimeHostCandidate(
+         off: target.off.bind(target),
+       }),
+     );
+-    observationsAttached = true;
++    const restoredSessionIdSet = new Set(restoredSessionIds);
++    const failedSessionIds = observedSessionIds.filter(
++      (sessionId) => !restoredSessionIdSet.has(sessionId),
++    );
++    if (failedSessionIds.length > 0) {
++      throw new Error(
++        `Failed to restore Session observations: ${failedSessionIds.join(', ')}`,
++      );
++    }
+     for (const sessionId of restoredSessionIds) {
+       sendToRenderer('sessions:observation-seed', { sessionId, phase: 'ready' });
+       emitSessionsChanged("message-appended", sessionId);
+
+From 2cead14b6034b95f4c47bdf62063e23ff5ef2ddd Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Sat, 15 Aug 2026 20:50:08 +0800
+Subject: [PATCH 4/4] test(desktop): enforce catch-up seed ordering
+
+Require every restored Session catch-up event to remain inside its pending-to-ready seed boundary so the recovery tests reject partial ordering regressions.
+
+Generated-by: Codex
+---
+ .../runtime-host-desktop-candidate.test.ts    | 22 +++++++++++++------
+ 1 file changed, 15 insertions(+), 7 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+index b3e35889d8..d5dfaba61a 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-desktop-candidate.test.ts
+@@ -514,10 +514,14 @@ test('resyncs Goal, exact interaction, and sidecar state after candidate replace
+   );
+   assert.ok(seedPendingAt >= 0);
+   assert.ok(seedReadyAt > seedPendingAt);
++  const sessionEventIndexes = resyncs.flatMap(({ channel }, index) =>
++    channel === 'sessions:event:session-1' ? [index] : [],
++  );
++  assert.ok(sessionEventIndexes.length > 0);
+   assert.ok(
+-    resyncs
+-      .slice(seedPendingAt + 1, seedReadyAt)
+-      .some(({ channel }) => channel === 'sessions:event:session-1'),
++    sessionEventIndexes.every(
++      (index) => index > seedPendingAt && index < seedReadyAt,
++    ),
+   );
+   assert.ok(
+     resyncs.some(
+@@ -653,12 +657,16 @@ test('retries candidate startup when a restored observation cannot seed', async
+       && (payload as { phase?: unknown }).phase === 'ready',
+   );
+   assert.ok(pendingAt >= 0);
++  assert.ok(readyAt > pendingAt);
++  const catchUpEventIndexes = seedEvents.flatMap(({ channel }, index) =>
++    channel === 'sessions:event:session-1' ? [index] : [],
++  );
++  assert.ok(catchUpEventIndexes.length > 0);
+   assert.ok(
+-    seedEvents
+-      .slice(pendingAt + 1, readyAt)
+-      .some(({ channel }) => channel === 'sessions:event:session-1'),
++    catchUpEventIndexes.every(
++      (index) => index > pendingAt && index < readyAt,
++    ),
+   );
+-  assert.ok(readyAt > pendingAt);
+   await recoveredCandidate.close();
+   await observations.close();
+ });

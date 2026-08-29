@@ -1,0 +1,89 @@
+{
+  "additions": 0,
+  "author": "jackwener",
+  "base_sha": "d3516a7345afbc683f1106f77abaca976bffa3e0",
+  "body": "## Summary\n- remove unchanged-output and exact-budget happy paths\n- remove truncation marker copy assertions\n- remove a weaker UTF-8 truncation case duplicated by byte-safe slicing coverage\n- retain head/tail truncation, byte caps, newline edges, oversized-line retention, and Unicode boundaries\n\n## Validation\n- `npx biome check packages/runtime/src/__tests__/tool-output.test.ts`\n- `git diff --check`\n- manual test-ownership review\n\nTest suites intentionally not run; CI owns execution.",
+  "captured_at": "2026-08-29T17:22:23+00:00",
+  "case_id": "maka-pr-2817",
+  "changed_files": 1,
+  "checks": [
+    {
+      "conclusion": "FAILURE",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "d3516a7345afbc683f1106f77abaca976bffa3e0",
+  "deletions": 32,
+  "files": [
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 32,
+      "path": "packages/runtime/src/__tests__/tool-output.test.ts"
+    }
+  ],
+  "head_sha": "320de3df3f529e61da8e3cd1a2c0a96e0a6f57ce",
+  "issues": [],
+  "patch_sha256": "48847de11360fdbc048e0a7e2a541b9f72a7192257923880ee31fea5b18f2ef4",
+  "pr_number": 2817,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "test(runtime): remove tool output happy paths",
+  "url": "https://github.com/apache/maka/pull/2817"
+}

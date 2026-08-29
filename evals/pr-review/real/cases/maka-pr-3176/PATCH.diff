@@ -1,0 +1,684 @@
+From e21b894aae0ed75e710e826d117d0fa272b6447a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=83=AD=E5=90=89=E6=B5=A9?= <1625567290@qq.com>
+Date: Mon, 17 Aug 2026 18:57:01 +0800
+Subject: [PATCH 1/3] fix(eval): isolate the external metering checkpoint from
+ the subject
+
+Chmod the temporary snapshot before rename so a host racing the publish
+sees 0644. Recover only a bounded regular file so a symlink or a large
+write cannot become usage evidence.
+
+Fixes #3149
+---
+ packages/eval/README.md                       |  6 +-
+ .../src/__tests__/metering-checkpoint.test.ts | 74 +++++++++++++++++++
+ packages/eval/src/external-subject.ts         |  4 +-
+ packages/eval/src/harbor-external-subject.ts  | 17 +----
+ packages/eval/src/metering-checkpoint.ts      | 47 ++++++++++++
+ 5 files changed, 129 insertions(+), 19 deletions(-)
+ create mode 100644 packages/eval/src/__tests__/metering-checkpoint.test.ts
+ create mode 100644 packages/eval/src/metering-checkpoint.ts
+
+diff --git a/packages/eval/README.md b/packages/eval/README.md
+index 86beb2943b..dec8608d52 100644
+--- a/packages/eval/README.md
++++ b/packages/eval/README.md
+@@ -40,8 +40,10 @@ Single-arm results are not drawn from the same run as the multi-arm cohort. Task
+ 
+ External provider metering does not depend on the subject exiting cleanly. The wrapper's proxy writes
+ `agent/<profile>.provider-usage.json` at the start of every request, at its settlement, and at the
+-moment the provider states admission, renaming it into place so a reader sees one whole snapshot or
+-the previous one. Admission is recorded when it is observed rather than when the request finishes,
++moment the provider states admission, chmodding the temporary file to `0644` and then renaming it
++into place so a reader sees one whole snapshot or the previous one, already readable. Recovery
++reads at most 64 KiB and only from a regular file, so a subject that replaces the path with a
++symlink or a large write cannot feed the host. Admission is recorded when it is observed rather than when the request finishes,
+ because the model work has been done and billed whether or not this process survives to see the
+ stream end. When the result frame is missing — the wrapper was killed rather than asked to stop —
+ the executor recovers usage from that file. A run that was cut off after admitted model work is
+diff --git a/packages/eval/src/__tests__/metering-checkpoint.test.ts b/packages/eval/src/__tests__/metering-checkpoint.test.ts
+new file mode 100644
+index 0000000000..ddbff20ddb
+--- /dev/null
++++ b/packages/eval/src/__tests__/metering-checkpoint.test.ts
+@@ -0,0 +1,74 @@
++import assert from 'node:assert/strict';
++import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { test } from 'node:test';
++import { recoverExternalMetering } from '../external-subject.js';
++import {
++  METERING_CHECKPOINT_LIMIT_BYTES,
++  readBoundedRegularFile,
++  writeJsonAtomic,
++} from '../metering-checkpoint.js';
++
++const usage = {
++  inputTokens: 1,
++  outputTokens: 1,
++  cacheReadTokens: 0,
++  cacheWriteTokens: 0,
++  reasoningTokens: 0,
++  totalTokens: 2,
++};
++
++const checkpoint = {
++  schemaVersion: 'maka.external_provider_usage.v2',
++  profile: 'codex',
++  usage,
++  settled: true,
++  requests: 1,
++  inFlightRequests: 0,
++  admittedRequests: 1,
++  usageRequests: 1,
++  removedWebTools: 0,
++  models: [],
++  toolNames: [],
++};
++
++test('chmods the temporary checkpoint before rename so the published file is 0644', async () => {
++  const root = await mkdtemp(join(tmpdir(), 'maka-eval-metering-atomic-'));
++  const path = join(root, 'codex.provider-usage.json');
++  const previous = process.umask(0o077);
++  try {
++    await writeJsonAtomic(path, { ok: true });
++    assert.equal((await stat(path)).mode & 0o777, 0o644);
++    assert.deepEqual(JSON.parse(await readFile(path, 'utf8')), { ok: true });
++  } finally {
++    process.umask(previous);
++    await rm(root, { recursive: true, force: true });
++  }
++});
++
++test('refuses a metering checkpoint that is not a bounded regular file', async () => {
++  const root = await mkdtemp(join(tmpdir(), 'maka-eval-metering-bound-'));
++  const trialPath = join(root, 'trial');
++  const agent = join(trialPath, 'agent');
++  const path = join(agent, 'codex.provider-usage.json');
++  try {
++    await mkdir(agent, { recursive: true });
++
++    await writeFile(path, `${JSON.stringify(checkpoint)}\n`);
++    assert.ok(await recoverExternalMetering({ trialPath }, 'codex'));
++
++    await rm(path);
++    await symlink('/etc/hosts', path);
++    assert.equal(await readBoundedRegularFile(path), undefined);
++    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++
++    await rm(path);
++    await writeFile(path, 'x'.repeat(METERING_CHECKPOINT_LIMIT_BYTES + 1));
++    await chmod(path, 0o644);
++    assert.equal(await readBoundedRegularFile(path), undefined);
++    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++  } finally {
++    await rm(root, { recursive: true, force: true });
++  }
++});
+diff --git a/packages/eval/src/external-subject.ts b/packages/eval/src/external-subject.ts
+index 961d04090b..dea767ed7f 100644
+--- a/packages/eval/src/external-subject.ts
++++ b/packages/eval/src/external-subject.ts
+@@ -1,6 +1,6 @@
+ import { createHash } from 'node:crypto';
+-import { readFile } from 'node:fs/promises';
+ import { join } from 'node:path';
++import { readBoundedRegularFile } from './metering-checkpoint.js';
+ import type { JsonObject } from './experiment.js';
+ import type { NormalizedUsage } from './result.js';
+ import type { SubjectAdapter } from './runner.js';
+@@ -235,7 +235,7 @@ export async function recoverExternalMetering(
+ > {
+   if (!profile || typeof metadata.trialPath !== 'string') return undefined;
+   const path = join(metadata.trialPath, 'agent', `${profile}.provider-usage.json`);
+-  const bytes = await readFile(path).catch(() => undefined);
++  const bytes = await readBoundedRegularFile(path);
+   if (!bytes) return undefined;
+   let value: unknown;
+   try {
+diff --git a/packages/eval/src/harbor-external-subject.ts b/packages/eval/src/harbor-external-subject.ts
+index 94b0ab5d6e..54554f3183 100644
+--- a/packages/eval/src/harbor-external-subject.ts
++++ b/packages/eval/src/harbor-external-subject.ts
+@@ -1,7 +1,8 @@
+ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+ import { createHash } from 'node:crypto';
+ import { readFileSync, rmSync, statSync } from 'node:fs';
+-import { chmod, copyFile, mkdir, rename, writeFile } from 'node:fs/promises';
++import { chmod, copyFile, mkdir, writeFile } from 'node:fs/promises';
++import { writeJsonAtomic } from './metering-checkpoint.js';
+ import { createServer, type IncomingMessage, type Server } from 'node:http';
+ import { basename, dirname, join } from 'node:path';
+ import type { Readable } from 'node:stream';
+@@ -29,7 +30,6 @@ const resultToken = takeRelayResultToken();
+ const DEEPSEEK_HARNESS_PROFILE = 'maka-eval';
+ 
+ const PROVIDER_USAGE_CHECKPOINT_SCHEMA = 'maka.external_provider_usage.v2';
+-let atomicWriteSequence = 0;
+ 
+ type SubjectStatus = 'completed' | 'failed' | 'infra_failed' | 'indeterminate';
+ const CLASSIFIABLE_RECORD_LIMIT_BYTES = 16 * 1024 * 1024;
+@@ -849,19 +849,6 @@ async function startMeteringProxy(
+   };
+ }
+ 
+-// The checkpoint is read by a different process after this one may have died
+-// mid-write, so it is renamed into place rather than written in place: a reader
+-// sees either the previous snapshot or the next one, never a truncated file.
+-// /logs/agent is created under umask 077, which silently downgrades the mode
+-// argument to 0600 and leaves the file unreadable by the host Eval process, so
+-// the mode is restated after the rename where the umask no longer applies.
+-async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
+-  const temporary = `${path}.tmp-${process.pid}-${atomicWriteSequence++}`;
+-  await writeFile(temporary, `${JSON.stringify(value)}\n`, { mode: 0o644 });
+-  await rename(temporary, path);
+-  await chmod(path, 0o644);
+-}
+-
+ function usageParser(anthropic: boolean): {
+   push(text: string): void;
+   // Monotonic, and readable before the stream ends: the caller records
+diff --git a/packages/eval/src/metering-checkpoint.ts b/packages/eval/src/metering-checkpoint.ts
+new file mode 100644
+index 0000000000..32b13fa461
+--- /dev/null
++++ b/packages/eval/src/metering-checkpoint.ts
+@@ -0,0 +1,47 @@
++import { constants } from 'node:fs';
++import { chmod, open, rename, writeFile } from 'node:fs/promises';
++
++// One JSON snapshot of proxy counts. Anything larger is not a checkpoint the
++// wrapper writes; it is treated as absent rather than parsed.
++export const METERING_CHECKPOINT_LIMIT_BYTES = 64 * 1024;
++
++let atomicWriteSequence = 0;
++
++// The checkpoint is read by a different process after this one may have died
++// mid-write, so it is renamed into place rather than written in place: a reader
++// sees either the previous snapshot or the next one, never a truncated file.
++// /logs/agent is created under umask 077, which silently downgrades the
++// writeFile mode to 0600. chmod the temporary file before rename so the
++// published inode is already 0644; a host that races the rename must not see
++// a 0600 file it cannot read.
++export async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
++  const temporary = `${path}.tmp-${process.pid}-${atomicWriteSequence++}`;
++  await writeFile(temporary, `${JSON.stringify(value)}\n`, { mode: 0o644 });
++  await chmod(temporary, 0o644);
++  await rename(temporary, path);
++}
++
++// The subject can replace the checkpoint path. Refuse anything that is not a
++// bounded regular file so a symlink or a huge write cannot be used as the
++// host's usage evidence.
++export async function readBoundedRegularFile(
++  path: string,
++  limitBytes = METERING_CHECKPOINT_LIMIT_BYTES,
++): Promise<Buffer | undefined> {
++  let handle: Awaited<ReturnType<typeof open>> | undefined;
++  try {
++    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
++  } catch {
++    return undefined;
++  }
++  try {
++    const info = await handle.stat();
++    if (!info.isFile() || info.size <= 0 || info.size > limitBytes) return undefined;
++    const bytes = Buffer.alloc(info.size);
++    const { bytesRead } = await handle.read(bytes, 0, info.size, 0);
++    if (bytesRead !== info.size) return undefined;
++    return bytes;
++  } finally {
++    await handle.close();
++  }
++}
+\ No newline at end of file
+
+From 04c5a184bd0af70124f0fc1dc10d448b2001b817 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=83=AD=E5=90=89=E6=B5=A9?= <1625567290@qq.com>
+Date: Tue, 18 Aug 2026 01:48:57 +0800
+Subject: [PATCH 2/3] fix(eval): authenticate the metering checkpoint with the
+ relay result token
+
+Sign the snapshot with HMAC-SHA256 of the host-issued result token so a
+subject cannot replace the file with schema-valid JSON. Recovery rejects
+unsigned, tampered, and wrong-secret files. Also add the missing newline
+that failed format:check.
+---
+ packages/eval/README.md                       |  5 +-
+ .../src/__tests__/external-subject.test.ts    | 82 +++++++++++--------
+ .../src/__tests__/metering-checkpoint.test.ts | 44 +++++++++-
+ packages/eval/src/external-subject.ts         |  7 +-
+ packages/eval/src/harbor-external-subject.ts  | 15 ++--
+ packages/eval/src/harness-executor.ts         |  9 +-
+ packages/eval/src/metering-checkpoint.ts      | 30 ++++++-
+ 7 files changed, 144 insertions(+), 48 deletions(-)
+
+diff --git a/packages/eval/README.md b/packages/eval/README.md
+index dec8608d52..44f94336dd 100644
+--- a/packages/eval/README.md
++++ b/packages/eval/README.md
+@@ -42,8 +42,9 @@ External provider metering does not depend on the subject exiting cleanly. The w
+ `agent/<profile>.provider-usage.json` at the start of every request, at its settlement, and at the
+ moment the provider states admission, chmodding the temporary file to `0644` and then renaming it
+ into place so a reader sees one whole snapshot or the previous one, already readable. Recovery
+-reads at most 64 KiB and only from a regular file, so a subject that replaces the path with a
+-symlink or a large write cannot feed the host. Admission is recorded when it is observed rather than when the request finishes,
++reads at most 64 KiB and only from a regular file, and accepts the snapshot only when its HMAC
++matches the host-issued relay result token. A subject that replaces the path with a symlink, a
++large write, or schema-valid forged JSON cannot feed the host. Admission is recorded when it is observed rather than when the request finishes,
+ because the model work has been done and billed whether or not this process survives to see the
+ stream end. When the result frame is missing — the wrapper was killed rather than asked to stop —
+ the executor recovers usage from that file. A run that was cut off after admitted model work is
+diff --git a/packages/eval/src/__tests__/external-subject.test.ts b/packages/eval/src/__tests__/external-subject.test.ts
+index 29b762c971..919e006831 100644
+--- a/packages/eval/src/__tests__/external-subject.test.ts
++++ b/packages/eval/src/__tests__/external-subject.test.ts
+@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { test } from 'node:test';
+ import { createExternalSubjectAdapter, recoverExternalMetering } from '../external-subject.js';
++import { signMeteringCheckpoint } from '../metering-checkpoint.js';
+ import type { ExperimentCell, ExperimentSpec } from '../experiment.js';
+ import { DEEPSEEK_V4_FLASH_COST, deepSeekCostUsd } from '../provider-metering.js';
+ import type { CellAttempt } from '../result.js';
+@@ -14,6 +15,15 @@ import {
+   verifyToolchainDirectory,
+ } from '../toolchain-verification.js';
+ 
++const METERING_SECRET = '0123456789abcdef0123456789abcdef';
++
++function writeSignedCheckpoint(path: string, checkpoint: Record<string, unknown>) {
++  return writeFile(
++    path,
++    `${JSON.stringify(signMeteringCheckpoint(checkpoint, METERING_SECRET))}\n`,
++  );
++}
++
+ test('recovers lower-bound metering when external settlement is interrupted', async () => {
+   const root = await mkdtemp(join(tmpdir(), 'maka-eval-metering-recovery-'));
+   const trialPath = join(root, 'trial');
+@@ -27,12 +37,12 @@ test('recovers lower-bound metering when external settlement is interrupted', as
+   };
+   try {
+     await mkdir(join(trialPath, 'agent'), { recursive: true });
+-    await writeFile(
++    await writeSignedCheckpoint(
+       join(trialPath, 'agent/codex.provider-usage.json'),
+       // Two requests admitted, one of them still in flight, and usage seen for
+       // only one of them: a killed wrapper's usage is a lower bound, and the
+       // counts are what establish that. Nothing derivable is stored.
+-      `${JSON.stringify({
++      {
+         schemaVersion: 'maka.external_provider_usage.v2',
+         profile: 'codex',
+         usage,
+@@ -44,9 +54,12 @@ test('recovers lower-bound metering when external settlement is interrupted', as
+         removedWebTools: 0,
+         models: ['deepseek-v4-flash'],
+         toolNames: ['shell'],
+-      })}\n`,
++      },
++    );
++    const recovered = await recoverExternalMetering(
++      { trialPath, meteringSecret: METERING_SECRET },
++      'codex',
+     );
+-    const recovered = await recoverExternalMetering({ trialPath }, 'codex');
+ 
+     // Admitted model work survives the wrapper, which is what lets the caller
+     // record a failed subject instead of retrying the cell.
+@@ -96,13 +109,16 @@ test('a checkpoint the proxy never settled is a lower bound however complete it
+   try {
+     await mkdir(join(trialPath, 'agent'), { recursive: true });
+     const write = (settled: boolean) =>
+-      writeFile(
+-        join(trialPath, 'agent/codex.provider-usage.json'),
+-        `${JSON.stringify({ ...checkpoint, settled })}\n`,
+-      );
++      writeSignedCheckpoint(join(trialPath, 'agent/codex.provider-usage.json'), {
++        ...checkpoint,
++        settled,
++      });
+ 
+     await write(false);
+-    const unsettled = await recoverExternalMetering({ trialPath }, 'codex');
++    const unsettled = await recoverExternalMetering(
++      { trialPath, meteringSecret: METERING_SECRET },
++      'codex',
++    );
+     assert.deepEqual(unsettled?.usage, usage);
+     assert.equal(unsettled?.costUsd, null);
+     assert.equal(unsettled?.artifact.usageComplete, false);
+@@ -110,7 +126,10 @@ test('a checkpoint the proxy never settled is a lower bound however complete it
+ 
+     // The same counts, from a proxy that reported them as its last word.
+     await write(true);
+-    const settled = await recoverExternalMetering({ trialPath }, 'codex');
++    const settled = await recoverExternalMetering(
++      { trialPath, meteringSecret: METERING_SECRET },
++      'codex',
++    );
+     assert.equal(settled?.artifact.usageComplete, true);
+     assert.equal(settled?.artifact.tokenBasis, 'complete');
+     assert.ok((settled?.costUsd ?? 0) > 0);
+@@ -144,42 +163,41 @@ test('refuses a metering checkpoint whose counts cannot describe one run', async
+   try {
+     await mkdir(join(trialPath, 'agent'), { recursive: true });
+     const write = (checkpoint: Record<string, unknown>) =>
+-      writeFile(
+-        join(trialPath, 'agent/codex.provider-usage.json'),
+-        `${JSON.stringify({
+-          schemaVersion: 'maka.external_provider_usage.v2',
+-          profile: 'codex',
+-          usage: null,
+-          settled: false,
+-          requests: 1,
+-          inFlightRequests: 0,
+-          admittedRequests: 0,
+-          usageRequests: 0,
+-          removedWebTools: 0,
+-          models: [],
+-          toolNames: [],
+-          ...checkpoint,
+-        })}\n`,
+-      );
++      writeSignedCheckpoint(join(trialPath, 'agent/codex.provider-usage.json'), {
++        schemaVersion: 'maka.external_provider_usage.v2',
++        profile: 'codex',
++        usage: null,
++        settled: false,
++        requests: 1,
++        inFlightRequests: 0,
++        admittedRequests: 0,
++        usageRequests: 0,
++        removedWebTools: 0,
++        models: [],
++        toolNames: [],
++        ...checkpoint,
++      });
++    const recover = () =>
++      recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex');
+ 
+     await write({ admittedRequests: 2 });
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(await recover(), undefined);
+ 
+     await write({ usageRequests: 1, admittedRequests: 0 });
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(await recover(), undefined);
+ 
+     // Usage counted but no usage recorded.
+     await write({ admittedRequests: 1, usageRequests: 1 });
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(await recover(), undefined);
+ 
+     // Nothing is in flight once the proxy has stopped.
+     await write({ settled: true, requests: 1, inFlightRequests: 1, admittedRequests: 1 });
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(await recover(), undefined);
+ 
+     // A request admitted while still in flight is the state the checkpoint
+     // exists to capture, so it has to survive validation.
+     await write({ requests: 1, inFlightRequests: 1, admittedRequests: 1 });
+-    assert.equal((await recoverExternalMetering({ trialPath }, 'codex'))?.admittedRequests, 1);
++    assert.equal((await recover())?.admittedRequests, 1);
+   } finally {
+     await rm(root, { recursive: true, force: true });
+   }
+diff --git a/packages/eval/src/__tests__/metering-checkpoint.test.ts b/packages/eval/src/__tests__/metering-checkpoint.test.ts
+index ddbff20ddb..8a1f77ceda 100644
+--- a/packages/eval/src/__tests__/metering-checkpoint.test.ts
++++ b/packages/eval/src/__tests__/metering-checkpoint.test.ts
+@@ -7,9 +7,12 @@ import { recoverExternalMetering } from '../external-subject.js';
+ import {
+   METERING_CHECKPOINT_LIMIT_BYTES,
+   readBoundedRegularFile,
++  signMeteringCheckpoint,
+   writeJsonAtomic,
+ } from '../metering-checkpoint.js';
+ 
++const METERING_SECRET = '0123456789abcdef0123456789abcdef';
++
+ const usage = {
+   inputTokens: 1,
+   outputTokens: 1,
+@@ -55,19 +58,54 @@ test('refuses a metering checkpoint that is not a bounded regular file', async (
+   try {
+     await mkdir(agent, { recursive: true });
+ 
++    await writeFile(
++      path,
++      `${JSON.stringify(signMeteringCheckpoint(checkpoint, METERING_SECRET))}\n`,
++    );
++    assert.ok(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++    );
++
++    // Schema-valid unsigned JSON is what a subject can write. Recovery must
++    // refuse it: the file is a bounded regular checkpoint, not evidence.
+     await writeFile(path, `${JSON.stringify(checkpoint)}\n`);
+-    assert.ok(await recoverExternalMetering({ trialPath }, 'codex'));
++    assert.equal(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++      undefined,
++    );
++
++    const forged = signMeteringCheckpoint({ ...checkpoint, admittedRequests: 99 }, METERING_SECRET);
++    await writeFile(path, `${JSON.stringify({ ...forged, admittedRequests: 1 })}\n`);
++    assert.equal(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++      undefined,
++    );
++
++    await writeFile(
++      path,
++      `${JSON.stringify(signMeteringCheckpoint(checkpoint, 'ff'.repeat(16)))}\n`,
++    );
++    assert.equal(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++      undefined,
++    );
+ 
+     await rm(path);
+     await symlink('/etc/hosts', path);
+     assert.equal(await readBoundedRegularFile(path), undefined);
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++      undefined,
++    );
+ 
+     await rm(path);
+     await writeFile(path, 'x'.repeat(METERING_CHECKPOINT_LIMIT_BYTES + 1));
+     await chmod(path, 0o644);
+     assert.equal(await readBoundedRegularFile(path), undefined);
+-    assert.equal(await recoverExternalMetering({ trialPath }, 'codex'), undefined);
++    assert.equal(
++      await recoverExternalMetering({ trialPath, meteringSecret: METERING_SECRET }, 'codex'),
++      undefined,
++    );
+   } finally {
+     await rm(root, { recursive: true, force: true });
+   }
+diff --git a/packages/eval/src/external-subject.ts b/packages/eval/src/external-subject.ts
+index dea767ed7f..da9d6c2c4c 100644
+--- a/packages/eval/src/external-subject.ts
++++ b/packages/eval/src/external-subject.ts
+@@ -1,6 +1,6 @@
+ import { createHash } from 'node:crypto';
+ import { join } from 'node:path';
+-import { readBoundedRegularFile } from './metering-checkpoint.js';
++import { meteringCheckpointMacMatches, readBoundedRegularFile } from './metering-checkpoint.js';
+ import type { JsonObject } from './experiment.js';
+ import type { NormalizedUsage } from './result.js';
+ import type { SubjectAdapter } from './runner.js';
+@@ -234,6 +234,7 @@ export async function recoverExternalMetering(
+   | undefined
+ > {
+   if (!profile || typeof metadata.trialPath !== 'string') return undefined;
++  if (typeof metadata.meteringSecret !== 'string') return undefined;
+   const path = join(metadata.trialPath, 'agent', `${profile}.provider-usage.json`);
+   const bytes = await readBoundedRegularFile(path);
+   if (!bytes) return undefined;
+@@ -262,12 +263,14 @@ export async function recoverExternalMetering(
+         'removedWebTools',
+         'models',
+         'toolNames',
++        'mac',
+       ],
+       'external metering checkpoint',
+     );
+     if (
+       checkpoint.schemaVersion !== 'maka.external_provider_usage.v2' ||
+-      checkpoint.profile !== profile
++      checkpoint.profile !== profile ||
++      !meteringCheckpointMacMatches(checkpoint, metadata.meteringSecret)
+     ) {
+       return undefined;
+     }
+diff --git a/packages/eval/src/harbor-external-subject.ts b/packages/eval/src/harbor-external-subject.ts
+index 54554f3183..e2771cb634 100644
+--- a/packages/eval/src/harbor-external-subject.ts
++++ b/packages/eval/src/harbor-external-subject.ts
+@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+ import { createHash } from 'node:crypto';
+ import { readFileSync, rmSync, statSync } from 'node:fs';
+ import { chmod, copyFile, mkdir, writeFile } from 'node:fs/promises';
+-import { writeJsonAtomic } from './metering-checkpoint.js';
++import { signMeteringCheckpoint, writeJsonAtomic } from './metering-checkpoint.js';
+ import { createServer, type IncomingMessage, type Server } from 'node:http';
+ import { basename, dirname, join } from 'node:path';
+ import type { Readable } from 'node:stream';
+@@ -698,11 +698,14 @@ async function startMeteringProxy(
+   // not finish.
+   let checkpointWrites = Promise.resolve();
+   const persistCheckpoint = () => {
+-    const value = {
+-      schemaVersion: PROVIDER_USAGE_CHECKPOINT_SCHEMA,
+-      profile: selected,
+-      ...snapshot(),
+-    };
++    const value = signMeteringCheckpoint(
++      {
++        schemaVersion: PROVIDER_USAGE_CHECKPOINT_SCHEMA,
++        profile: selected,
++        ...snapshot(),
++      },
++      resultToken,
++    );
+     checkpointWrites = checkpointWrites.then(() =>
+       writeJsonAtomic(checkpointPath, value).catch(() => undefined),
+     );
+diff --git a/packages/eval/src/harness-executor.ts b/packages/eval/src/harness-executor.ts
+index 8d79f91088..4d16a6f4d8 100644
+--- a/packages/eval/src/harness-executor.ts
++++ b/packages/eval/src/harness-executor.ts
+@@ -224,10 +224,16 @@ async function runHarnessAttempt(
+ }
+ 
+ function relayContext(state: RelayState, signal?: AbortSignal): SubjectExecutionContext {
++  const resultToken = randomBytes(16).toString('hex');
++  const metadata: JsonObject = {
++    trialName: state.trialName,
++    trialPath: state.trialPath,
++    meteringSecret: resultToken,
++  };
+   return {
+     cwd: state.cwd,
+     taskInput: state.taskInput,
+-    metadata: { trialName: state.trialName, trialPath: state.trialPath },
++    metadata,
+     ...(signal ? { signal } : {}),
+     execute: async (input) => {
+       signal?.throwIfAborted();
+@@ -240,7 +246,6 @@ function relayContext(state: RelayState, signal?: AbortSignal): SubjectExecution
+           return [target, value];
+         }),
+       );
+-      const resultToken = randomBytes(16).toString('hex');
+       if (
+         !sendRelayMessage(state.transport, 'execute', {
+           token: state.token,
+diff --git a/packages/eval/src/metering-checkpoint.ts b/packages/eval/src/metering-checkpoint.ts
+index 32b13fa461..d1d8e570c5 100644
+--- a/packages/eval/src/metering-checkpoint.ts
++++ b/packages/eval/src/metering-checkpoint.ts
+@@ -1,9 +1,11 @@
++import { createHmac, timingSafeEqual } from 'node:crypto';
+ import { constants } from 'node:fs';
+ import { chmod, open, rename, writeFile } from 'node:fs/promises';
+ 
+ // One JSON snapshot of proxy counts. Anything larger is not a checkpoint the
+ // wrapper writes; it is treated as absent rather than parsed.
+ export const METERING_CHECKPOINT_LIMIT_BYTES = 64 * 1024;
++const MAC_PATTERN = /^[0-9a-f]{64}$/u;
+ 
+ let atomicWriteSequence = 0;
+ 
+@@ -44,4 +46,30 @@ export async function readBoundedRegularFile(
+   } finally {
+     await handle.close();
+   }
+-}
+\ No newline at end of file
++}
++
++// The wrapper signs with the relay result token, which is host-issued and
++// stripped from the wrapper environment before the subject starts. A subject
++// that writes a schema-valid file cannot produce this mac.
++export function signMeteringCheckpoint(
++  body: Record<string, unknown>,
++  secret: string,
++): Record<string, unknown> {
++  return { ...body, mac: createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex') };
++}
++
++export function meteringCheckpointMacMatches(
++  record: Record<string, unknown>,
++  secret: string,
++): boolean {
++  const mac = record.mac;
++  if (typeof mac !== 'string' || !MAC_PATTERN.test(mac)) return false;
++  const body = { ...record };
++  delete body.mac;
++  const expected = Buffer.from(
++    createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex'),
++    'hex',
++  );
++  const actual = Buffer.from(mac, 'hex');
++  return expected.length === actual.length && timingSafeEqual(expected, actual);
++}
+
+From d0916963ed3be7d3356f99b32680cb04e38615cc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?=E9=83=AD=E5=90=89=E6=B5=A9?= <1625567290@qq.com>
+Date: Tue, 18 Aug 2026 02:00:13 +0800
+Subject: [PATCH 3/3] test(eval): assert the wrapper signs the metering
+ checkpoint
+
+The live wrapper writes the HMAC with the relay result token. Pin that
+in the admission integration test so recovery is not the only check.
+---
+ .../eval/src/__tests__/provider-admission-integration.test.ts   | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/packages/eval/src/__tests__/provider-admission-integration.test.ts b/packages/eval/src/__tests__/provider-admission-integration.test.ts
+index 300c702a0b..9a15dd17ac 100644
+--- a/packages/eval/src/__tests__/provider-admission-integration.test.ts
++++ b/packages/eval/src/__tests__/provider-admission-integration.test.ts
+@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import test from 'node:test';
+ import { promisify } from 'node:util';
++import { meteringCheckpointMacMatches } from '../metering-checkpoint.js';
+ 
+ const execFileAsync = promisify(execFile);
+ const RESULT_TOKEN = '0123456789abcdef0123456789abcdef';
+@@ -79,6 +80,7 @@ test('provider metering checkpoint records admission before the request settles'
+     });
+     assert.equal(checkpoint.schemaVersion, 'maka.external_provider_usage.v2');
+     assert.equal(checkpoint.profile, 'opencode');
++    assert.equal(meteringCheckpointMacMatches(checkpoint, RESULT_TOKEN), true);
+     assert.equal(checkpoint.requests, 1);
+     // Admitted while unsettled: the state the old counter could not express.
+     assert.equal(checkpoint.inFlightRequests, 1);

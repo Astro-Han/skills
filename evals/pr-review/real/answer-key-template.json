@@ -1,0 +1,42 @@
+{
+  "case_id": "maka-pr-N",
+  "reviewers": [
+    {
+      "did_not_design_skill": true,
+      "name": "reviewer-a"
+    },
+    {
+      "did_not_design_skill": true,
+      "name": "reviewer-b"
+    }
+  ],
+  "problem": {
+    "evidence_problem_is_real": [],
+    "issue_and_pr_cover_same_scenario": "yes | no | unclear",
+    "what_pr_tries_to_solve": ""
+  },
+  "required_findings": [
+    {
+      "acceptable_paraphrases": [],
+      "code_evidence": [],
+      "consequence": "",
+      "id": "F1",
+      "reachable_path": "normal | failure-recovery | trust-boundary",
+      "reproduction": "",
+      "severity": "P0 | P1 | P2 | P3"
+    }
+  ],
+  "invalid_findings_to_watch": [
+    {
+      "code_evidence": [],
+      "id": "N1",
+      "reason_invalid": ""
+    }
+  ],
+  "required_review_points": {
+    "next_step": "",
+    "production_owner": "",
+    "simplifications": [],
+    "solution_summary": ""
+  }
+}

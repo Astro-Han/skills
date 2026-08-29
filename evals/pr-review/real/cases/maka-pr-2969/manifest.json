@@ -1,0 +1,239 @@
+{
+  "additions": 1274,
+  "author": "me2seeks",
+  "base_sha": "ce6534d6549241bcb0fa4cf20bd2e7fe3f602228",
+  "body": "## Summary\n\n- persist monotonic root-to-graph epoch bindings while preserving the existing deterministic graph as epoch 1\n- advance a finished, quiescent graph before the next graph/swarm root Turn is durably admitted\n- fence supervisor wakes and resolve stop, permission, revision, and retirement paths through durable graph ownership\n\nA finished graph remains immutable. The next graph-capable Turn receives a new deterministic graph ID, and concurrent Hosts converge through a storage CAS instead of reopening or skipping the previous graph. Ordinary default Turns leave the finished graph untouched. Legacy epoch 1 stays virtual until the first real cutover, so Sessions do not acquire graph state just by being read.\n\nThis establishes the lifecycle boundary needed by #2588. Historical graph selection and cross-epoch result inputs remain follow-up work.\n\nRefs #2588\n\n## Verification\n\n- `npm --workspace @maka/core run test` \u2014 539 passed\n- `npm --workspace @maka/storage run test` \u2014 777 passed, 16 skipped\n- `npm --workspace @maka/runtime run test` \u2014 2,788 passed, 6 skipped\n- `npm --workspace @maka/runtime-host run test` \u2014 910 passed\n- builds for Core, Storage, Runtime, and Runtime Host\n- Biome on all changed files\n- `git diff --check`\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 a graph/swarm Turn can advance from a finished Agent Graph to a fresh graph epoch\n- [ ] No\n\n<details>\n<summary>\u4e2d\u6587\u8bf4\u660e</summary>\n\n## \u6458\u8981\n\n- \u6301\u4e45\u5316 root Session \u5230 Agent Graph \u7684\u5355\u8c03 epoch \u7ed1\u5b9a\uff0c\u540c\u65f6\u4fdd\u6301\u539f\u6709\u786e\u5b9a\u6027 graph ID \u4f5c\u4e3a epoch 1\n- \u53ea\u6709\u5f53\u524d\u56fe\u5df2\u7ecf\u7ed3\u675f\u4e14\u9759\u9ed8\uff0c\u624d\u4f1a\u5728\u4e0b\u4e00\u6761 graph/swarm root Turn \u6301\u4e45\u5316\u4e4b\u524d\u5207\u6362\u5230\u65b0 epoch\n- supervisor wake\u3001\u505c\u6b62\u3001\u6743\u9650\u56de\u7b54\u3001\u4f1a\u8bdd\u4fee\u8ba2\u4e0e\u5220\u9664\u6e05\u7406\u90fd\u901a\u8fc7 Runtime Host \u7684\u6301\u4e45\u5316 graph ownership \u89e3\u6790\n\n\u5df2\u7ecf `finish` \u7684\u56fe\u4ecd\u7136\u4e0d\u53ef\u4fee\u6539\u3002\u4e0b\u4e00\u6761\u542f\u7528 Graph \u7684 Turn \u4f7f\u7528\u65b0\u7684\u786e\u5b9a\u6027 graph ID\uff1b\u591a\u4e2a Host \u5e76\u53d1\u5207\u6362\u65f6\u7531 Storage CAS \u6536\u655b\uff0c\u4e0d\u4f1a\u91cd\u5f00\u65e7\u56fe\u6216\u8df3\u8fc7 epoch\u3002\u666e\u901a default Turn \u4e0d\u4f1a\u5207\u6362 graph epoch\u3002\u7b2c\u4e00\u6b21\u771f\u6b63\u5207\u6362\u524d\uff0clegacy epoch 1 \u53ea\u662f\u53ea\u8bfb\u517c\u5bb9\u503c\uff0c\u56e0\u6b64\u4f1a\u8bdd\u4e0d\u4f1a\u4ec5\u56e0\u67e5\u8be2\u800c\u5199\u5165\u56fe\u72b6\u6001\u3002\n\n\u672c PR \u5efa\u7acb #2588 \u6240\u9700\u7684\u751f\u547d\u5468\u671f\u57fa\u7840\u3002\u5386\u53f2\u56fe\u9009\u62e9\u548c\u8de8 epoch \u7ed3\u679c\u8f93\u5165\u5c06\u5728\u540e\u7eed\u5b9e\u73b0\u3002\n\n</details>\n",
+  "captured_at": "2026-08-29T17:22:45+00:00",
+  "case_id": "maka-pr-2969",
+  "changed_files": 25,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "audit",
+      "status": "COMPLETED",
+      "workflowName": "Dependency audit"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "changes",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "typecheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_baseline (non-blocking)",
+      "status": "COMPLETED",
+      "workflowName": "Windows baseline"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "test_workspaces",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test_runtime_host",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "e2e",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "storybook",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "ce6534d6549241bcb0fa4cf20bd2e7fe3f602228",
+  "deletions": 117,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/package.json"
+    },
+    {
+      "additions": 110,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/core/src/agent-graph-epoch.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/src/agent-graph-supervisor-wake.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/__tests__/agent-graph-coordinator.test.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/__tests__/agent-graph-two-client-uds.test.ts"
+    },
+    {
+      "additions": 74,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/__tests__/root-turn-coordinator.test.ts"
+    },
+    {
+      "additions": 46,
+      "changeType": "MODIFIED",
+      "deletions": 28,
+      "path": "packages/runtime-host/src/__tests__/sandbox-boundary-graph-wake.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/__tests__/session-retirement-coordinator.test.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/__tests__/session-revision-graph-references.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/server/agent-graph-coordinator.ts"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/server/agent-graph-execution-coordinator.ts"
+    },
+    {
+      "additions": 35,
+      "changeType": "MODIFIED",
+      "deletions": 9,
+      "path": "packages/runtime-host/src/server/execution-composition.ts"
+    },
+    {
+      "additions": 33,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/runtime-host/src/server/root-turn-coordinator.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "packages/runtime-host/src/server/sandbox-boundary-graph-wake.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/runtime-host/src/server/session-retirement-coordinator.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/server/session-revision-coordinator.ts"
+    },
+    {
+      "additions": 33,
+      "changeType": "MODIFIED",
+      "deletions": 26,
+      "path": "packages/runtime-host/src/server/session-revision-graph-references.ts"
+    },
+    {
+      "additions": 104,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/agent-graph-supervisor-wake.test.ts"
+    },
+    {
+      "additions": 205,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime/src/__tests__/stream-graph-coordinator.test.ts"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 7,
+      "path": "packages/runtime/src/agent-graph-supervisor-wake.ts"
+    },
+    {
+      "additions": 151,
+      "changeType": "MODIFIED",
+      "deletions": 21,
+      "path": "packages/runtime/src/stream-graph-coordinator.ts"
+    },
+    {
+      "additions": 160,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/storage/src/__tests__/agent-graph-epochs.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/storage/src/__tests__/session-store.test.ts"
+    },
+    {
+      "additions": 18,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/storage/src/sqlite-session-metadata-schema.ts"
+    },
+    {
+      "additions": 246,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/storage/src/sqlite-session-metadata-store.ts"
+    }
+  ],
+  "head_sha": "95059176ed205307b0ba8ad8ab007bccd368f2c9",
+  "issues": [],
+  "patch_sha256": "d345dbc32cbde89fc2bbb9f59d93bd27533e2dc049db93f9c77aef4017c96c80",
+  "pr_number": 2969,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "feat(runtime): support sequential agent graph epochs",
+  "url": "https://github.com/apache/maka/pull/2969"
+}
