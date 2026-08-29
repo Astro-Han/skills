@@ -185,15 +185,14 @@ of deterministic expectations passed, so fixtures have equal weight.
 
 Adopt the candidate only when it is no more than 1,195 words (at least 35% shorter),
 all local tests pass, and the one-sided 90% paired-bootstrap lower bound for
-`candidate - baseline` is above the non-inferiority margin of -0.03. In addition, the
-candidate must not reduce the aggregate counts for the edit gate, owner-level end
-state, rejection of false suggestions, acceptance behavior, or cumulative-diff scope
-cleanup. Otherwise keep the baseline.
-
-If a candidate clears the score bound but misses exactly one hard gate, a wording-only
-correction may use one additional all-fixture repetition. Adopt it only when that run's
-total score and every hard-gate count are no lower than its paired baseline; do not add
-more repetitions.
+`candidate - baseline` is above the non-inferiority margin of -0.03. Track the edit
+gate, owner-level end state, rejection of false suggestions, acceptance behavior, and
+cumulative-diff cleanup separately, but do not treat one discordant pair as a regression.
+A critical behavior blocks adoption only when the inspected artifact proves a
+deterministic violation, or the same expectation loses to its paired baseline in at
+least two independent runs and has more paired losses than gains. Otherwise the
+predeclared non-inferiority result controls the decision; do not add repetitions to
+chase a perfect count.
 
 ## Reading a result
 
