@@ -26,6 +26,13 @@ library: its value is the specific mistakes an agent can make in it.
 | `feedhub` | `simplify-audit` | Seven removable concepts, four traps that must survive, and one open product question that must be escalated rather than deleted. Answer key: [`feedhub.md`](fixtures/feedhub.md). |
 | `quoteview` | `review-feedback` | Two local-patch suggestions with one domain-owner cause, plus one false finding and a nonstandard severity scale. |
 | `seatmap` | `review-feedback` holdout | Two synchronization suggestions caused by mirrored state, plus one false zero-capacity finding. |
+| `handlekit` | `review-feedback` holdout | Two caller-level case-folding suggestions whose rule belongs in one canonicalizer. |
+| `profilefmt` | `review-feedback` holdout | Two synchronization suggestions caused by an obsolete legacy representation. |
+| `jobflow` | `review-feedback` holdout | Two caller-level history patches whose lifecycle rule belongs in one transition owner. |
+| `batchplan` | `review-feedback` second holdout | Two local clamp suggestions whose policy belongs in one normalizer, plus a false empty-sum finding. |
+| `wireview` | `review-feedback` second holdout | Two exporter patches whose representation belongs to the wire-contract owner. |
+| `launchmode` | `review-feedback` second holdout | Two synchronization patches caused by an obsolete toggle that should be deleted. |
+| `cartsummary` | `review-feedback` final holdout | A real stale-result symptom whose proposed fix would preserve an obsolete derived cache. |
 
 A simplification fixture needs all three kinds. Findable items alone measure eagerness; the
 traps and the open question are what separate judgment from enthusiasm.
@@ -37,6 +44,9 @@ python3 evals/runner.py --dry-run                  # list the planned runs, no m
 python3 evals/runner.py --provider pi --reps 1     # writes evals/<skill>-workspace/iteration-1/...
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback --reps 3
 python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-holdout --reps 3
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-second-holdout --reps 6
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-final-holdout --reps 8
+python3 evals/runner.py --provider codex --model gpt-5.6-luna --suite review-feedback-matrix --reps 5
 python3 evals/grader.py                            # scores those runs
 ```
 

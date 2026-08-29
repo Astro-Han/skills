@@ -16,6 +16,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from review_feedback_cases import (
+    FIRST_HOLDOUT_CASES,
+    FINAL_HOLDOUT_CASES,
+    HOLDOUT_CASES,
+    REGRESSION_CASE,
+    REVIEW_FEEDBACK_CASES,
+    SECOND_HOLDOUT_CASES,
+)
+
 ROOT = Path(__file__).resolve().parent
 SKILLS = ROOT.parent / "skills"
 CONCURRENCY = 6
@@ -26,28 +35,6 @@ CONCURRENCY = 6
 SHIPPED = "shipped"
 
 PROMPTS = {
-    "adjudicate-before-edit": (
-        "Use the review-feedback skill at "
-        "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
-        "Please address all of it and make the needed changes.\n\n"
-        "- C1 (F1): `quoteview.api.preview` must reject non-positive quantities before "
-        "constructing a line item. Add the guard there.\n"
-        "- C2 (F1): `quoteview.importer.preview_row` has the same bug. Add a second guard "
-        "there so CSV previews are safe.\n"
-        "- C3 (F2): `Quote.total()` crashes for an empty quote because `sum()` has no "
-        "initial value. Add an empty-list special case."
-    ),
-    "remove-mirrored-state": (
-        "Use the review-feedback skill at "
-        "`.agents/skills/review-feedback-eval/SKILL.md`. We received the review below. "
-        "Please address all of it and make the needed changes.\n\n"
-        "- H1 (F1): `BookingService.reserve` updates `SeatStore` but not the availability "
-        "cache. Call `availability.remember(seat_id)` after every reservation.\n"
-        "- H2 (F1): `BookingService.cancel` also leaves the cache stale. Call "
-        "`availability.forget(seat_id)` after every cancellation.\n"
-        "- H3 (F2): `Availability.available_count(0)` divides by zero. Add a special case "
-        "that returns zero before the calculation."
-    ),
     "shared-sections": (
         "Our export job builds several monthly reports in one process. Bug report from "
         "ops: the second report also contains all the sections that were added to the "
@@ -74,6 +61,7 @@ PROMPTS = {
         "KeyError. It should be a safe no-op instead. Please fix."
     ),
 }
+PROMPTS.update({name: case["prompt"] for name, case in REVIEW_FEEDBACK_CASES.items()})
 
 
 # --- providers -------------------------------------------------------------
@@ -191,10 +179,19 @@ PROVIDERS = {
 def suite_runs(provider_name, reps=3, suite="all"):
     runs = []
     for rep in range(1, reps + 1):
-        if suite in ("all", "review-feedback", "review-feedback-holdout"):
-            eval_name = ("remove-mirrored-state" if suite == "review-feedback-holdout"
-                         else "adjudicate-before-edit")
-            fixture = "seatmap" if suite == "review-feedback-holdout" else "quoteview"
+        review_cases = ()
+        if suite == "review-feedback":
+            review_cases = (REGRESSION_CASE,)
+        elif suite == "review-feedback-holdout":
+            review_cases = FIRST_HOLDOUT_CASES
+        elif suite == "review-feedback-second-holdout":
+            review_cases = SECOND_HOLDOUT_CASES
+        elif suite == "review-feedback-final-holdout":
+            review_cases = FINAL_HOLDOUT_CASES
+        elif suite in ("all", "review-feedback-matrix"):
+            review_cases = tuple(REVIEW_FEEDBACK_CASES)
+        for eval_name in review_cases:
+            fixture = REVIEW_FEEDBACK_CASES[eval_name]["fixture"]
             for arm, skill_arm in (("old_skill", "review-feedback-old"),
                                    ("with_skill", SHIPPED)):
                 runs.append({"workspace": "review-feedback-workspace",
@@ -203,7 +200,9 @@ def suite_runs(provider_name, reps=3, suite="all"):
                              "skill_arm": skill_arm,
                              "skill_name": "review-feedback",
                              "installed_skill_name": "review-feedback-eval"})
-        if suite in ("review-feedback", "review-feedback-holdout") or provider_name == "codex":
+        if suite in ("review-feedback", "review-feedback-holdout",
+                     "review-feedback-second-holdout", "review-feedback-final-holdout",
+                     "review-feedback-matrix") or provider_name == "codex":
             continue
         if provider_name == "claude":
             for eval_name, fixture in (("shared-sections", "reportlib"),
@@ -325,7 +324,9 @@ def main():
     parser.add_argument("--iteration", default="iteration-1",
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
-    parser.add_argument("--suite", choices=("all", "review-feedback", "review-feedback-holdout"),
+    parser.add_argument("--suite", choices=("all", "review-feedback", "review-feedback-holdout",
+                                            "review-feedback-second-holdout", "review-feedback-final-holdout",
+                                            "review-feedback-matrix"),
                         default="all")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")
