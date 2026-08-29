@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -19,6 +20,19 @@ runner = load_runner()
 
 
 class EvalRunnerSuiteTests(unittest.TestCase):
+    def test_codex_disables_same_name_user_skill_in_every_arm(self):
+        args = runner.codex_disable_user_skill("pr-review")
+        self.assertEqual(args[0], "-c")
+        self.assertIn("enabled=false", args[1])
+        self.assertIn(
+            json.dumps(str(Path.home() / ".agents/skills/pr-review/SKILL.md")),
+            args[1],
+        )
+
+        command = runner.codex_command("gpt-5.6-luna", "review", args)
+        self.assertIn("--ignore-user-config", command)
+        self.assertEqual(command[-3:-1], args)
+
     def test_debug_and_tdd_are_explicit_suites(self):
         debug = runner.suite_runs("claude", reps=1, suite="debug")
         self.assertEqual(len(debug), 4)

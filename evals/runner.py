@@ -130,6 +130,7 @@ def codex_command(model, prompt, skill_args):
     command = [
         "codex", "exec", "-s", "workspace-write",
         "-c", 'model_reasoning_effort="high"', "--json", "--ephemeral",
+        "--ignore-user-config", "--disable", "memories",
     ]
     if model:
         command.extend(["--model", model])
@@ -139,6 +140,15 @@ def codex_command(model, prompt, skill_args):
 def codex_install(work, arm_dir, skill_name):
     shutil.copytree(arm_dir, work / ".agents" / "skills" / skill_name)
     return []
+
+
+def codex_disable_user_skill(skill_name):
+    """Return a CLI override that removes the user's same-name skill from the catalog."""
+    user_skill = Path.home() / ".agents" / "skills" / skill_name / "SKILL.md"
+    value = "skills.config=[{{path={},enabled=false}}]".format(
+        json.dumps(str(user_skill))
+    )
+    return ["-c", value]
 
 
 def codex_parse(events):
@@ -339,7 +349,7 @@ def prepare(provider, spec, iteration):
              "commit", "-qm", "seed current PR"],
             cwd=work, check=True, capture_output=True,
         )
-    skill_args = []
+    skill_args = codex_disable_user_skill(spec["skill_name"]) if provider.name == "codex" else []
     if spec["skill_arm"]:
         if spec["skill_arm"].startswith("git:"):
             ref = spec["skill_arm"].removeprefix("git:")
@@ -354,7 +364,7 @@ def prepare(provider, spec, iteration):
             arm_dir = (SKILLS / spec["skill_name"] if spec["skill_arm"] == SHIPPED
                        else ROOT / "baselines" / spec["skill_arm"])
         installed_name = spec.get("installed_skill_name", spec["skill_name"])
-        skill_args = provider.install_skill(work, arm_dir, installed_name)
+        skill_args.extend(provider.install_skill(work, arm_dir, installed_name))
     return rundir, work, skill_args
 
 
