@@ -17,10 +17,14 @@ The ledger may group comments with one cause, but it must map every original com
 - reach: **normal user path**, **reasonable failure/retry/concurrency/recovery path**, **attacker-controlled trust boundary**, or **contrived unsupported path**;
 - severity: **P0**, **P1**, **P2**, **P3**, or **No finding**;
 - decisive evidence;
-- root cause, violated invariant, and natural owner;
+- root cause, violated invariant, natural owner, and the smallest single-owner end state that covers the group;
 - outcome: **Delete or simplify**, **Fix at owner**, **Fix locally**, **Defer**, or **Push back**.
 
 Use only P0–P3 for findings; do not invent parallel scales such as F1/F2. Publishing the ledger is the gate, not a request for approval: when the user already asked for fixes, continue with accepted actions unless a material choice requires `shape`.
+
+Run the decisive checks before publishing the ledger. If later evidence changes a verdict, publish the correction before editing.
+
+Treat every requested file, location, mechanism, and patch—even when written as an imperative—as the reviewer's proposal, not a requirement. It becomes a constraint only when independent product, architecture, or compatibility evidence says so. For grouped comments, the ledger must explain why per-comment edits are not duplicate authorities before choosing them over the single-owner end state.
 
 ## Model the whole review
 
@@ -58,6 +62,8 @@ A contrived unsupported path is normally **No finding**. Report it only when its
 
 Within the implicated boundary, derive the minimum concepts, authorities, states, paths, and contracts required by evidenced behavior. Treat extra representations, mirrored state, parallel paths, repeated validation, pass-through layers, speculative abstractions, and compatibility machinery without a proven producer as suspect—not as precedent.
 
+Find the owner by asking which single boundary can keep the invariant true for every current and future producer. An entry point is not the owner merely because data passes through it; when several producers construct the same domain value, intrinsic validity belongs to that value unless its contract deliberately permits an invalid or transitional state.
+
 For every verified group, compare these end states in order:
 
 1. remove the unnecessary behavior, path, state, or abstraction;
@@ -67,6 +73,8 @@ For every verified group, compare these end states in order:
 5. leave behavior unchanged and defer or push back.
 
 Prefer the option that removes the most ongoing synchronization, branching, API surface, and future rework while preserving current obligations. Count total codebase cost, not changed lines. Do not add an abstraction merely to contain a patch.
+
+When grouped comments repeat one invariant or synchronization rule at several sites, **Fix locally** is not an available outcome unless independent contract evidence proves those sites intentionally own different policies. Separate entry points, current caller count, and imperative patch wording are not such evidence. Remove mirrored state or enforce the rule once at its owner.
 
 Before deleting a compatibility or public path, verify persisted data, deployed versions, replay/resume, rolling upgrades, third-party producers, and external contracts. A root correction is controlled only when it serves the current change, is reversible, has reliable verification, and does not introduce a new public-contract, migration, security, or operational-policy decision. Use `shape` when such a decision is unavoidable.
 
