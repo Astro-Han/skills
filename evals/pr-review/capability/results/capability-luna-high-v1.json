@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "iteration": "capability-luna-high-v1",
+  "executed_on": "2026-08-30",
+  "verdict": "support_internal_adoption",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "decision_basis": {
+    "goal": "Choose the version more likely to find core review problems across repositories and change types; do not require one reviewer to be perfect.",
+    "minimum_directional_confidence": 0.8,
+    "public_95_percent_claim_required": false,
+    "reviewer_variance_may_be_mitigated_by_independent_angles_and_one_final_adjudicator": true
+  },
+  "sample": {
+    "planned_pull_requests": 32,
+    "reliable_paired_pull_requests": 28,
+    "positive_cases": 15,
+    "clean_or_intentional_tradeoff_controls": 13,
+    "repositories": 14,
+    "change_types": 8,
+    "runs_per_arm_per_case": 1
+  },
+  "execution": {
+    "planned_model_runs": 64,
+    "completed_model_runs": 60,
+    "materialization_failures": {
+      "runs": 4,
+      "paired_cases": [
+        "sveltejs-svelte-pr-18719",
+        "vitejs-vite-pr-23172"
+      ]
+    },
+    "skill_contamination_exclusions": {
+      "runs": 3,
+      "paired_cases": [
+        "home-assistant-core-pr-180627",
+        "vercel-next.js-pr-97902"
+      ],
+      "detail": "One candidate run read the user-level baseline before the isolated candidate; both Next.js runs read only the user-level baseline."
+    },
+    "baseline_skill_sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "candidate_skill_sha256": "ea57669f319b30609c321d01c1d4b82bb394c37d2ee64ea8bfe190624bff5e58"
+  },
+  "blind_scoring": {
+    "independent_scorers_per_case": 2,
+    "independent_adjudicator": 1,
+    "independent_final_aggregation_auditor": 1,
+    "arm_labels_opened_after_adjudication": true,
+    "gold_changed_after_execution": false,
+    "scoring_disagreements_adjudicated": 20
+  },
+  "core_finding_recall": {
+    "baseline": {
+      "required_case_hits": 8,
+      "positive_cases": 15,
+      "case_hit_rate": 0.5333333333,
+      "matched_required_findings": 11,
+      "required_findings": 22,
+      "finding_hit_rate": 0.5
+    },
+    "candidate": {
+      "required_case_hits": 12,
+      "positive_cases": 15,
+      "case_hit_rate": 0.8,
+      "matched_required_findings": 15,
+      "required_findings": 22,
+      "finding_hit_rate": 0.6818181818
+    },
+    "case_hit_gain_percentage_points": 26.6666666667,
+    "relative_case_hit_gain": 0.5,
+    "paired": {
+      "both": [
+        "caddyserver-caddy-pr-7809",
+        "docker-compose-pr-13949",
+        "llvm-llvm-project-pr-214539",
+        "nushell-nushell-pr-18603",
+        "nushell-nushell-pr-18620",
+        "prometheus-prometheus-pr-19384",
+        "rust-lang-rust-pr-161617"
+      ],
+      "candidate_only": [
+        "apache-maka-pr-4024",
+        "home-assistant-core-pr-176857",
+        "home-assistant-core-pr-180405",
+        "prometheus-prometheus-pr-19461",
+        "symfony-symfony-pr-65527"
+      ],
+      "baseline_only": [
+        "caddyserver-caddy-pr-7941"
+      ],
+      "neither": [
+        "llvm-llvm-project-pr-212892",
+        "vitejs-vite-pr-23106"
+      ],
+      "candidate_only_minus_baseline_only": 4,
+      "candidate_only_change_types": 5,
+      "candidate_only_repositories": 4
+    },
+    "paired_sign_test": {
+      "discordant_pairs": 6,
+      "candidate_wins": 5,
+      "baseline_wins": 1,
+      "one_sided_p_value": 0.109375,
+      "directional_confidence": 0.890625,
+      "meets_80_percent_directional_threshold": true,
+      "meets_95_percent_threshold": false
+    }
+  },
+  "calibration_and_usefulness": {
+    "baseline": {
+      "unsupported_p1_p2": 3,
+      "severity_overgrades": 3,
+      "decision_ready_reviews": 21,
+      "valid_simplifications": 4,
+      "harmful_simplifications": 2
+    },
+    "candidate": {
+      "unsupported_p1_p2": 4,
+      "severity_overgrades": 4,
+      "decision_ready_reviews": 24,
+      "valid_simplifications": 6,
+      "harmful_simplifications": 2
+    }
+  },
+  "median_cost": {
+    "baseline": {
+      "commands": 50.5,
+      "total_tokens": 1503239.5,
+      "uncached_input_plus_output_tokens": 145821.0
+    },
+    "candidate": {
+      "commands": 51.5,
+      "total_tokens": 1258314.0,
+      "uncached_input_plus_output_tokens": 134153.5
+    },
+    "candidate_growth_percent": {
+      "commands": 1.9801980198,
+      "total_tokens": -16.2931788315,
+      "uncached_input_plus_output_tokens": -8.0012481056
+    }
+  },
+  "skill_structure": {
+    "baseline": {
+      "words": 743,
+      "body_sections": 6,
+      "references": 1,
+      "scripts": 0,
+      "review_authorities": 1
+    },
+    "candidate": {
+      "words": 743,
+      "body_sections": 6,
+      "references": 1,
+      "scripts": 0,
+      "review_authorities": 1
+    }
+  },
+  "frozen_gate_results": {
+    "candidate_only_minus_baseline_only_at_least_4": true,
+    "candidate_only_spans_at_least_4_change_types": true,
+    "candidate_only_spans_at_least_4_repositories": true,
+    "no_baseline_only_p0_p1": false,
+    "unsupported_p1_p2_did_not_increase": false,
+    "severity_overgrading_did_not_increase": false,
+    "decision_ready_did_not_decrease": true,
+    "valid_simplification_did_not_decrease": true,
+    "harmful_simplification_did_not_increase": true,
+    "median_commands_grew_no_more_than_20_percent": true,
+    "median_tokens_grew_no_more_than_20_percent": true,
+    "skill_structure_did_not_increase": true,
+    "at_least_16_reliable_positive_cases": false
+  },
+  "interpretation": [
+    "The candidate materially improved core-finding recall across repositories and change types at the user's accepted directional evidence threshold.",
+    "The comparison does not show a perfect reviewer: the candidate missed one baseline-only P1 and increased unsupported P1/P2 and severity overgrading by one each.",
+    "Those residual errors should be managed by assigning independent review angles to complex pull requests and retaining one final evidence-and-reachability adjudicator, not by adding more Skill rules without a repeated failure pattern.",
+    "The frozen all-gates decision would not support adoption, but the user explicitly chose the lower internal-adoption threshold after reviewing the complete blinded result."
+  ],
+  "limitations": [
+    "Each arm ran once per pull request, so the result estimates direction across cases rather than per-case model variance.",
+    "The positive set was deliberately enriched and cannot estimate defect prevalence in an ordinary pull-request queue.",
+    "Four planned pairs were excluded: two materialization failures and two Skill-path contamination cases.",
+    "The remaining sample has 15 positives, one fewer than the frozen all-gates minimum.",
+    "The evaluation did not test a multi-reviewer production workflow or claim independent reviewer errors.",
+    "Do not advertise the 50 percent relative gain as a universal or 95-percent-confidence effect."
+  ],
+  "evidence": {
+    "private_gold_sha256": "a6f1695c1cb8b30cad69ffbd624ead8685c411cc0380b3383955a47cc4631155",
+    "blind_adjudication_sha256": "64ae3b466fef146ca78920f1fafcc9d0f39a85d6e3d5015eac533e79aa062ac2",
+    "unblinded_summary_sha256": "432c00d6e98026e6b9f3f5998e5e85ac22a71cf2d0c901ae5cc59109a0856c0f"
+  },
+  "adoption": {
+    "candidate_adopted_as_default": true,
+    "candidate_wording_retained": true,
+    "additional_skill_rules_added": false,
+    "public_percentage_claim_approved": false
+  }
+}

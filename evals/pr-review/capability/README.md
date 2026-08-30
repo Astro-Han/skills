@@ -31,3 +31,25 @@ The repository stores only [`gold-attestation.json`](gold-attestation.json). The
 outside the executor workspace. Repository pool snapshots are supplemented only with exact metadata
 for older in-window candidates found through later failure signals; the later evidence is excluded
 from fixtures and gold review.
+
+## Result
+
+The `capability-luna-high-v1` comparison produced 28 reliable paired reviews after excluding two
+fixture materialization failures and two Skill-path contamination cases. On the remaining 15
+positive cases, the baseline found a required problem in 8 cases (53.3 percent) and the candidate in
+12 (80.0 percent). The candidate had five unique wins and one loss, spanning five change types and
+four repositories. Its one-sided paired sign test gives `p = 0.109375`, enough for the user's chosen
+80-percent directional threshold but not a 95-percent claim.
+
+The result is not a perfect-reviewer claim. Unsupported P1/P2 findings and severity overgrades each
+increased by one, while decision-ready reviews rose from 21 to 24, valid simplification advice rose
+from 4 to 6, harmful simplification advice stayed at 2, median commands rose 2.0 percent, and token
+cost fell. The frozen all-gates rule therefore did not pass. After seeing the complete blinded
+comparison, the user chose internal adoption because the decision is which version is more likely
+to find core problems, with complex reviews using independent angles and one final adjudicator to
+manage reviewer variance.
+
+[`results/capability-luna-high-v1.json`](results/capability-luna-high-v1.json) preserves the paired
+cases, calibration and cost metrics, failed frozen gates, exclusions, evidence hashes, decision
+threshold, and limits. Do not present its 50-percent relative gain as a universal or
+95-percent-confidence effect.
