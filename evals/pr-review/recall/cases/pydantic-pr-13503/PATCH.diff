@@ -1,0 +1,96 @@
+From 3d4f2849b8c326d9c2d6b4a504546c9036b827ff Mon Sep 17 00:00:00 2001
+From: LuShadowX <supyallukshyadl1@gmail.com>
+Date: Sun, 26 Jul 2026 14:15:29 +0530
+Subject: [PATCH 1/2] Make `FailFast` hashable
+
+---
+ pydantic/types.py   |  3 +++
+ tests/test_types.py | 14 ++++++++++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/pydantic/types.py b/pydantic/types.py
+index 985728c4304..1892e4e7c9a 100644
+--- a/pydantic/types.py
++++ b/pydantic/types.py
+@@ -3297,3 +3297,6 @@ class Model(BaseModel):
+     """
+ 
+     fail_fast: bool = True
++
++    def __hash__(self) -> int:
++        return hash(self.fail_fast)
+diff --git a/tests/test_types.py b/tests/test_types.py
+index c899a3ba64f..51e8bfa09d1 100644
+--- a/tests/test_types.py
++++ b/tests/test_types.py
+@@ -23,6 +23,7 @@
+ from typing import (
+     Annotated,
+     Any,
++    Generic,
+     Literal,
+     NamedTuple,
+     NewType,
+@@ -7099,6 +7100,19 @@ class Foo(BaseModel):
+     assert exc_info.value.errors(include_url=False) == errors
+ 
+ 
++def test_fail_fast_hashable() -> None:
++    """`FailFast` is used as `Annotated` metadata, so it has to be hashable."""
++    assert hash(FailFast()) == hash(FailFast(True))
++    assert hash(FailFast(False)) != hash(FailFast(True))
++
++    T = TypeVar('T')
++
++    class Foo(BaseModel, Generic[T]):
++        a: T
++
++    Foo[Annotated[list[int], FailFast()]]
++
++
+ def test_mutable_mapping_userdict_subclass() -> None:
+     """Addresses https://github.com/pydantic/pydantic/issues/9549.
+ 
+
+From e9e156709a6fd42ce0d14bfd9d0c3988f9380916 Mon Sep 17 00:00:00 2001
+From: Victorien <65306057+Viicos@users.noreply.github.com>
+Date: Mon, 27 Jul 2026 08:56:56 +0200
+Subject: [PATCH 2/2] Apply suggestions from code review
+
+Co-authored-by: Victorien <65306057+Viicos@users.noreply.github.com>
+---
+ tests/test_types.py | 14 --------------
+ 1 file changed, 14 deletions(-)
+
+diff --git a/tests/test_types.py b/tests/test_types.py
+index 51e8bfa09d1..c899a3ba64f 100644
+--- a/tests/test_types.py
++++ b/tests/test_types.py
+@@ -23,7 +23,6 @@
+ from typing import (
+     Annotated,
+     Any,
+-    Generic,
+     Literal,
+     NamedTuple,
+     NewType,
+@@ -7100,19 +7099,6 @@ class Foo(BaseModel):
+     assert exc_info.value.errors(include_url=False) == errors
+ 
+ 
+-def test_fail_fast_hashable() -> None:
+-    """`FailFast` is used as `Annotated` metadata, so it has to be hashable."""
+-    assert hash(FailFast()) == hash(FailFast(True))
+-    assert hash(FailFast(False)) != hash(FailFast(True))
+-
+-    T = TypeVar('T')
+-
+-    class Foo(BaseModel, Generic[T]):
+-        a: T
+-
+-    Foo[Annotated[list[int], FailFast()]]
+-
+-
+ def test_mutable_mapping_userdict_subclass() -> None:
+     """Addresses https://github.com/pydantic/pydantic/issues/9549.
+ 

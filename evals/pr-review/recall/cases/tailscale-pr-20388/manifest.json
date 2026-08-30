@@ -1,0 +1,470 @@
+{
+  "additions": 320,
+  "author": "jentfoo",
+  "base_sha": "7965d496a687919ae38078f9a0428b87eaa5f854",
+  "body": "This change updates vulnerable dependencies with a direct fix path. Updated:\r\n* github.com/prometheus/prometheus@v0.311.3 - Direct dependency addressing https://pkg.go.dev/vuln/GO-2026-5710 and https://pkg.go.dev/vuln/GO-2026-5662\r\n* github.com/go-openapi/swag@v0.27.0 - Needed to fix mutal dependency on github.com/go-openapi/testify/v2 after prometheus update\r\n* github.com/go-git/go-git/v5@v5.19.1 - Addresses https://pkg.go.dev/vuln/GO-2026-5496\r\n* helm.sh/helm/v3@v3.21.1 - Root update to address most containerd CVEs\r\n* github.com/containerd/containerd@v1.7.33 - Addresses remaining containerd CVEs, in total: https://pkg.go.dev/vuln/GO-2026-5758 https://pkg.go.dev/vuln/GO-2026-5475 https://pkg.go.dev/vuln/GO-2026-5378\r\n\r\nNot addressed are containerd CVE's which require a `v2` update, or have no patch:\r\n* https://pkg.go.dev/vuln/GO-2026-5064\r\n* https://pkg.go.dev/vuln/GO-2026-5338\r\n* https://pkg.go.dev/vuln/GO-2026-5622\r\n* https://pkg.go.dev/vuln/GO-2026-5932",
+  "captured_at": "2026-08-30T05:57:40+00:00",
+  "case_id": "tailscale-pr-20388",
+  "changed_files": 11,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "prepare",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Request K8s Review",
+      "status": "COMPLETED",
+      "workflowName": "request-k8s-review"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "gomod-cache",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "deploy",
+      "status": "COMPLETED",
+      "workflowName": "Dockerfile build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "testchart",
+      "status": "COMPLETED",
+      "workflowName": "Kubernetes manifests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "EasyEasy",
+      "status": "COMPLETED",
+      "workflowName": "natlab-basic"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "policybot-test",
+      "status": "COMPLETED",
+      "workflowName": "policybot-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Request K8s Review",
+      "status": "COMPLETED",
+      "workflowName": "request-k8s-review"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "matrix.test",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzz",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (1/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (2/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (3/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (4/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 1/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 2/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 3/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (benchmarks)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (1/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (2/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "privileged",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "vm",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, 386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, loong64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 7)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (freebsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (openbsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ios",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (plan9, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (aix, ppc64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (solaris, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (illumos, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "android",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tailscale_go",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "depaware",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "go_generate",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "make_tidy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "licenses",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (macOS)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (1/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (2/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (3/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (4/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "notify_slack",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "merge_blocker",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability_strict",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "7965d496a687919ae38078f9a0428b87eaa5f854",
+  "deletions": 267,
+  "files": [
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 17,
+      "path": "cmd/k8s-operator/depaware.txt"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "cmd/k8s-operator/deploy/crds/tailscale.com_dnsconfigs.yaml"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "cmd/k8s-operator/deploy/crds/tailscale.com_proxyclasses.yaml"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "cmd/k8s-operator/deploy/crds/tailscale.com_recorders.yaml"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "cmd/k8s-operator/deploy/manifests/operator.yaml"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "cmd/tailscaled/depaware.txt"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "flake.nix"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "flakehashes.json"
+    },
+    {
+      "additions": 71,
+      "changeType": "MODIFIED",
+      "deletions": 63,
+      "path": "go.mod"
+    },
+    {
+      "additions": 205,
+      "changeType": "MODIFIED",
+      "deletions": 176,
+      "path": "go.sum"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "shell.nix"
+    }
+  ],
+  "head_sha": "1ba1d565edbc691a1fb01e7c9d48f21f3bd80217",
+  "issues": [],
+  "patch_sha256": "847ff7625b48a97358bf54e10db5d476b127dd7f99e527248800b6a17de5c4bf",
+  "pr_number": 20388,
+  "repo": "tailscale/tailscale",
+  "schema_version": 1,
+  "title": "go.mod: Update vulnerable dependencies",
+  "url": "https://github.com/tailscale/tailscale/pull/20388"
+}

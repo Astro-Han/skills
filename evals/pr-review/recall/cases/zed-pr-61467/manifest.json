@@ -1,0 +1,432 @@
+{
+  "additions": 227,
+  "author": "feitreim",
+  "base_sha": "ec3d887507f272119d9fe146c685f0a941d0e798",
+  "body": "# Objective\r\n\r\nCloses #47412\r\n\r\nCurrently, processes that ignore SIGHUP/SIGTERM will not be killed when the terminal is closed or Zed is closed.\r\n\r\n## Solution\r\n\r\nWe need to follow up on the processes to ensure that they have been properly killed BEFORE zed closes fully. We send SIGTERM then 100ms later send SIGKILL, this gives programs some time to exit gracefully before being SIGKILL'd.\r\n\r\n## Testing\r\n\r\nI tested it by both closing the terminal pane and closing zed completely, both worked. There is a new test added as well. The best way to test it is with the reproduction in this comment:\r\nhttps://github.com/zed-industries/zed/issues/47412#issuecomment-4596563655\r\n\r\nI only tested this on MacOS 27. It might be worth testing on linux, but also mac/linux behavior here should be quite similar. Windows behavior as well should be unchanged but could be worth testing.\r\n\r\n## Self-Review Checklist:\r\n\r\n- [x] I've reviewed my own diff for quality, security, and reliability\r\n- [x] Unsafe blocks (if any) have justifying comments\r\n\r\nOkay there is an unsafe block in this PR, but its just being moved from one location to another, and it didn't originally have a comment, I assume because its just a libc call so its pretty clear.\r\n\r\n- [x] The content adheres to Zed's UI standards ([UX/UI](https://github.com/zed-industries/zed/blob/main/CONTRIBUTING.md#uiux-checklist) and [icon](https://github.com/zed-industries/zed/blob/main/crates/icons/README.md) guidelines)\r\n- [x] Tests cover the new/changed behavior\r\n- [x] Performance impact has been considered and is acceptable\r\n\r\n## Showcase\r\n\r\nVideo showcasing the new behavior:\r\n\r\nhttps://github.com/user-attachments/assets/b2b8cb0c-0648-41b4-b940-91c466aeaab3\r\n\r\n\r\n\r\n---\r\n\r\nRelease Notes:\r\n\r\n- Terminal: Prevents processes from being left alive when the terminal is closed.\r\n",
+  "captured_at": "2026-08-30T05:58:08+00:00",
+  "case_id": "zed-pr-61467",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "react",
+      "status": "COMPLETED",
+      "workflowName": "Guild New PR Notification"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-authorship-and-label",
+      "status": "COMPLETED",
+      "workflowName": "PR Issue Labeler"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "orchestrate",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_style",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri_scheduler",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "doctests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_workspace_binaries",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build_visual_tests_binary",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_wasm",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_dependencies",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_docs",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_licenses",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_scripts",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_postgres_and_protobuf_migrations",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "extension_tests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tests_pass",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "2c4e44704c37ee87e59ac84e3e17388178b28545",
+  "deletions": 20,
+  "files": [
+    {
+      "additions": 72,
+      "changeType": "MODIFIED",
+      "deletions": 11,
+      "path": "crates/terminal/src/pty_info.rs"
+    },
+    {
+      "additions": 155,
+      "changeType": "MODIFIED",
+      "deletions": 9,
+      "path": "crates/terminal/src/terminal.rs"
+    }
+  ],
+  "head_sha": "b587ef686d0ddc7c222ffa8ff2672a0a6333c535",
+  "issues": [
+    {
+      "body": "## Description\n\nWhen running long-lived CLI processes (e.g., `claude` CLI) in Zed's integrated terminal, closing Zed or the terminal tab does not properly terminate the child processes. They become orphaned and continue running in the background.\n\n## Reproduction\n\n1. Open Zed\n2. Open integrated terminal\n3. Run a long-lived CLI process (e.g., `claude`, `node`, or any REPL)\n4. Close Zed (or close the terminal tab)\n5. Check for orphaned processes: `ps aux | grep <process> | awk '$7 == \"??\"'`\n\n## Observed behavior\n\nChild processes remain running with no controlling terminal (TTY shows `??`):\n\n```\n$ ps -p <pid> -o pid,tty,state,command\n  PID TTY      STAT COMMAND\n 4754 ??       S    claude --dangerously-skip-permissions\n```\n\nMultiple orphaned processes accumulate over time, consuming memory.\n\n## Expected behavior\n\nChild processes should receive SIGHUP (or SIGTERM) when:\n- The terminal tab is closed\n- Zed is quit\n\nThis is standard terminal behavior - iTerm and Terminal.app both handle this correctly.\n\n## Environment\n\n- macOS (Darwin 25.2.0)\n- Zed (latest stable)\n\n## Workaround\n\nManually kill orphaned processes:\n```bash\nps aux | grep <process> | awk '$7 == \"??\" {print $2}' | xargs kill\n```",
+      "number": 47412,
+      "title": "Child processes not terminated when integrated terminal closes",
+      "url": "https://github.com/zed-industries/zed/issues/47412"
+    }
+  ],
+  "patch_sha256": "8d5558c0921947878cd79278bc3e509bad8ef356dcbd25ea8513b9c722b33de2",
+  "pr_number": 61467,
+  "repo": "zed-industries/zed",
+  "schema_version": 1,
+  "title": "terminal: Actually close process groups when the terminal is closed",
+  "url": "https://github.com/zed-industries/zed/pull/61467"
+}

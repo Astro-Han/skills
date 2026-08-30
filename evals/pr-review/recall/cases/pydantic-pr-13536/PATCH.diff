@@ -1,0 +1,21 @@
+From b911c7901a9c55a6535f69d746a8198d16f02e52 Mon Sep 17 00:00:00 2001
+From: David Hewitt <mail@davidhewitt.dev>
+Date: Wed, 29 Jul 2026 10:19:55 +0100
+Subject: [PATCH] Revert "Make `FailFast` hashable (#13503)"
+
+This reverts commit c18c773f9b48df16206c9f9c19c2bc1be77dd045.
+---
+ pydantic/types.py | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/pydantic/types.py b/pydantic/types.py
+index 1892e4e7c9a..985728c4304 100644
+--- a/pydantic/types.py
++++ b/pydantic/types.py
+@@ -3297,6 +3297,3 @@ class Model(BaseModel):
+     """
+ 
+     fail_fast: bool = True
+-
+-    def __hash__(self) -> int:
+-        return hash(self.fail_fast)

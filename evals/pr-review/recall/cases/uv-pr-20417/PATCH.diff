@@ -1,0 +1,663 @@
+From 89354ed862c88f465dd1086c8bf7bfb12e61c97d Mon Sep 17 00:00:00 2001
+From: Charlie Marsh <charlie.r.marsh@gmail.com>
+Date: Tue, 14 Jul 2026 17:03:33 -0700
+Subject: [PATCH] Revert "Add `--cert` support to `uv pip` (#20367)"
+
+This reverts commit a2af4cb54a708c10e731b3a1c3a5c3ff13832b47.
+---
+ crates/uv-cli/src/compat.rs                  | 18 +++++
+ crates/uv-cli/src/lib.rs                     |  6 --
+ crates/uv-client/src/base_client.rs          | 20 ++---
+ crates/uv-client/src/lib.rs                  |  1 -
+ crates/uv-client/src/tls.rs                  | 51 ++-----------
+ crates/uv-client/tests/it/ssl_certs.rs       | 78 +++-----------------
+ crates/uv/src/lib.rs                         | 29 +-------
+ crates/uv/tests/it/help.rs                   | 23 ------
+ crates/uv/tests/pip/pip_sync.rs              | 11 +--
+ crates/uv/tests/pip_compile/pip_compile.rs   | 11 +--
+ docs/concepts/authentication/certificates.md |  6 --
+ 11 files changed, 53 insertions(+), 201 deletions(-)
+
+diff --git a/crates/uv-cli/src/compat.rs b/crates/uv-cli/src/compat.rs
+index 69938f4b147..ffaa07772e8 100644
+--- a/crates/uv-cli/src/compat.rs
++++ b/crates/uv-cli/src/compat.rs
+@@ -32,6 +32,9 @@ pub struct PipCompileCompatArgs {
+     #[clap(long, hide = true)]
+     max_rounds: Option<usize>,
+ 
++    #[clap(long, hide = true)]
++    cert: Option<String>,
++
+     #[clap(long, hide = true)]
+     client_cert: Option<String>,
+ 
+@@ -107,6 +110,12 @@ impl CompatArgs for PipCompileCompatArgs {
+             ));
+         }
+ 
++        if self.cert.is_some() {
++            return Err(anyhow!(
++                "pip-compile's `--cert` is unsupported (set the `SSL_CERT_FILE` environment variable to use a custom CA certificate bundle)"
++            ));
++        }
++
+         if self.client_cert.is_some() {
+             return Err(anyhow!(
+                 "pip-compile's `--client-cert` is unsupported (uv doesn't support dedicated client certificates)"
+@@ -189,6 +198,9 @@ pub struct PipSyncCompatArgs {
+     #[clap(long, hide = true)]
+     user: bool,
+ 
++    #[clap(long, hide = true)]
++    cert: Option<String>,
++
+     #[clap(long, hide = true)]
+     client_cert: Option<String>,
+ 
+@@ -227,6 +239,12 @@ impl CompatArgs for PipSyncCompatArgs {
+             ));
+         }
+ 
++        if self.cert.is_some() {
++            return Err(anyhow!(
++                "pip-sync's `--cert` is unsupported (set the `SSL_CERT_FILE` environment variable to use a custom CA certificate bundle)"
++            ));
++        }
++
+         if self.client_cert.is_some() {
+             return Err(anyhow!(
+                 "pip-sync's `--client-cert` is unsupported (uv doesn't support dedicated client certificates)"
+diff --git a/crates/uv-cli/src/lib.rs b/crates/uv-cli/src/lib.rs
+index f1a66e4f65a..20c2657bbbc 100644
+--- a/crates/uv-cli/src/lib.rs
++++ b/crates/uv-cli/src/lib.rs
+@@ -973,12 +973,6 @@ pub struct SizeArgs {
+ pub struct PipNamespace {
+     #[command(subcommand)]
+     pub command: PipCommand,
+-
+-    /// Path to a PEM-encoded CA certificate bundle.
+-    ///
+-    /// If provided, this overrides the default certificate source.
+-    #[arg(global = true, long, value_name = "FILE", value_hint = ValueHint::FilePath)]
+-    pub cert: Option<PathBuf>,
+ }
+ 
+ #[derive(Subcommand)]
+diff --git a/crates/uv-client/src/base_client.rs b/crates/uv-client/src/base_client.rs
+index e91c3180471..ecbe42946ae 100644
+--- a/crates/uv-client/src/base_client.rs
++++ b/crates/uv-client/src/base_client.rs
+@@ -93,7 +93,6 @@ pub struct BaseClientBuilder<'a> {
+     preview: Preview,
+     allow_insecure_host: Vec<TrustedHost>,
+     system_certs: bool,
+-    custom_certificates: Option<Certificates>,
+     retries: u32,
+     pub connectivity: Connectivity,
+     markers: Option<&'a MarkerEnvironment>,
+@@ -166,7 +165,6 @@ impl Default for BaseClientBuilder<'_> {
+             preview: Preview::default(),
+             allow_insecure_host: vec![],
+             system_certs: false,
+-            custom_certificates: None,
+             connectivity: Connectivity::Online,
+             retries: DEFAULT_RETRIES,
+             markers: None,
+@@ -260,13 +258,6 @@ impl<'a> BaseClientBuilder<'a> {
+         self
+     }
+ 
+-    /// Use custom certificate authorities for TLS verification.
+-    #[must_use]
+-    pub fn custom_certificates(mut self, certificates: Certificates) -> Self {
+-        self.custom_certificates = Some(certificates);
+-        self
+-    }
+-
+     #[must_use]
+     pub(crate) fn markers(mut self, markers: &'a MarkerEnvironment) -> Self {
+         self.markers = Some(markers);
+@@ -485,10 +476,8 @@ impl<'a> BaseClientBuilder<'a> {
+             let _ = write!(user_agent_string, " {output}");
+         }
+ 
+-        let custom_certs = self
+-            .custom_certificates
+-            .as_ref()
+-            .map(Certificates::to_reqwest_certs);
++        // Load custom CA certificates from `SSL_CERT_FILE` and `SSL_CERT_DIR`.
++        let custom_certs = Certificates::from_env().map(|certs| certs.to_reqwest_certs());
+         let certificate_source = if custom_certs.is_some() {
+             CertificateSource::Custom
+         } else if self.system_certs {
+@@ -548,7 +537,8 @@ impl<'a> BaseClientBuilder<'a> {
+ 
+         // Configure the certificate source.
+         //
+-        // Explicit certificates override the default certificate source.
++        // `SSL_CERT_FILE` and `SSL_CERT_DIR` override the default certificate source when they
++        // contain valid certificates.
+         let client_builder = if let Some(custom_certs) = custom_certs {
+             client_builder.tls_certs_only(custom_certs)
+         } else if self.system_certs {
+@@ -719,7 +709,7 @@ pub(crate) enum CertificateSource {
+     System,
+     /// The bundled `WebPKI` certificate roots.
+     WebPki,
+-    /// Custom certificate roots.
++    /// Custom roots loaded from `SSL_CERT_FILE` or `SSL_CERT_DIR`.
+     Custom,
+     /// An externally constructed client whose certificate roots are unknown.
+     Unknown,
+diff --git a/crates/uv-client/src/lib.rs b/crates/uv-client/src/lib.rs
+index 2d04b5e99d3..dd43e7ebddc 100644
+--- a/crates/uv-client/src/lib.rs
++++ b/crates/uv-client/src/lib.rs
+@@ -14,7 +14,6 @@ pub use registry_client::{
+ pub(crate) use retry::UvRetryableStrategy;
+ pub use retry::{RetriableError, RetryState, retryable_on_request_failure};
+ pub use rkyvutil::OwnedArchive;
+-pub use tls::{CertificateFileError, Certificates};
+ 
+ mod base_client;
+ mod cached_client;
+diff --git a/crates/uv-client/src/tls.rs b/crates/uv-client/src/tls.rs
+index ea10aa0910a..9ade0f9e3c8 100644
+--- a/crates/uv-client/src/tls.rs
++++ b/crates/uv-client/src/tls.rs
+@@ -17,15 +17,13 @@ use uv_warnings::warn_user_once;
+ 
+ #[derive(Debug, Clone)]
+ enum CertificateSource {
+-    CertFileArg(PathBuf),
+     SslCertFile(PathBuf),
+     SslCertDir(PathBuf),
+ }
+ 
+ impl CertificateSource {
+-    const fn description(&self) -> &'static str {
++    const fn env_var(&self) -> &'static str {
+         match self {
+-            Self::CertFileArg(_) => "--cert",
+             Self::SslCertFile(_) => EnvVars::SSL_CERT_FILE,
+             Self::SslCertDir(_) => EnvVars::SSL_CERT_DIR,
+         }
+@@ -33,7 +31,7 @@ impl CertificateSource {
+ 
+     fn path(&self) -> &Path {
+         match self {
+-            Self::CertFileArg(path) | Self::SslCertFile(path) | Self::SslCertDir(path) => path,
++            Self::SslCertFile(path) | Self::SslCertDir(path) => path,
+         }
+     }
+ }
+@@ -135,7 +133,7 @@ impl Display for InvalidCertificateWarning {
+             f,
+             "certificate in `{}` (from `{}`) ",
+             self.source.path().simplified_display(),
+-            self.source.description()
++            self.source.env_var()
+         )?;
+         match &self.reason {
+             InvalidCertificateReason::UnsupportedCriticalExtension => {
+@@ -194,7 +192,7 @@ impl Display for InvalidCertificateWarning {
+ 
+ /// A collection of TLS certificates in DER form.
+ #[derive(Debug, Clone, Default)]
+-pub struct Certificates(Vec<CertificateDer<'static>>);
++pub(crate) struct Certificates(Vec<CertificateDer<'static>>);
+ 
+ impl Certificates {
+     /// Load the bundled Mozilla root certificates.
+@@ -212,41 +210,12 @@ impl Certificates {
+         Self(webpki_root_certs::TLS_SERVER_ROOT_CERTS.to_vec())
+     }
+ 
+-    /// Load a custom CA certificate bundle from an explicit path.
+-    ///
+-    /// Unlike [`Self::from_ssl_cert_file`], an invalid path or a bundle without any valid
+-    /// certificates returns an error instead of being ignored with a warning.
+-    pub fn from_file(file: &Path) -> Result<Self, CertificateFileError> {
+-        let metadata = file
+-            .metadata()
+-            .map_err(|err| CertificateFileError::Io(file.to_path_buf(), err))?;
+-        if !metadata.is_file() {
+-            return Err(CertificateFileError::NotFile(file.to_path_buf()));
+-        }
+-
+-        let result = Self::from_paths(Some(file), None);
+-        for err in &result.errors {
+-            warn!(
+-                "Failed to load certificate file ({}): {err}",
+-                file.simplified_display()
+-            );
+-        }
+-        let certs =
+-            Self::from(result).filter_invalid(&CertificateSource::CertFileArg(file.to_path_buf()));
+-        if certs.0.is_empty() {
+-            return Err(CertificateFileError::NoValidCertificates(
+-                file.to_path_buf(),
+-            ));
+-        }
+-        Ok(certs)
+-    }
+-
+     /// Load custom CA certificates from `SSL_CERT_FILE` and `SSL_CERT_DIR` environment variables.
+     ///
+     /// Returns `None` if neither variable is set, if the referenced files or directories are
+     /// missing or inaccessible, or if no valid certificates are found (with a warning in each
+     /// case). Delegates path loading to [`rustls_native_certs::load_certs_from_paths`].
+-    pub fn from_env() -> Option<Self> {
++    pub(crate) fn from_env() -> Option<Self> {
+         let mut certs = Self::default();
+         let mut has_source = false;
+ 
+@@ -472,16 +441,6 @@ pub(crate) enum CertificateError {
+     Reqwest(reqwest::Error),
+ }
+ 
+-#[derive(thiserror::Error, Debug)]
+-pub enum CertificateFileError {
+-    #[error("Failed to read certificate file `{}`", .0.simplified_display())]
+-    Io(PathBuf, #[source] io::Error),
+-    #[error("Certificate path is not a file: `{}`", .0.simplified_display())]
+-    NotFile(PathBuf),
+-    #[error("No valid certificates found in: `{}`", .0.simplified_display())]
+-    NoValidCertificates(PathBuf),
+-}
+-
+ /// Return the `Identity` from the provided file.
+ pub(crate) fn read_identity(
+     ssl_client_cert: &std::ffi::OsStr,
+diff --git a/crates/uv-client/tests/it/ssl_certs.rs b/crates/uv-client/tests/it/ssl_certs.rs
+index 4e9a2fe8134..55aac31ee21 100644
+--- a/crates/uv-client/tests/it/ssl_certs.rs
++++ b/crates/uv-client/tests/it/ssl_certs.rs
+@@ -10,7 +10,8 @@ use tempfile::{NamedTempFile, TempDir};
+ use url::Url;
+ 
+ use uv_cache::Cache;
+-use uv_client::{BaseClientBuilder, Certificates, RegistryClientBuilder};
++use uv_client::BaseClientBuilder;
++use uv_client::RegistryClientBuilder;
+ use uv_distribution_types::IndexUrl;
+ use uv_errors::{ErrorOptions, Hint, write_error_chain_with_options};
+ use uv_redacted::DisplaySafeUrl;
+@@ -132,7 +133,6 @@ struct TestClient {
+     overrides: Vec<(&'static str, String)>,
+     system_certs: bool,
+     custom_client: bool,
+-    cert: Option<PathBuf>,
+ }
+ 
+ /// Create a [`TestClient`] with no environment overrides.
+@@ -141,17 +141,10 @@ fn client() -> TestClient {
+         overrides: Vec::new(),
+         system_certs: false,
+         custom_client: false,
+-        cert: None,
+     }
+ }
+ 
+ impl TestClient {
+-    /// Set the explicit certificate file used to construct [`Certificates`].
+-    fn cert(mut self, path: &Path) -> Self {
+-        self.cert = Some(path.to_path_buf());
+-        self
+-    }
+-
+     /// Enable or disable system certificate loading.
+     fn system_certs(mut self, enabled: bool) -> Self {
+         self.system_certs = enabled;
+@@ -228,16 +221,13 @@ impl TestClient {
+         async_with_vars(vars, async {
+             let (server_task, addr) = start_https_user_agent_server(&cert.server).await.unwrap();
+             let cache = Cache::temp().unwrap().init().await.unwrap();
+-            let base = BaseClientBuilder::default()
+-                .retries(0)
+-                .no_retry_delay(true)
+-                .with_system_certs(system_certs);
+-            let base = if let Some(certificates) = Certificates::from_env() {
+-                base.custom_certificates(certificates)
+-            } else {
+-                base
+-            };
+-            let client = RegistryClientBuilder::new(base, cache);
++            let client = RegistryClientBuilder::new(
++                BaseClientBuilder::default()
++                    .retries(0)
++                    .no_retry_delay(true)
++                    .with_system_certs(system_certs),
++                cache,
++            );
+             let client = if custom_client {
+                 client.with_reqwest_client(reqwest::Client::new())
+             } else {
+@@ -380,7 +370,7 @@ impl TestClient {
+         let system_certs = self.system_certs;
+         async_with_vars(vars, async {
+             let (server_task, addr) = start_https_user_agent_server(&cert.server).await.unwrap();
+-            let response = send_request(addr, system_certs, self.cert.as_deref()).await;
++            let response = send_request(addr, system_certs).await;
+             check(response, server_task).await;
+         })
+         .await;
+@@ -402,7 +392,7 @@ impl TestClient {
+             let (server_task, addr) = start_https_mtls_user_agent_server(&cert.ca, &cert.server)
+                 .await
+                 .unwrap();
+-            let response = send_request(addr, system_certs, self.cert.as_deref()).await;
++            let response = send_request(addr, system_certs).await;
+             check(response, server_task).await;
+         })
+         .await;
+@@ -413,40 +403,20 @@ impl TestClient {
+ async fn send_request(
+     addr: SocketAddr,
+     system_certs: bool,
+-    cert: Option<&Path>,
+ ) -> Result<reqwest::Response, reqwest_middleware::Error> {
+     let url = DisplaySafeUrl::from_str(&format!("https://{addr}")).unwrap();
+-    send_request_to_with_cert(&url, system_certs, cert).await
++    send_request_to(&url, system_certs).await
+ }
+ 
+ /// Send a GET request to an arbitrary URL using a fresh registry client.
+-#[cfg(feature = "test-pypi")]
+ async fn send_request_to(
+     url: &DisplaySafeUrl,
+     system_certs: bool,
+-) -> Result<reqwest::Response, reqwest_middleware::Error> {
+-    send_request_to_with_cert(url, system_certs, None).await
+-}
+-
+-async fn send_request_to_with_cert(
+-    url: &DisplaySafeUrl,
+-    system_certs: bool,
+-    cert: Option<&Path>,
+ ) -> Result<reqwest::Response, reqwest_middleware::Error> {
+     let cache = Cache::temp().unwrap().init().await.unwrap();
+-    let custom_certificates = if let Some(cert) = cert {
+-        Some(Certificates::from_file(cert).expect("failed to load certificate file"))
+-    } else {
+-        Certificates::from_env()
+-    };
+     let base = BaseClientBuilder::default()
+         .no_retry_delay(true)
+         .with_system_certs(system_certs);
+-    let base = if let Some(certificates) = custom_certificates {
+-        base.custom_certificates(certificates)
+-    } else {
+-        base
+-    };
+     let client = RegistryClientBuilder::new(base, cache)
+         .build()
+         .expect("failed to build registry client");
+@@ -561,30 +531,6 @@ async fn test_ssl_cert_file_valid() -> Result<()> {
+     Ok(())
+ }
+ 
+-/// An explicit certificate file pointing to the server's CA cert is trusted.
+-#[tokio::test]
+-async fn test_cli_cert_valid() -> Result<()> {
+-    let cert = TestCertificate::new()?;
+-    client()
+-        .cert(&cert.trust_path)
+-        .expect_https_connect_succeeds(&cert)
+-        .await;
+-    Ok(())
+-}
+-
+-/// An explicit certificate file overrides the environment certificate sources.
+-#[tokio::test]
+-async fn test_cli_cert_overrides_environment() -> Result<()> {
+-    let cert = TestCertificate::new()?;
+-    let wrong_cert = TestCertificate::new()?;
+-    client()
+-        .ssl_cert_file(&wrong_cert.trust_path)
+-        .cert(&cert.trust_path)
+-        .expect_https_connect_succeeds(&cert)
+-        .await;
+-    Ok(())
+-}
+-
+ /// If `SSL_CERT_FILE` contains only an invalid trust anchor, the invalid
+ /// certificate is ignored and the client falls back to webpki roots.
+ #[tokio::test]
+diff --git a/crates/uv/src/lib.rs b/crates/uv/src/lib.rs
+index eb0d0c792fa..850661a74b8 100644
+--- a/crates/uv/src/lib.rs
++++ b/crates/uv/src/lib.rs
+@@ -32,7 +32,7 @@ use uv_cli::{
+     PythonNamespace, SelfCommand, SelfNamespace, ToolCommand, ToolNamespace, TopLevelArgs,
+     WorkspaceCommand, WorkspaceNamespace, compat::CompatArgs,
+ };
+-use uv_client::{BaseClientBuilder, Certificates};
++use uv_client::BaseClientBuilder;
+ use uv_configuration::min_stack_size;
+ use uv_flags::EnvironmentFlags;
+ use uv_fs::{CWD, Simplified, normalize_path};
+@@ -623,18 +623,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         WorkspaceCache::default()
+     };
+ 
+-    // Configure custom CA certificates from `--cert` or from the environment (`SSL_CERT_FILE` and
+-    // `SSL_CERT_DIR`).
+-    // Like pip, an explicit certificate bundle overrides the environment certificate sources.
+-    let custom_certificates = if let Commands::Pip(PipNamespace {
+-        cert: Some(cert), ..
+-    }) = &*cli.command
+-    {
+-        Some(Certificates::from_file(cert)?)
+-    } else {
+-        Certificates::from_env()
+-    };
+-
+     // Configure the global network settings.
+     let client_builder = BaseClientBuilder::new(
+         globals.network_settings.connectivity,
+@@ -648,11 +636,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+     .http_proxy(globals.network_settings.http_proxy.clone())
+     .https_proxy(globals.network_settings.https_proxy.clone())
+     .no_proxy(globals.network_settings.no_proxy.clone());
+-    let client_builder = if let Some(certificates) = custom_certificates {
+-        client_builder.custom_certificates(certificates)
+-    } else {
+-        client_builder
+-    };
+ 
+     match *cli.command {
+         Commands::Auth(AuthNamespace {
+@@ -734,7 +717,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         ),
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Compile(args),
+-            ..
+         }) => {
+             args.compat_args.validate()?;
+ 
+@@ -854,7 +836,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Sync(args),
+-            ..
+         }) => {
+             args.compat_args.validate()?;
+ 
+@@ -944,7 +925,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Install(args),
+-            ..
+         }) => {
+             args.compat_args.validate()?;
+ 
+@@ -1107,7 +1087,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Uninstall(args),
+-            ..
+         }) => {
+             args.compat_args.validate()?;
+ 
+@@ -1145,7 +1124,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Freeze(args),
+-            ..
+         }) => {
+             // Resolve the settings from the command-line arguments and workspace configuration.
+             let args = PipFreezeSettings::resolve(args, filesystem, environment);
+@@ -1170,7 +1148,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::List(args),
+-            ..
+         }) => {
+             args.compat_args.validate()?;
+ 
+@@ -1206,7 +1183,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Show(args),
+-            ..
+         }) => {
+             // Resolve the settings from the command-line arguments and workspace configuration.
+             let args = PipShowSettings::resolve(args, filesystem, environment);
+@@ -1230,7 +1206,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Tree(args),
+-            ..
+         }) => {
+             // Resolve the settings from the command-line arguments and workspace configuration.
+             let args = PipTreeSettings::resolve(args, filesystem, environment);
+@@ -1264,7 +1239,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Check(args),
+-            ..
+         }) => {
+             // Resolve the settings from the command-line arguments and workspace configuration.
+             let args = PipCheckSettings::resolve(args, filesystem, environment);
+@@ -1285,7 +1259,6 @@ pub async fn run(cli: Cli, global_initialization: GlobalInitialization) -> Resul
+         }
+         Commands::Pip(PipNamespace {
+             command: PipCommand::Debug(_),
+-            ..
+         }) => Err(anyhow!(
+             "pip's `debug` is unsupported (consider using `uvx pip debug` instead)"
+         )),
+diff --git a/crates/uv/tests/it/help.rs b/crates/uv/tests/it/help.rs
+index e01a5e557f6..ac9455eb50a 100644
+--- a/crates/uv/tests/it/help.rs
++++ b/crates/uv/tests/it/help.rs
+@@ -2,29 +2,6 @@ use uv_static::EnvVars;
+ 
+ use uv_test::uv_snapshot;
+ 
+-#[test]
+-fn cert_is_limited_to_pip() {
+-    let context = uv_test::test_context_with_versions!(&[]);
+-
+-    uv_snapshot!(context.filters(), context.command()
+-        .arg("sync")
+-        .arg("--cert")
+-        .arg("ca-bundle.pem"), @"
+-    success: false
+-    exit_code: 2
+-    ----- stdout -----
+-
+-    ----- stderr -----
+-    error: unexpected argument '--cert' found
+-
+-      tip: a similar argument exists: '--script'
+-
+-    Usage: uv sync --script <SCRIPT>
+-
+-    For more information, try '--help'.
+-    ");
+-}
+-
+ #[test]
+ fn help() {
+     let context = uv_test::test_context_with_versions!(&[]);
+diff --git a/crates/uv/tests/pip/pip_sync.rs b/crates/uv/tests/pip/pip_sync.rs
+index 9a9c353165d..384657c71df 100644
+--- a/crates/uv/tests/pip/pip_sync.rs
++++ b/crates/uv/tests/pip/pip_sync.rs
+@@ -37,10 +37,12 @@ fn missing_requirements_txt() {
+     requirements_txt.assert(predicates::path::missing());
+ }
+ 
+-/// `--cert` is forwarded to the HTTP client rather than silently ignored.
++/// `pip-sync`'s `--cert` is unsupported and must error, rather than being silently ignored,
++/// so users don't believe a custom CA bundle is in effect when it isn't.
++/// See <https://github.com/astral-sh/uv/issues/20350>.
+ #[test]
+-fn cert() -> Result<()> {
+-    let context = uv_test::test_context!("3.12").with_filtered_missing_file_error();
++fn cert_unsupported() -> Result<()> {
++    let context = uv_test::test_context!("3.12");
+     let requirements_txt = context.temp_dir.child("requirements.txt");
+     requirements_txt.write_str("iniconfig==2.0.0")?;
+ 
+@@ -53,8 +55,7 @@ fn cert() -> Result<()> {
+     ----- stdout -----
+ 
+     ----- stderr -----
+-    error: Failed to read certificate file `ca-bundle.pem`
+-      Caused by: [OS ERROR 2]
++    error: pip-sync's `--cert` is unsupported (set the `SSL_CERT_FILE` environment variable to use a custom CA certificate bundle)
+     ");
+ 
+     Ok(())
+diff --git a/crates/uv/tests/pip_compile/pip_compile.rs b/crates/uv/tests/pip_compile/pip_compile.rs
+index f5dccf6ea8c..39e7090726b 100644
+--- a/crates/uv/tests/pip_compile/pip_compile.rs
++++ b/crates/uv/tests/pip_compile/pip_compile.rs
+@@ -6640,10 +6640,12 @@ fn resolver_legacy() -> Result<()> {
+     Ok(())
+ }
+ 
+-/// `--cert` is forwarded to the HTTP client rather than silently ignored.
++/// `pip-compile`'s `--cert` is unsupported and must error, rather than being silently ignored,
++/// so users don't believe a custom CA bundle is in effect when it isn't.
++/// See <https://github.com/astral-sh/uv/issues/20350>.
+ #[test]
+-fn cert() -> Result<()> {
+-    let context = uv_test::test_context!("3.12").with_filtered_missing_file_error();
++fn cert_unsupported() -> Result<()> {
++    let context = uv_test::test_context!("3.12");
+     let requirements_in = context.temp_dir.child("requirements.in");
+     requirements_in.write_str("werkzeug==3.0.1")?;
+ 
+@@ -6656,8 +6658,7 @@ fn cert() -> Result<()> {
+     ----- stdout -----
+ 
+     ----- stderr -----
+-    error: Failed to read certificate file `ca-bundle.pem`
+-      Caused by: [OS ERROR 2]
++    error: pip-compile's `--cert` is unsupported (set the `SSL_CERT_FILE` environment variable to use a custom CA certificate bundle)
+     "
+     );
+ 
+diff --git a/docs/concepts/authentication/certificates.md b/docs/concepts/authentication/certificates.md
+index b6011d97150..c27d837275b 100644
+--- a/docs/concepts/authentication/certificates.md
++++ b/docs/concepts/authentication/certificates.md
+@@ -39,12 +39,6 @@ a PEM-encoded certificate bundle (e.g., `certs.pem`, `ca-bundle.crt`), or set
+ PEM-encoded certificate files. Multiple entries are supported, separated using a platform-specific
+ delimiter (`:` on Unix, `;` on Windows).
+ 
+-!!! note
+-
+-    For a single `uv pip` invocation, pass [`--cert`](../../reference/cli.md#uv-pip) with the path
+-    to a PEM-encoded certificate bundle. The bundle replaces uv's default certificate source for
+-    that invocation.
+-
+ Certificates are usually stored with `.pem`, `.crt`, or `.cer` extensions, but uv will attempt to
+ read a certificate from any regular file in the provided `SSL_CERT_DIR`.
+ 

@@ -1,0 +1,114 @@
+From 7fda5faeaeb53556a412ab6499d0764f6b3d25c2 Mon Sep 17 00:00:00 2001
+From: Galen <galen.kistler@grafana.com>
+Date: Fri, 3 Jul 2026 09:04:23 -0500
+Subject: [PATCH] Revert "DataPro (migration): Migrate `core/utils/explore.ts`
+ (#127578)"
+
+This reverts commit 3103327a3f9e8444a6345039cf66e6987fbe07da.
+---
+ public/app/core/utils/explore.test.ts           |  6 ------
+ public/app/core/utils/explore.ts                | 12 ++++++------
+ public/app/features/explore/state/query.test.ts | 11 -----------
+ 3 files changed, 6 insertions(+), 23 deletions(-)
+
+diff --git a/public/app/core/utils/explore.test.ts b/public/app/core/utils/explore.test.ts
+index d892038a10494..d86d4127dfff6 100644
+--- a/public/app/core/utils/explore.test.ts
++++ b/public/app/core/utils/explore.test.ts
+@@ -1,6 +1,5 @@
+ import {
+   type DataSourceApi,
+-  type DataSourceRef,
+   dateTime,
+   type ExploreUrlState,
+   type GrafanaConfig,
+@@ -72,11 +71,6 @@ jest.mock('@grafana/runtime', () => ({
+   getDataSourceSrv: () => getDataSourceSrvMock(),
+ }));
+ 
+-jest.mock('@grafana/runtime/unstable', () => ({
+-  ...jest.requireActual('@grafana/runtime/unstable'),
+-  getDataSourceInstance: (ref?: DataSourceRef | string) => datasourceSrv.get(ref),
+-}));
+-
+ // Avoids errors caused by circular dependencies
+ jest.mock('app/features/live/dashboard/dashboardWatcher', () => ({
+   ignoreNextSave: jest.fn(),
+diff --git a/public/app/core/utils/explore.ts b/public/app/core/utils/explore.ts
+index 009b320bc0e6d..d3e61a672ff06 100644
+--- a/public/app/core/utils/explore.ts
++++ b/public/app/core/utils/explore.ts
+@@ -24,7 +24,7 @@ import {
+   urlUtil,
+   generateUUID,
+ } from '@grafana/data';
+-import { getDataSourceInstance } from '@grafana/runtime/unstable';
++import { getDataSourceSrv } from '@grafana/runtime';
+ import { RefreshPicker } from '@grafana/ui';
+ import { ExpressionDatasourceUID } from 'app/features/expressions/types';
+ import { type QueryOptions, type QueryTransaction } from 'app/types/explore';
+@@ -74,7 +74,7 @@ export async function getExploreUrl(args: GetExploreUrlArguments): Promise<strin
+         .map(async (q) => {
+           // if the query defines a datasource, use that one, otherwise use the one from the panel, which should always be defined.
+           // this will rejects if the datasource is not found, or return the default one if dsRef is not provided.
+-          const queryDs = await getDataSourceInstance(q.datasource || dsRef);
++          const queryDs = await getDataSourceSrv().get(q.datasource || dsRef);
+ 
+           return {
+             // interpolate the query using its datasource `interpolateVariablesInQueries` method if defined, othewise return the query as-is.
+@@ -186,13 +186,13 @@ export async function generateEmptyQuery(
+     // otherwise use last queries' datasource
+     datasourceRef = queries[queries.length - 1].datasource;
+   } else {
+-    datasourceInstance = await getDataSourceInstance();
++    datasourceInstance = await getDataSourceSrv().get();
+     defaultQuery = datasourceInstance.getDefaultQuery?.(CoreApp.Explore);
+     datasourceRef = datasourceInstance.getRef();
+   }
+ 
+   if (!datasourceInstance) {
+-    datasourceInstance = await getDataSourceInstance(datasourceRef);
++    datasourceInstance = await getDataSourceSrv().get(datasourceRef);
+     defaultQuery = datasourceInstance.getDefaultQuery?.(CoreApp.Explore);
+   }
+ 
+@@ -230,7 +230,7 @@ export async function ensureQueries(
+       let validDS = true;
+       if (query.datasource) {
+         try {
+-          await getDataSourceInstance(query.datasource.uid);
++          await getDataSourceSrv().get(query.datasource.uid);
+         } catch {
+           console.error(`One of the queries has a datasource that is no longer available and was removed.`);
+           validDS = false;
+@@ -249,7 +249,7 @@ export async function ensureQueries(
+   }
+   try {
+     // if a datasource override get its ref, otherwise get the default datasource
+-    const emptyQueryRef = newQueryDataSourceOverride ?? (await getDataSourceInstance()).getRef();
++    const emptyQueryRef = newQueryDataSourceOverride ?? (await getDataSourceSrv().get()).getRef();
+     const emptyQuery = await generateEmptyQuery(queries ?? [], undefined, emptyQueryRef);
+     return [emptyQuery];
+   } catch {
+diff --git a/public/app/features/explore/state/query.test.ts b/public/app/features/explore/state/query.test.ts
+index 153508886aa49..4ea66ed0f2c7f 100644
+--- a/public/app/features/explore/state/query.test.ts
++++ b/public/app/features/explore/state/query.test.ts
+@@ -109,17 +109,6 @@ jest.mock('@grafana/runtime', () => ({
+   },
+ }));
+ 
+-jest.mock('@grafana/runtime/unstable', () => ({
+-  ...jest.requireActual('@grafana/runtime/unstable'),
+-  getDataSourceInstance: (ref?: DataSourceRef | string) => {
+-    if (!ref) {
+-      return datasources[0];
+-    }
+-
+-    return datasources.find((ds) => (typeof ref === 'string' ? ds.uid === ref : ds.uid === ref.uid)) || datasources[0];
+-  },
+-}));
+-
+ function setupQueryResponse(state: StoreState) {
+   const leftDatasourceInstance = assertIsDefined(state.explore.panes.left!.datasourceInstance);
+ 

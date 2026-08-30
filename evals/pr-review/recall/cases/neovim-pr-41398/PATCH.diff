@@ -1,0 +1,61 @@
+From 6d9c6083906d7e2d75159952b4c0e90ccf606d7d Mon Sep 17 00:00:00 2001
+From: Shubh <shubh@shubhxho.com>
+Date: Thu, 20 Aug 2026 20:34:24 +0530
+Subject: [PATCH] fix(lsp): do not expand \$VAR in tagfunc filenames #41313
+
+Problem:
+CTRL-] via lsp tagfunc passes URI paths through :tag, which expands
+\$VAR, so files like people_.\$personId.tsx fail with E429.
+
+Solution:
+fnameescape() the filename in tag items so \$ is treated as literal.
+---
+ runtime/lua/vim/lsp/_tagfunc.lua    |  3 ++-
+ test/functional/plugin/lsp_spec.lua | 18 ++++++++++++++++++
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+
+diff --git a/runtime/lua/vim/lsp/_tagfunc.lua b/runtime/lua/vim/lsp/_tagfunc.lua
+index a71c83119930c6..cad2e80bf80c1f 100644
+--- a/runtime/lua/vim/lsp/_tagfunc.lua
++++ b/runtime/lua/vim/lsp/_tagfunc.lua
+@@ -12,9 +12,10 @@ local function mk_tag_item(name, range, uri, position_encoding)
+   -- This is get_line_byte_from_position is 0-indexed, call cursor expects a 1-indexed position
+   local pos = vim.pos.lsp(bufnr, range.start, position_encoding)
+   local byte = pos.col + 1
++  -- :tag expands "$VAR" in filenames. Escape so URI paths keep literal "$". #41313
+   return {
+     name = name,
+-    filename = vim.uri_to_fname(uri),
++    filename = vim.fn.fnameescape(vim.uri_to_fname(uri)),
+     cmd = string.format([[/\%%%dl\%%%dc/]], range.start.line + 1, byte),
+   }
+ end
+diff --git a/test/functional/plugin/lsp_spec.lua b/test/functional/plugin/lsp_spec.lua
+index fabe2ed53d4b00..7fa26ad3ae8c18 100644
+--- a/test/functional/plugin/lsp_spec.lua
++++ b/test/functional/plugin/lsp_spec.lua
+@@ -3242,6 +3242,24 @@ describe('LSP', function()
+         return {}
+       end)
+     end)
++
++    it('does not expand $ in tag filenames #41313', function()
++      local result = exec_lua(function()
++        vim.env.personId = 'EXPANDED'
++        local dir = vim.fn.tempname()
++        vim.fn.mkdir(dir, 'p')
++        local f = vim.fs.abspath(dir .. '/people_.$personId.tsx')
++        vim.fn.writefile({ 'symbol' }, f)
++        _G.mock_locations[1].uri = vim.uri_from_fname(f)
++        local tags = vim.lsp.tagfunc('symbol', 'c')
++        vim.cmd.edit(tags[1].filename)
++        return {
++          bufname = vim.fs.abspath(vim.api.nvim_buf_get_name(0)),
++          expected = f,
++        }
++      end)
++      eq(result.expected, result.bufname)
++    end)
+   end)
+ 
+   describe('cmd', function()

@@ -1,0 +1,206 @@
+{
+  "additions": 12,
+  "author": "TheFox0x7",
+  "base_sha": "cc1df1976be3593c93cdcd28b9b4fba6cb23a6ec",
+  "body": "drops signing with gpg in favor of sigstore based artifact signing",
+  "captured_at": "2026-08-30T05:57:34+00:00",
+  "case_id": "gitea-pr-38250",
+  "changed_files": 3,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "labeler",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-pgsql-shard-1",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-amd64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-e2e",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "pr-title",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-pgsql-shard-2",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-arm64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-on-demand",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-riscv64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checks-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-sqlite",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-unit",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "frontend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-mysql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-mssql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "cc1df1976be3593c93cdcd28b9b4fba6cb23a6ec",
+  "deletions": 30,
+  "files": [
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": ".github/workflows/release-nightly.yml"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": ".github/workflows/release-tag-rc.yml"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": ".github/workflows/release-tag-version.yml"
+    }
+  ],
+  "head_sha": "e834a07354e69e4d499746344d2b70a26d65b634",
+  "issues": [],
+  "patch_sha256": "0b7348baa8aba001514d0b852fba59b3720756baa19968ddc7da2d4240e091f0",
+  "pr_number": 38250,
+  "repo": "go-gitea/gitea",
+  "schema_version": 1,
+  "title": "build(sign): move to sigstore",
+  "url": "https://github.com/go-gitea/gitea/pull/38250"
+}

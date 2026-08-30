@@ -21,6 +21,18 @@ runner = load_runner()
 
 
 class EvalRunnerSuiteTests(unittest.TestCase):
+    def test_core_finding_recall_holdout_compares_frozen_skill_with_candidate(self):
+        runs = runner.suite_runs("codex", reps=1, suite="pr-review-recall")
+
+        self.assertEqual(len(runs), 32)
+        self.assertEqual(len({run["eval"] for run in runs}), 16)
+        self.assertEqual({run["arm"] for run in runs}, {"baseline_skill", "candidate_skill"})
+        self.assertTrue(all(run["review_only"] for run in runs))
+        self.assertEqual(len({run["repo"] for run in runs}), 7)
+
+        with self.assertRaisesRegex(ValueError, "exactly one paired run"):
+            runner.suite_runs("codex", reps=2, suite="pr-review-recall")
+
     def test_diverse_real_pr_holdout_plans_one_pair_with_each_repo_key(self):
         runs = runner.suite_runs("codex", reps=1, suite="pr-review-diverse")
 

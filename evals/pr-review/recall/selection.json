@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "candidate_commit": "443611cef5165d5933601b3049effc160682a700",
+  "cases": [
+    "astral-sh/uv#20367",
+    "astral-sh/uv#20417",
+    "go-gitea/gitea#38250",
+    "go-gitea/gitea#38251",
+    "tailscale/tailscale#20388",
+    "tailscale/tailscale#20420",
+    "neovim/neovim#41398",
+    "neovim/neovim#41489",
+    "grafana/grafana#127578",
+    "grafana/grafana#127870",
+    "zed-industries/zed#61467",
+    "zed-industries/zed#62399",
+    "zed-industries/zed#60301",
+    "zed-industries/zed#60321",
+    "pydantic/pydantic#13503",
+    "pydantic/pydantic#13536"
+  ]
+}

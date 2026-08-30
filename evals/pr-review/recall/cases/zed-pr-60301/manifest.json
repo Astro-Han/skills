@@ -1,0 +1,359 @@
+{
+  "additions": 60,
+  "author": "Anthony-Eid",
+  "base_sha": "4aa8ad9742b1ee948d64429a5814d9b9a861350a",
+  "body": "When Zed was downloading an update and the machine went to sleep, the download would hang indefinitely on wake because the in-flight TCP connection had silently died and nothing ever timed it out or retried. This adds an inactivity `read_timeout` to the HTTP client so a stalled response body errors out instead of hanging forever (slow-but-progressing downloads are unaffected, since the timeout resets on each chunk). It also promotes `App::on_system_wake` to a multi-subscriber `Subscription` API and uses it in the auto-updater to cancel an interrupted check/download on wake and start a fresh attempt.\n\n## Self-Review Checklist:\n\n- [x] I've reviewed my own diff for quality, security, and reliability\n- [x] Unsafe blocks (if any) have justifying comments\n- [x] The content adheres to Zed's UI standards ([UX/UI](https://github.com/zed-industries/zed/blob/main/CONTRIBUTING.md#uiux-checklist) and [icon](https://github.com/zed-industries/zed/blob/main/crates/icons/README.md) guidelines)\n- [ ] Tests cover the new/changed behavior\n- [x] Performance impact has been considered and is acceptable\n\nRelease Notes:\n\n- Fix hanging Zed update downloads after system sleep\n",
+  "captured_at": "2026-08-30T05:58:17+00:00",
+  "case_id": "zed-pr-60301",
+  "changed_files": 3,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "notify-slack",
+      "status": "COMPLETED",
+      "workflowName": "Guild New PR Notification"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-authorship-and-label",
+      "status": "COMPLETED",
+      "workflowName": "PR Issue Labeler"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "orchestrate",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_style",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri_scheduler",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "doctests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_workspace_binaries",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build_visual_tests_binary",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_wasm",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_dependencies",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_docs",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_licenses",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_scripts",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_postgres_and_protobuf_migrations",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "extension_tests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tests_pass",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "31fc9d5f4710e30a4908525f6f0b930fce71e6f6",
+  "deletions": 17,
+  "files": [
+    {
+      "additions": 28,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/auto_update/src/auto_update.rs"
+    },
+    {
+      "additions": 30,
+      "changeType": "MODIFIED",
+      "deletions": 17,
+      "path": "crates/gpui/src/app.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/reqwest_client/src/reqwest_client.rs"
+    }
+  ],
+  "head_sha": "8ddbe4d034692d3f1eee3f0f952adfaef511a158",
+  "issues": [],
+  "patch_sha256": "fe298ce06eb988718b14685154bba4ff5bc098c2d2a3882bdd94472aec24b944",
+  "pr_number": 60301,
+  "repo": "zed-industries/zed",
+  "schema_version": 1,
+  "title": "Fix hanging updates after system sleep",
+  "url": "https://github.com/zed-industries/zed/pull/60301"
+}

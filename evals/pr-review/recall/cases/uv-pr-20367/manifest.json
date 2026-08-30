@@ -1,0 +1,431 @@
+{
+  "additions": 201,
+  "author": "charliermarsh",
+  "base_sha": "3d92ddb084041992ba92bc64ef0bff549a10b048",
+  "body": "## Summary\r\n\r\nAdd pip-compatible `--cert <path>` support to all `uv pip` commands. The option is scoped to the `uv pip` namespace, so other uv commands continue to reject it.\r\n\r\nAn explicit certificate bundle replaces uv's default, system, and `SSL_CERT_FILE` / `SSL_CERT_DIR` trust sources for that invocation, matching pip's behavior without modifying the environment inherited by child processes.\r\n",
+  "captured_at": "2026-08-30T05:57:27+00:00",
+  "case_id": "uv-pr-20367",
+  "changed_files": 11,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "plan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / rust",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / prettier",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / python",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / ruff",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / ty",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / shellcheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / validate-pyproject",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / readme",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / clippy on linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / clippy on windows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / hawk",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / cargo shear",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / typos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-docs / mkdocs",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-zizmor / zizmor",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-publish / cargo publish dry-run",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-release / dist plan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lock / uv lockfiles",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-generated-files / cargo dev generate-all",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test / cargo test on macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 1 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 2 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 3 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-windows-trampolines",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux libc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux armv7 gnueabihf",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / macos aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / macos x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / windows x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / windows aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / msrv",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / android aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / freebsd",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build-release-binaries",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build-docker",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / walltime build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / simulated",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / walltime on aarch64 linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / windows x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / windows aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-integration",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-system",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / prefecthq/prefect",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / pallets/flask",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / pydantic/pydantic-core",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test uv publish",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "all required jobs passed",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodSpeed Performance Analysis",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "2937610e418bf5bb8e8922f5c935e67215d4f8c1",
+  "deletions": 53,
+  "files": [
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 18,
+      "path": "crates/uv-cli/src/compat.rs"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/uv-cli/src/lib.rs"
+    },
+    {
+      "additions": 15,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "crates/uv-client/src/base_client.rs"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/uv-client/src/lib.rs"
+    },
+    {
+      "additions": 46,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "crates/uv-client/src/tls.rs"
+    },
+    {
+      "additions": 66,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "crates/uv-client/tests/it/ssl_certs.rs"
+    },
+    {
+      "additions": 28,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "crates/uv/src/lib.rs"
+    },
+    {
+      "additions": 23,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/uv/tests/it/help.rs"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "crates/uv/tests/pip/pip_sync.rs"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "crates/uv/tests/pip_compile/pip_compile.rs"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "docs/concepts/authentication/certificates.md"
+    }
+  ],
+  "head_sha": "a9c7c42fb6c7294dad0f49cb4364307a6651cb8d",
+  "issues": [],
+  "patch_sha256": "3b7789ac854c538af365828640f6b7aa6d7211fc783fcbc2bd6f5bb4c92bd1a7",
+  "pr_number": 20367,
+  "repo": "astral-sh/uv",
+  "schema_version": 1,
+  "title": "Add `--cert` support to `uv pip`",
+  "url": "https://github.com/astral-sh/uv/pull/20367"
+}

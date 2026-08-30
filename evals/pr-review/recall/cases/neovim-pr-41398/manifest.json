@@ -1,0 +1,312 @@
+{
+  "additions": 20,
+  "author": "shubhxho",
+  "base_sha": "31de0d69fc745b342352f04a03cbcb90211c4edc",
+  "body": "Problem:\n`CTRL-]` via `vim.lsp.tagfunc` passes URI paths through `:tag`, which expands `$VAR`. Files such as `people_.$personId.tsx` then fail with E429.\n\nSolution:\n`fnameescape()` the filename in tag items so `$` is treated as literal.\n\nFixes #41313",
+  "captured_at": "2026-08-30T05:57:48+00:00",
+  "case_id": "neovim-pr-41398",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "s390x",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Backport Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "backport"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "old-cmake",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze",
+      "status": "COMPLETED",
+      "workflowName": "codeql"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs",
+      "status": "COMPLETED",
+      "workflowName": "docs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-commits",
+      "status": "COMPLETED",
+      "workflowName": "lintcommit"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "news.txt"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "remove-reviewers",
+      "status": "COMPLETED",
+      "workflowName": "reviewers: remove"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "security: zizmor GHA analyzer"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lintc",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasmtime",
+      "status": "COMPLETED",
+      "workflowName": "wasm"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "windows-asan",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "use-existing-src",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ai-assisted",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "OpenBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "request-reviewer",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clang-analyzer",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu tsan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "macos arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (linux)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (macos 15)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (windows)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (functional)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (old)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "with-external-deps",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "31de0d69fc745b342352f04a03cbcb90211c4edc",
+  "deletions": 1,
+  "files": [
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "runtime/lua/vim/lsp/_tagfunc.lua"
+    },
+    {
+      "additions": 18,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "test/functional/plugin/lsp_spec.lua"
+    }
+  ],
+  "head_sha": "6d9c6083906d7e2d75159952b4c0e90ccf606d7d",
+  "issues": [
+    {
+      "body": "### Problem\n\nI have a filename that contains a dollar sign (because I'm using [TanStack Router's file-based routing](https://tanstack.com/router/latest/docs/routing/file-based-routing), where dollar signs have special meaning). When I try to jump to the definition of the symbol under my cursor (using `CTRL-]`), Neovim treats the whole segment that includes the dollar sign as blank, and complains that there is no file with a matching name:\n\n```\nE429: File \".../people_..tsx\" does not exist\n```\n\nAfter some investigation, it seems that Neovim is trying to expand the variable $personId, and replaces it with an empty string as it's not set. I can tell this is happening because if I `export $personId=1` before starting Neovim, then I get the error \"E429: File \".../people_.1.tsx\" does not exist\".\n\nAs a workaround, I can `export $personId='$personId'` before starting Neovim, and code navigation in this file works.\n\n\n### Steps to reproduce using \"nvim --clean -u minimal_init.lua\"\n\nCreate four files:\n\nminimal_init.lua:\n\n```lua\nlocal pattern = \"typescriptreact\"\n-- Taken from https://github.com/neovim/nvim-lspconfig/blob/51dbf5359da86721662c87ca10eb73add973737b/lsp/tsc.lua#L66\nlocal cmd = function(dispatchers, config)\n\tlocal cmd = \"tsc\"\n\tlocal bins = { \"tsc\", \"tsgo\" }\n\tfor _, bin in ipairs(bins) do\n\t\tif (config or {}).root_dir then\n\t\t\tlocal local_cmd = vim.fs.joinpath(config.root_dir, \"node_modules/.bin\", bin)\n\t\t\tif vim.fn.executable(local_cmd) == 1 then\n\t\t\t\tcmd = local_cmd\n\t\t\t\tbreak\n\t\t\tend\n\t\tend\n\t\tif vim.fn.executable(bin) == 1 then\n\t\t\tcmd = bin\n\t\t\tbreak\n\t\tend\n\tend\n\treturn vim.lsp.rpc.start({ cmd, \"--lsp\", \"--stdio\" }, dispatchers)\nend\nlocal root_markers =\n\t{ \"package-lock.json\", \"yarn.lock\", \"pnpm-lock.yaml\", \"bun.lockb\", \"bun.lock\", \".git\", \".editorconfig\" }\nlocal settings = vim.empty_dict()\n\nvim.api.nvim_create_autocmd(\"FileType\", {\n\tpattern = pattern,\n\tcallback = function(args)\n\t\tlocal match = vim.fs.find(root_markers, { path = args.file, upward = true })[1]\n\t\tlocal root_dir = match and vim.fn.fnamemodify(match, \":p:h\") or nil\n\t\tvim.lsp.start({\n\t\t\tname = \"bugged-ls\",\n\t\t\tcmd = cmd,\n\t\t\troot_dir = root_dir,\n\t\t\tsettings = settings,\n\t\t})\n\tend,\n})\n```\n\n.editorconfig (empty)\n\na.tsx:\n\n```tsx\nfunction f(x: string) { return x }\n```\n\na.$b.tsx:\n\n\n```tsx\nfunction g(x: string) { return x }\n```\n\n- Install tsc, e.g. `npm init -y`, `npm install typescript`.\n- Run `nvim --clean -u minimal_init.lua a.tsx`, and hit `CTRL-]` on the final `x`. Your cursor will be taken to the `x` parameter.\n- Make sure the the env var `b` is unset. Run `nvim --clean -u minimal_init.lua a.\\$b.tsx`, and hit `CTRL-]` on the final `x`. You will see an error similar to the above.\n\n\n### Expected behavior\n\n`CTRL-]` on the final `x` works without error in a.$b.tsx too, taking the cursor to the `x` parameter.\n\n### Nvim version (nvim -v)\n\nNVIM v0.13.0-dev-1315+g69e61d52e2\n\n### Language server name/version\n\ntsc 7.0.2\n\n### Operating system/version\n\nubuntu 26.04\n\n### Log file\n\nhttps://gist.github.com/mattgallagher92/1a4a45a9a4e7d0d159204100a7a52d26",
+      "number": 41313,
+      "title": "LSP: dollar signs in URIs treated as variables to expand",
+      "url": "https://github.com/neovim/neovim/issues/41313"
+    }
+  ],
+  "patch_sha256": "9b102182159c6127fc6940e69ef86d1ec767417c325b21870937b9c7c832c579",
+  "pr_number": 41398,
+  "repo": "neovim/neovim",
+  "schema_version": 1,
+  "title": "fix(lsp): do not expand $VAR in tagfunc filenames",
+  "url": "https://github.com/neovim/neovim/pull/41398"
+}

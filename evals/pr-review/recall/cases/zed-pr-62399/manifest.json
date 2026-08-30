@@ -1,0 +1,408 @@
+{
+  "additions": 20,
+  "author": "ChristopherBiscardi",
+  "base_sha": "1271f8b0e8f3278eed5dd3fc12ad4bd30dce2c5d",
+  "body": "This reverts commit 6297c88f428a99741a7bfb33f31dfe98123bb8e4.\r\n\r\n---\r\n\r\nfixes #62286\r\nfixes #62095\r\n\r\nhttps://github.com/zed-industries/zed/pull/61467 fixed its intended bug, but at the same time introduced an issue where running tasks that would cause new tasks to be terminated immediately. https://github.com/zed-industries/zed/pull/62322 tried to fix that forward, but was unsuccessful. In the mean-time I am going to revert the original PR.\r\n\r\nWe can try to re-land the original bugfix in a future PR.\r\n\r\nRelease Notes:\r\n\r\n- N/A\r\n",
+  "captured_at": "2026-08-30T05:58:13+00:00",
+  "case_id": "zed-pr-62399",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "react",
+      "status": "COMPLETED",
+      "workflowName": "Guild New PR Notification"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-authorship-and-label",
+      "status": "COMPLETED",
+      "workflowName": "PR Issue Labeler"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "orchestrate",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_style",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri_scheduler",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "doctests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_workspace_binaries",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build_visual_tests_binary",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_wasm",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_dependencies",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_docs",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_licenses",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_scripts",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_postgres_and_protobuf_migrations",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "extension_tests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tests_pass",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "1271f8b0e8f3278eed5dd3fc12ad4bd30dce2c5d",
+  "deletions": 227,
+  "files": [
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 72,
+      "path": "crates/terminal/src/pty_info.rs"
+    },
+    {
+      "additions": 9,
+      "changeType": "MODIFIED",
+      "deletions": 155,
+      "path": "crates/terminal/src/terminal.rs"
+    }
+  ],
+  "head_sha": "8371f25da4f9a84602b0bfbe61f28cc876a21682",
+  "issues": [
+    {
+      "body": "### Reproduction steps\n\n1. Create .zed/tasks.json:\n`[\n  {\n    \"label\": \"Repro\",\n    \"command\": \"echo PID $$; sleep 5; echo done\",\n    \"use_new_terminal\": false\n  }\n]`\n2. Run Tasks: Spawn and select \"Repro\"\n3. Wait for the task to finish successfully\n4. Leave the terminal tab open\n5. Run Tasks: Spawn again and select \"Repro\"\n\nExpected:\nThe task runs successfully a second time in the existing terminal.\n\nActual:\nThe task is immediately terminated:\n\nPID 12345\n\u23f5 Task `Repro` terminated by signal: 9\n\u23f5 Command: /bin/bash -i -c 'echo PID $; sleep 5; echo done'\n\n### Current vs. Expected behavior\n\nExpected:\nThe task runs successfully a second time in the existing terminal.\n\nActual:\nThe task is immediately terminated:\n\nPID 12345\n\u23f5 Task `Repro` terminated by signal: 9\n\u23f5 Command: /bin/bash -i -c 'echo PID $; sleep 5; echo done'\n\n### Zed version and system specs\n\nZed: v1.14.2+preview.334.c56b44b30cc03f42b74e9335e471ee2570d807d9 (Zed Preview) \nOS: Linux Wayland ubuntu 26.04\nMemory: 6.1 GiB\nArchitecture: x86_64\nGPU: AMD Radeon Graphics (RADV RENOIR) || radv || Mesa 26.0.3-1ubuntu1\n\n### Attach Zed log file\n\n<details><summary>Zed.log</summary>\n\n<!-- Paste your log inside the code block. -->\n```log\n\n```\n\n</details>\n\n\n### Relevant Zed settings\n\n<details><summary>settings.json</summary>\n\n<!-- Paste your settings inside the code block. -->\n```json\n\n```\n\n</details>\n\n\n### Relevant Keymap\n\n<details><summary>keymap.json</summary>\n\n<!-- Paste your keymap file inside the code block. -->\n```json\n\n```\n\n</details>\n\n\n### (for AI issues) Model provider details\n\n_No response_\n\n### If you are using WSL on Windows, what flavor of Linux are you using?\n\n_No response_",
+      "number": 62095,
+      "title": "Tasks terminate with SIGKILL when re-run in an existing terminal",
+      "url": "https://github.com/zed-industries/zed/issues/62095"
+    },
+    {
+      "body": "### Reproduction steps\n\nTry to start this task with a key.\n{\n    \"label\": \"Run App\",\n    \"command\": \"odin run game -show-timings\",\n    \"use_new_terminal\": false,\n    \"allow_concurrent_runs\": false,\n  },\n\nIt will run once. It won't run again until you close the console.\nIt gives the follwing message in the console.\n\n\u23f5 Task `Run App` terminated by signal: 15\n\u23f5 Command: /bin/fish -i -c 'odin run game -show-timings'\n\n\n### Current vs. Expected behavior\n\nIt does not run the task again\nIt should.\n\n### Zed version and system specs\n\nZed: v1.14.2+stable (Zed) \nOS: Linux Wayland cachyos\nMemory: 15.5 GiB\nArchitecture: x86_64\nGPU: NVIDIA GeForce GTX 1660 SUPER || NVIDIA || 610.57.04\n\n### Attach Zed log file\n\n<details><summary>Zed.log</summary>\n\n<!-- Paste your log inside the code block. -->\n```log\n\n```\n\n</details>\n\n\n### Relevant Zed settings\n\n<details><summary>settings.json</summary>\n\n<!-- Paste your settings inside the code block. -->\n```json\n\n```\n\n</details>\n\n\n### Relevant Keymap\n\n<details><summary>keymap.json</summary>\n\n<!-- Paste your keymap file inside the code block. -->\n```json\n\n```\n\n</details>\n\n\n### (for AI issues) Model provider details\n\n_No response_\n\n### If you are using WSL on Windows, what flavor of Linux are you using?\n\n_No response_",
+      "number": 62286,
+      "title": "Task won't re-run",
+      "url": "https://github.com/zed-industries/zed/issues/62286"
+    }
+  ],
+  "patch_sha256": "13fd066d66922864ad91da2536491248492bd48059cbb4962dad91a91414f6f6",
+  "pr_number": 62399,
+  "repo": "zed-industries/zed",
+  "schema_version": 1,
+  "title": "Revert \"terminal: Actually close process groups when the terminal is closed (#61467)\"",
+  "url": "https://github.com/zed-industries/zed/pull/62399"
+}

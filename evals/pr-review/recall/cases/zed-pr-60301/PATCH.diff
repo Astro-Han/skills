@@ -1,0 +1,166 @@
+From 8ddbe4d034692d3f1eee3f0f952adfaef511a158 Mon Sep 17 00:00:00 2001
+From: Anthony Eid <hello@anthonyeid.me>
+Date: Thu, 2 Jul 2026 11:41:06 -0700
+Subject: [PATCH] fix hanging updates after system sleep
+
+---
+ crates/auto_update/src/auto_update.rs       | 28 ++++++++++++
+ crates/gpui/src/app.rs                      | 47 +++++++++++++--------
+ crates/reqwest_client/src/reqwest_client.rs |  2 +
+ 3 files changed, 60 insertions(+), 17 deletions(-)
+
+diff --git a/crates/auto_update/src/auto_update.rs b/crates/auto_update/src/auto_update.rs
+index 9786aa84d1622f..eb6afcfd67cea5 100644
+--- a/crates/auto_update/src/auto_update.rs
++++ b/crates/auto_update/src/auto_update.rs
+@@ -170,6 +170,7 @@ pub struct AutoUpdater {
+     pending_poll: Option<Task<Option<()>>>,
+     quit_subscription: Option<gpui::Subscription>,
+     update_check_type: UpdateCheckType,
++    _wake_subscription: gpui::Subscription,
+ }
+ 
+ #[derive(Deserialize, Serialize, Clone, Debug)]
+@@ -409,6 +410,16 @@ impl AutoUpdater {
+         })
+         .detach();
+ 
++        // A download or check that was in flight when the machine went to sleep
++        // is almost certainly riding a TCP connection that silently died during
++        // suspend, so it would otherwise appear to stall indefinitely.
++        let wake_subscription = cx.on_system_wake({
++            let this = cx.entity().downgrade();
++            move |cx| {
++                this.update(cx, |this, cx| this.restart_after_wake(cx)).ok();
++            }
++        });
++
+         Self {
+             status: AutoUpdateStatus::Idle,
+             current_version,
+@@ -416,9 +427,26 @@ impl AutoUpdater {
+             pending_poll: None,
+             quit_subscription,
+             update_check_type: UpdateCheckType::Automatic,
++            _wake_subscription: wake_subscription,
+         }
+     }
+ 
++    fn restart_after_wake(&mut self, cx: &mut Context<Self>) {
++        // Only network phases can be safely restarted. `Installing` is a local
++        // operation (mounting a dmg, rsync, etc.) that must not be interrupted.
++        if !matches!(
++            self.status,
++            AutoUpdateStatus::Checking | AutoUpdateStatus::Downloading { .. }
++        ) {
++            return;
++        }
++
++        let check_type = self.update_check_type;
++        self.pending_poll.take();
++        self.status = AutoUpdateStatus::Idle;
++        self.poll(check_type, cx);
++    }
++
+     pub fn start_polling(&self, cx: &mut Context<Self>) -> Task<Result<()>> {
+         let poll_interval =
+             ReleaseChannel::try_global(cx).map_or(POLL_INTERVAL, |channel| match channel {
+diff --git a/crates/gpui/src/app.rs b/crates/gpui/src/app.rs
+index e6ca25ecae075e..ab302a8f06d87f 100644
+--- a/crates/gpui/src/app.rs
++++ b/crates/gpui/src/app.rs
+@@ -234,23 +234,6 @@ impl Application {
+         self
+     }
+ 
+-    /// Invokes a handler when the system wakes from sleep.
+-    pub fn on_system_wake<F>(&self, mut callback: F) -> &Self
+-    where
+-        F: 'static + FnMut(&mut App),
+-    {
+-        let this = Rc::downgrade(&self.0);
+-        self.0
+-            .borrow_mut()
+-            .platform
+-            .on_system_wake(Box::new(move || {
+-                if let Some(app) = this.upgrade() {
+-                    callback(&mut app.borrow_mut());
+-                }
+-            }));
+-        self
+-    }
+-
+     /// Returns a handle to the [`BackgroundExecutor`] associated with this app, which can be used to spawn futures in the background.
+     pub fn background_executor(&self) -> BackgroundExecutor {
+         self.0.borrow().background_executor.clone()
+@@ -656,6 +639,7 @@ pub struct App {
+     pub(crate) keystroke_interceptors: SubscriberSet<(), KeystrokeObserver>,
+     pub(crate) keyboard_layout_observers: SubscriberSet<(), Handler>,
+     pub(crate) thermal_state_observers: SubscriberSet<(), Handler>,
++    pub(crate) system_wake_observers: SubscriberSet<(), Handler>,
+     pub(crate) release_listeners: SubscriberSet<EntityId, ReleaseListener>,
+     pub(crate) global_observers: SubscriberSet<TypeId, Handler>,
+     pub(crate) quit_observers: SubscriberSet<(), QuitHandler>,
+@@ -779,6 +763,7 @@ impl App {
+                 keystroke_interceptors: SubscriberSet::new(),
+                 keyboard_layout_observers: SubscriberSet::new(),
+                 thermal_state_observers: SubscriberSet::new(),
++                system_wake_observers: SubscriberSet::new(),
+                 global_observers: SubscriberSet::new(),
+                 quit_observers: SubscriberSet::new(),
+                 restart_observers: SubscriberSet::new(),
+@@ -835,6 +820,18 @@ impl App {
+             }
+         }));
+ 
++        platform.on_system_wake(Box::new({
++            let app = Rc::downgrade(&app);
++            move || {
++                if let Some(app) = app.upgrade() {
++                    let cx = &mut app.borrow_mut();
++                    cx.system_wake_observers
++                        .clone()
++                        .retain(&(), move |callback| (callback)(cx));
++                }
++            }
++        }));
++
+         platform.on_quit(Box::new({
+             let cx = Rc::downgrade(&app);
+             move || {
+@@ -1256,6 +1253,22 @@ impl App {
+         subscription
+     }
+ 
++    /// Invokes a handler when the system wakes from sleep.
++    pub fn on_system_wake<F>(&self, mut callback: F) -> Subscription
++    where
++        F: 'static + FnMut(&mut App),
++    {
++        let (subscription, activate) = self.system_wake_observers.insert(
++            (),
++            Box::new(move |cx| {
++                callback(cx);
++                true
++            }),
++        );
++        activate();
++        subscription
++    }
++
+     /// Returns the appearance of the application's windows.
+     pub fn window_appearance(&self) -> WindowAppearance {
+         self.platform.window_appearance()
+diff --git a/crates/reqwest_client/src/reqwest_client.rs b/crates/reqwest_client/src/reqwest_client.rs
+index 60908d8a8d4f45..e654c6bf620817 100644
+--- a/crates/reqwest_client/src/reqwest_client.rs
++++ b/crates/reqwest_client/src/reqwest_client.rs
+@@ -30,6 +30,8 @@ impl ReqwestClient {
+         reqwest::Client::builder()
+             .use_rustls_tls()
+             .connect_timeout(Duration::from_secs(10))
++            // Bail out of a request whose body stops producing bytes entirely
++            .read_timeout(Duration::from_secs(30))
+             // Detect and drop connections that have silently gone bad on a
+             // flaky path (NAT timeouts, resets) instead of reusing them. A
+             // stale reused HTTP/2 connection is a common source of

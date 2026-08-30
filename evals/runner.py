@@ -38,6 +38,8 @@ REAL_PR_FIXTURE = ROOT / "pr-review" / "real_fixture.py"
 REAL_PR_SELECTION = ROOT / "pr-review" / "real" / "selection.json"
 DIVERSE_PR_CASES = ROOT / "pr-review" / "diverse" / "cases"
 DIVERSE_PR_SELECTION = ROOT / "pr-review" / "diverse" / "selection.json"
+RECALL_PR_CASES = ROOT / "pr-review" / "recall" / "cases"
+RECALL_PR_SELECTION = ROOT / "pr-review" / "recall" / "selection.json"
 
 # The arm under test is the shipped skill itself, read from skills/<name>/. A named arm is a
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
@@ -48,6 +50,7 @@ PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
 PR_REVIEW_THREE_STATES_REF = "d4ea3b6bc9dc198a43024ae500373b8d0f5567ae"
 REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "36021bbfa0fed9b63b7a286bf48d83264aad4417"
 REVIEW_FEEDBACK_CAUSAL_BASELINE_REF = "af79986"
+PR_REVIEW_RECALL_BASELINE_REF = "e28f7da5a9503ec0a93c4db86108d6e8f222fd7d"
 
 PROMPTS = {
     "shared-sections": (
@@ -204,7 +207,7 @@ PROVIDERS = {
 
 def suite_runs(provider_name, reps=3, suite=None):
     runs = []
-    real_suites = {"pr-review-real", "pr-review-diverse"}
+    real_suites = {"pr-review-real", "pr-review-diverse", "pr-review-recall"}
     if suite in real_suites and reps != 1:
         raise ValueError("the real PR holdout requires exactly one paired run per case")
     pr_review_suites = {
@@ -217,6 +220,7 @@ def suite_runs(provider_name, reps=3, suite=None):
     supported_suites = set(pr_review_suites) | {
         "pr-review-real",
         "pr-review-diverse",
+        "pr-review-recall",
         "review-feedback-causal-design",
         "review-feedback-causal-holdout",
         "review-feedback-structural-compression",
@@ -258,6 +262,32 @@ def suite_runs(provider_name, reps=3, suite=None):
                 case_dir, manifest = indexed[selected_id]
                 for arm, skill_arm in (("without_skill", None), ("with_skill", SHIPPED)):
                     runs.append({"workspace": "pr-review-diverse-workspace",
+                                 "eval": manifest["case_id"], "rep": rep,
+                                 "arm": arm, "real_case": case_dir,
+                                 "repo": manifest["repo"],
+                                 "review_only": True,
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "pr-review",
+                                 "installed_skill_name": "pr-review-eval"})
+            continue
+
+        if suite == "pr-review-recall":
+            selected_ids = json.loads(RECALL_PR_SELECTION.read_text())["cases"]
+            indexed = {}
+            for manifest_path in RECALL_PR_CASES.glob("*/manifest.json"):
+                manifest = json.loads(manifest_path.read_text())
+                indexed[f"{manifest['repo']}#{manifest['pr_number']}"] = (
+                    manifest_path.parent,
+                    manifest,
+                )
+            for selected_id in selected_ids:
+                case_dir, manifest = indexed[selected_id]
+                arms = (
+                    ("baseline_skill", "git:" + PR_REVIEW_RECALL_BASELINE_REF),
+                    ("candidate_skill", SHIPPED),
+                )
+                for arm, skill_arm in arms:
+                    runs.append({"workspace": "pr-review-recall-workspace",
                                  "eval": manifest["case_id"], "rep": rep,
                                  "arm": arm, "real_case": case_dir,
                                  "repo": manifest["repo"],
@@ -538,7 +568,7 @@ def main():
     parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
                                             "pr-review-no-statuses", "pr-review-real",
-                                            "pr-review-diverse",
+                                            "pr-review-diverse", "pr-review-recall",
                                             "review-feedback-causal-design",
                                             "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",
@@ -558,8 +588,9 @@ def main():
 
     if args.suite == "pr-review-real" and not args.dry_run and args.repo_cache is None:
         parser.error("--repo-cache is required for pr-review-real")
-    if args.suite == "pr-review-diverse" and not args.dry_run and args.repo_cache_root is None:
-        parser.error("--repo-cache-root is required for pr-review-diverse")
+    if args.suite in {"pr-review-diverse", "pr-review-recall"} and not args.dry_run \
+            and args.repo_cache_root is None:
+        parser.error("--repo-cache-root is required for diverse real-PR suites")
 
     if args.dry_run:
         for spec in runs:

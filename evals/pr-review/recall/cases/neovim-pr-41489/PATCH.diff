@@ -1,0 +1,57 @@
+From c11ecd38292768bef92e886f97bf21de47df4427 Mon Sep 17 00:00:00 2001
+From: "Justin M. Keyes" <justinkz@gmail.com>
+Date: Tue, 25 Aug 2026 13:46:33 -0400
+Subject: [PATCH] Revert "fix(lsp): do not expand $VAR in tagfunc filenames
+ #41398"
+
+This reverts commit c5cb0350a6dc578e6ca73eefdd58159e1e039cbf.
+---
+ runtime/lua/vim/lsp/_tagfunc.lua    |  3 +--
+ test/functional/plugin/lsp_spec.lua | 18 ------------------
+ 2 files changed, 1 insertion(+), 20 deletions(-)
+
+diff --git a/runtime/lua/vim/lsp/_tagfunc.lua b/runtime/lua/vim/lsp/_tagfunc.lua
+index cad2e80bf80c1f..a71c83119930c6 100644
+--- a/runtime/lua/vim/lsp/_tagfunc.lua
++++ b/runtime/lua/vim/lsp/_tagfunc.lua
+@@ -12,10 +12,9 @@ local function mk_tag_item(name, range, uri, position_encoding)
+   -- This is get_line_byte_from_position is 0-indexed, call cursor expects a 1-indexed position
+   local pos = vim.pos.lsp(bufnr, range.start, position_encoding)
+   local byte = pos.col + 1
+-  -- :tag expands "$VAR" in filenames. Escape so URI paths keep literal "$". #41313
+   return {
+     name = name,
+-    filename = vim.fn.fnameescape(vim.uri_to_fname(uri)),
++    filename = vim.uri_to_fname(uri),
+     cmd = string.format([[/\%%%dl\%%%dc/]], range.start.line + 1, byte),
+   }
+ end
+diff --git a/test/functional/plugin/lsp_spec.lua b/test/functional/plugin/lsp_spec.lua
+index 7fa26ad3ae8c18..fabe2ed53d4b00 100644
+--- a/test/functional/plugin/lsp_spec.lua
++++ b/test/functional/plugin/lsp_spec.lua
+@@ -3242,24 +3242,6 @@ describe('LSP', function()
+         return {}
+       end)
+     end)
+-
+-    it('does not expand $ in tag filenames #41313', function()
+-      local result = exec_lua(function()
+-        vim.env.personId = 'EXPANDED'
+-        local dir = vim.fn.tempname()
+-        vim.fn.mkdir(dir, 'p')
+-        local f = vim.fs.abspath(dir .. '/people_.$personId.tsx')
+-        vim.fn.writefile({ 'symbol' }, f)
+-        _G.mock_locations[1].uri = vim.uri_from_fname(f)
+-        local tags = vim.lsp.tagfunc('symbol', 'c')
+-        vim.cmd.edit(tags[1].filename)
+-        return {
+-          bufname = vim.fs.abspath(vim.api.nvim_buf_get_name(0)),
+-          expected = f,
+-        }
+-      end)
+-      eq(result.expected, result.bufname)
+-    end)
+   end)
+ 
+   describe('cmd', function()

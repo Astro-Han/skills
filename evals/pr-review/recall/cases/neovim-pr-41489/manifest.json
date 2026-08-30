@@ -1,0 +1,305 @@
+{
+  "additions": 1,
+  "author": "justinmk",
+  "base_sha": "8adf6e769f6573ba98168bb4c81039cc8e0d5831",
+  "body": "Reverts neovim/neovim#41398\r\n\r\nhttps://github.com/neovim/neovim/pull/41398#issuecomment-5414331869",
+  "captured_at": "2026-08-30T05:57:52+00:00",
+  "case_id": "neovim-pr-41489",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "FAILURE",
+      "name": "lint-commits",
+      "status": "COMPLETED",
+      "workflowName": "lintcommit"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "s390x",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Backport Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "backport"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "old-cmake",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze",
+      "status": "COMPLETED",
+      "workflowName": "codeql"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs",
+      "status": "COMPLETED",
+      "workflowName": "docs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "news.txt"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "remove-reviewers",
+      "status": "COMPLETED",
+      "workflowName": "reviewers: remove"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "security: zizmor GHA analyzer"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lintc",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasmtime",
+      "status": "COMPLETED",
+      "workflowName": "wasm"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "windows-asan",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "use-existing-src",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ai-assisted",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "OpenBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-reviewer / request-reviewer",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clang-analyzer",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu tsan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (linux)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (macos 15)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (windows)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (functional)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (old)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "with-external-deps",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "8adf6e769f6573ba98168bb4c81039cc8e0d5831",
+  "deletions": 20,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "runtime/lua/vim/lsp/_tagfunc.lua"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 18,
+      "path": "test/functional/plugin/lsp_spec.lua"
+    }
+  ],
+  "head_sha": "c11ecd38292768bef92e886f97bf21de47df4427",
+  "issues": [],
+  "patch_sha256": "d8b6dd5d526b10d4fb56d070c3cea59664b219fa9aac4a36b931fb22df52e803",
+  "pr_number": 41489,
+  "repo": "neovim/neovim",
+  "schema_version": 1,
+  "title": "revert: \"fix(lsp): do not expand $VAR in tagfunc filenames\"",
+  "url": "https://github.com/neovim/neovim/pull/41489"
+}
