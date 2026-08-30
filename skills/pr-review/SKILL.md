@@ -27,7 +27,7 @@ Explain how it works, where the rule and source of truth belong, and how product
 
 - fixes the rule at one owner or adds copied state, synchronization, another loop, or a second source of truth;
 - uses an existing extension point or adds another implementation, wrapper, state machine, or compatibility path;
-- stays correct through supported interruption, retry, concurrency, restart, and recovery;
+- changes only what the problem requires: ask what else reaches the changed code—a different caller, an input the fix should not change, or state touched by another action such as retry, restart, or recovery—then choose one realistic case, follow it through production, and confirm the old correct result is preserved; if actions overlap, check one plausible order;
 - tests the real path: fixtures do not prove launchers, helpers do not prove callers, and in-process tests do not prove process races.
 
 ## Simplify the change

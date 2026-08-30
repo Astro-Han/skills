@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "decision": "Adopt the candidate only if it improves core-finding recall without weakening calibration or materially increasing review work.",
+  "baseline": {
+    "commit": "e28f7da5a9503ec0a93c4db86108d6e8f222fd7d",
+    "skill_path": "skills/pr-review/SKILL.md",
+    "sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2"
+  },
+  "candidate_sha256": "6bf6c3c100fa7310e0f4b16fcea86c5478a6747c6ede7ce75bc929e0f30e35cc",
+  "candidate_change": "Replace only the existing interruption, retry, concurrency, restart, and recovery bullet with one bounded non-target production-path preservation check.",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "sample": {
+    "positive_cases": 8,
+    "clean_cases": 8,
+    "minimum_repositories": 6,
+    "created_from": "2026-05-30",
+    "created_to": "2026-08-29",
+    "exclude_prior_design_and_evaluation_cases": true
+  },
+  "adopt_only_if": {
+    "minimum_additional_required_findings": 2,
+    "baseline_only_required_findings": 0,
+    "unsupported_p1_p2_responses_must_not_increase": true,
+    "decision_ready_reviews_must_not_decrease": true,
+    "maximum_median_command_and_output_growth_percent": 20
+  },
+  "other_outcomes": {
+    "one_net_finding_or_mixed_recall": "insufficient",
+    "fewer_than_eight_reliable_positive_cases": "insufficient",
+    "equal_or_lower_recall": "reject",
+    "worse_calibration": "reject",
+    "materially_more_review_work": "reject"
+  },
+  "opened_trajectory_cases_are_development_only": [
+    "apache/maka#3958",
+    "tailscale/tailscale#20673",
+    "neovim/neovim#41328"
+  ]
+}
