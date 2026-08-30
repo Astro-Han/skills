@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "iteration": "recall-luna-high-v1",
+  "executed_on": "2026-08-30",
+  "verdict": "reject",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "sample": {
+    "case_count": 16,
+    "positive_case_count": 8,
+    "clean_case_count": 8,
+    "repository_count": 7,
+    "enriched_diagnostic_sample": true,
+    "representative_prevalence_estimate": false
+  },
+  "execution": {
+    "planned_runs": 32,
+    "completed_runs": 32,
+    "failed_runs": 0,
+    "isolated_skill_reads": 32,
+    "user_level_pr_review_skill_reads": 0,
+    "baseline_skill_sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "candidate_skill_sha256": "6bf6c3c100fa7310e0f4b16fcea86c5478a6747c6ede7ce75bc929e0f30e35cc"
+  },
+  "blind_scoring": {
+    "independent_scorers": 2,
+    "primary_metric_disagreements": 0,
+    "decision_ready_disagreements_before_adjudication": 1,
+    "arm_labels_opened_after_scoring": true,
+    "gold_changed_after_execution": false
+  },
+  "scores": {
+    "baseline": {
+      "matched_required_findings": 3,
+      "responses_with_unsupported_p1_p2": 8,
+      "unsupported_p1_p2_claims": 8,
+      "decision_ready_reviews": 6
+    },
+    "candidate": {
+      "matched_required_findings": 2,
+      "responses_with_unsupported_p1_p2": 9,
+      "unsupported_p1_p2_claims": 10,
+      "decision_ready_reviews": 5
+    },
+    "paired_required_finding_cases": {
+      "both_matched": [
+        "gitea-pr-38250",
+        "neovim-pr-41489"
+      ],
+      "baseline_only": [
+        "pydantic-pr-13503"
+      ],
+      "candidate_only": []
+    }
+  },
+  "median_cost": {
+    "baseline": {
+      "commands": 40.5,
+      "tokens": 1376900,
+      "duration_ms": 284980,
+      "final_output_characters": 1435
+    },
+    "candidate": {
+      "commands": 50,
+      "tokens": 1646430,
+      "duration_ms": 326562,
+      "final_output_characters": 1458.5
+    },
+    "candidate_growth_percent": {
+      "commands": 23.45679,
+      "tokens": 19.575133,
+      "duration": 14.591199,
+      "final_output_characters": 1.637631
+    }
+  },
+  "frozen_gates": {
+    "at_least_two_additional_required_findings": false,
+    "no_baseline_only_required_finding": false,
+    "unsupported_p1_p2_responses_did_not_increase": false,
+    "decision_ready_reviews_did_not_decrease": false,
+    "median_commands_grew_no_more_than_20_percent": false,
+    "median_output_length_grew_no_more_than_20_percent": true
+  },
+  "trajectory_evidence": [
+    {
+      "case_id": "pydantic-pr-13503",
+      "arm": "candidate",
+      "observation": "The run constructed a production-shaped WeakValueDictionary key containing mutable Annotated metadata. Lookup succeeded before mutation and failed after mutation, but the final review reported no code finding."
+    },
+    {
+      "observation": "The candidate performed more exploration and surfaced adjacent possible defects, but added no frozen required finding and increased unsupported P1/P2 reporting."
+    }
+  ],
+  "limitations": [
+    "Each arm ran once per case, so this comparison supports the frozen decision but does not estimate model-level variance.",
+    "The positive set is deliberately enriched and cannot support a public defect-prevalence or percentage-improvement claim.",
+    "Blind scorers marked four mechanisms across six claims as possible gold gaps: remote-script environment CA handling, Grafana datasource fallback, global streaming read timeout, and background process-group cleanup.",
+    "If every possible gold gap were accepted, the candidate would have only one net additional discovery while still losing the baseline-only mutable-hash finding; that remains insufficient under the frozen rule."
+  ],
+  "adoption": {
+    "candidate_adopted": false,
+    "candidate_wording_retained": false,
+    "shipped_skill_changed": false
+  }
+}

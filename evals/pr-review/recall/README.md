@@ -53,3 +53,27 @@ access. Keep these metrics separate:
 
 The three already opened trajectory cases may be rerun only to confirm that the new instruction
 changes the intended review behavior. They never count toward adoption.
+
+## Result
+
+The frozen `recall-luna-high-v1` comparison rejected the candidate. All 32 GPT-5.6 Luna/high runs
+completed and read only their isolated Skill arm. Two blind scorers independently agreed on every
+required-finding match and unsupported P1/P2 count before the arm labels were opened.
+
+The baseline matched 3 of 8 required findings; the candidate matched 2. The candidate lost the
+mutable-hash/cache finding in `pydantic-pr-13503` and added no required finding. Unsupported P1/P2
+responses increased from 8 to 9, decision-ready reviews decreased from 6 to 5, and median command
+count grew 23.5 percent. Median final-output length grew only 1.6 percent, so the extra work was in
+exploration rather than reporting.
+
+Trajectory inspection found the decisive failure: the candidate run for `pydantic-pr-13503`
+constructed a production-shaped cache probe whose lookup changed from success to failure after
+mutating the new hash input, but its final review still reported no code finding. The added question
+therefore increased exploration without making contradictory evidence authoritative in the final
+decision. Four possible gold gaps remain noted as limitations; even accepting all of them would
+produce only one net candidate discovery with a baseline-only loss, which is still insufficient
+under the frozen rule.
+
+[`results/recall-luna-high-v1.json`](results/recall-luna-high-v1.json) contains the aggregate scores,
+costs, gate decisions, trajectory evidence, and limitations. The candidate wording has been removed;
+the Skill remains at the frozen baseline behavior.
