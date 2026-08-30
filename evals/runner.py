@@ -36,6 +36,8 @@ CONCURRENCY = 6
 REAL_PR_CASES = ROOT / "pr-review" / "real" / "cases"
 REAL_PR_FIXTURE = ROOT / "pr-review" / "real_fixture.py"
 REAL_PR_SELECTION = ROOT / "pr-review" / "real" / "selection.json"
+DIVERSE_PR_CASES = ROOT / "pr-review" / "diverse" / "cases"
+DIVERSE_PR_SELECTION = ROOT / "pr-review" / "diverse" / "selection.json"
 
 # The arm under test is the shipped skill itself, read from skills/<name>/. A named arm is a
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
@@ -202,7 +204,8 @@ PROVIDERS = {
 
 def suite_runs(provider_name, reps=3, suite=None):
     runs = []
-    if suite == "pr-review-real" and reps != 1:
+    real_suites = {"pr-review-real", "pr-review-diverse"}
+    if suite in real_suites and reps != 1:
         raise ValueError("the real PR holdout requires exactly one paired run per case")
     pr_review_suites = {
         "pr-review": PR_REVIEW_DESIGN_CASES,
@@ -213,6 +216,7 @@ def suite_runs(provider_name, reps=3, suite=None):
     }
     supported_suites = set(pr_review_suites) | {
         "pr-review-real",
+        "pr-review-diverse",
         "review-feedback-causal-design",
         "review-feedback-causal-holdout",
         "review-feedback-structural-compression",
@@ -223,7 +227,7 @@ def suite_runs(provider_name, reps=3, suite=None):
         raise ValueError("unsupported suite: {!r}".format(suite))
     if suite == "debug" and provider_name != "claude":
         raise ValueError("the debug suite currently supports only the claude provider")
-    if suite == "pr-review-real" and provider_name != "codex":
+    if suite in real_suites and provider_name != "codex":
         raise ValueError("the real PR holdout currently supports only the codex provider")
 
     for rep in range(1, reps + 1):
@@ -235,6 +239,28 @@ def suite_runs(provider_name, reps=3, suite=None):
                     runs.append({"workspace": "pr-review-real-workspace",
                                  "eval": case_id, "rep": rep,
                                  "arm": arm, "real_case": REAL_PR_CASES / case_id,
+                                 "review_only": True,
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "pr-review",
+                                 "installed_skill_name": "pr-review-eval"})
+            continue
+
+        if suite == "pr-review-diverse":
+            selected_ids = json.loads(DIVERSE_PR_SELECTION.read_text())["cases"]
+            indexed = {}
+            for manifest_path in DIVERSE_PR_CASES.glob("*/manifest.json"):
+                manifest = json.loads(manifest_path.read_text())
+                indexed[f"{manifest['repo']}#{manifest['pr_number']}"] = (
+                    manifest_path.parent,
+                    manifest,
+                )
+            for selected_id in selected_ids:
+                case_dir, manifest = indexed[selected_id]
+                for arm, skill_arm in (("without_skill", None), ("with_skill", SHIPPED)):
+                    runs.append({"workspace": "pr-review-diverse-workspace",
+                                 "eval": manifest["case_id"], "rep": rep,
+                                 "arm": arm, "real_case": case_dir,
+                                 "repo": manifest["repo"],
                                  "review_only": True,
                                  "skill_arm": skill_arm,
                                  "skill_name": "pr-review",
@@ -356,7 +382,17 @@ def materialize_real_case(case_dir, repo_cache, work):
     return result.stdout.strip()
 
 
-def prepare(provider, spec, iteration, repo_cache=None):
+def repository_cache_for(spec, repo_cache=None, repo_cache_root=None):
+    if repo := spec.get("repo"):
+        if repo_cache_root is None:
+            raise ValueError("diverse PR runs require a repository cache root")
+        return repo_cache_root / repo.replace("/", "--")
+    if repo_cache is None:
+        raise ValueError("real PR runs require a repository cache")
+    return repo_cache
+
+
+def prepare(provider, spec, iteration, repo_cache=None, repo_cache_root=None):
     rundir = (ROOT / spec["workspace"] / iteration
               / "{}-r{}".format(spec["eval"], spec["rep"]) / spec["arm"])
     work = rundir / "work"
@@ -364,9 +400,8 @@ def prepare(provider, spec, iteration, repo_cache=None):
         shutil.rmtree(rundir)
     rundir.mkdir(parents=True)
     if real_case := spec.get("real_case"):
-        if repo_cache is None:
-            raise ValueError("real PR runs require a repository cache")
-        prompt = materialize_real_case(real_case, repo_cache, work)
+        cache = repository_cache_for(spec, repo_cache, repo_cache_root)
+        prompt = materialize_real_case(real_case, cache, work)
     else:
         prompt = PROMPTS[spec["eval"]]
         shutil.copytree(ROOT / "fixtures" / spec["fixture"], work,
@@ -469,10 +504,12 @@ def finalize(provider, rundir, work, status, duration, run_tests=True):
     }, indent=2))
 
 
-def run_one(provider, spec, iteration, repo_cache=None):
+def run_one(provider, spec, iteration, repo_cache=None, repo_cache_root=None):
     label = "{}/{}/{}-r{}/{}".format(provider.name, spec["workspace"], spec["eval"],
                                      spec["rep"], spec["arm"])
-    rundir, work, skill_args, prompt = prepare(provider, spec, iteration, repo_cache)
+    rundir, work, skill_args, prompt = prepare(
+        provider, spec, iteration, repo_cache, repo_cache_root
+    )
     cmd = provider.command(provider.model, prompt, skill_args)
     status, duration = invoke(provider, cmd, work, rundir)
     finalize(provider, rundir, work, status, duration,
@@ -496,9 +533,12 @@ def main():
                         help="run only this exact arm from the selected suite; repeatable")
     parser.add_argument("--repo-cache", type=Path,
                         help="full local repository used to materialize real PR fixtures")
+    parser.add_argument("--repo-cache-root", type=Path,
+                        help="directory of OWNER--REPO caches for the diverse real-PR suite")
     parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
                                             "pr-review-no-statuses", "pr-review-real",
+                                            "pr-review-diverse",
                                             "review-feedback-causal-design",
                                             "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",
@@ -518,6 +558,8 @@ def main():
 
     if args.suite == "pr-review-real" and not args.dry_run and args.repo_cache is None:
         parser.error("--repo-cache is required for pr-review-real")
+    if args.suite == "pr-review-diverse" and not args.dry_run and args.repo_cache_root is None:
+        parser.error("--repo-cache-root is required for pr-review-diverse")
 
     if args.dry_run:
         for spec in runs:
@@ -531,7 +573,8 @@ def main():
           flush=True)
     failures = 0
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
-        futures = {pool.submit(run_one, provider, spec, args.iteration, args.repo_cache): spec
+        futures = {pool.submit(run_one, provider, spec, args.iteration,
+                               args.repo_cache, args.repo_cache_root): spec
                    for spec in runs}
         for done, future in enumerate(as_completed(futures), start=1):
             try:

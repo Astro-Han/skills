@@ -95,3 +95,15 @@ python3 evals/pr-review/real_fixture.py verify-diverse-cases \
   --cases-root evals/pr-review/diverse/cases \
   --selection evals/pr-review/diverse/selection.json
 ```
+
+After reconciled private gold is frozen, place one local Git cache per repository under a cache
+root using the `OWNER--REPO` directory name. Preview the exact 48-run plan before execution:
+
+```bash
+python3 evals/runner.py --provider codex --model gpt-5.6-luna \
+  --suite pr-review-diverse --reps 1 --iteration diverse-luna-high-v1 \
+  --repo-cache-root /path/to/cache-root --dry-run
+```
+
+Remove `--dry-run` only after the gold gate is complete. The runner materializes each case from its
+own repository cache and keeps the same isolated Skill/no-Skill boundary as the first real-PR suite.
