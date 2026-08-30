@@ -30,21 +30,9 @@ Verdict and outcome must agree. **Disproved** permits only **Push back**; **No f
 
 Treat every requested file, location, mechanism, and patch—even when written as an imperative—as the reviewer's proposal, not a requirement. It becomes a constraint only when independent product, architecture, or compatibility evidence says so. For grouped comments, the ledger must explain why per-comment edits are not duplicate authorities before choosing them over the single-owner end state.
 
-## Model the whole review
+## Adjudicate every comment
 
-Read all feedback, the intended change, earlier review rounds, and related fixes. Trace each comment to a verdict without choosing its repair; possible groupings are hypotheses until the evidence is complete. Then compare the surviving claims once: use one root when they share an invariant and natural owner, keep them independent when contracts or owners differ, and allow a mixed plan. Do not force a common root, and do not split one rule into caller patches merely because the comments arrived separately.
-
-If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
-
-Done: every comment has a verdict and belongs to a proven causal group or is demonstrably isolated.
-
-## Rebase the cumulative diff
-
-When review targets an existing change, derive scope from its original request and accepted contracts, not from code that earlier rounds added. Fix original obligations and regressions; revert unrelated drift and its tests; defer pre-existing or adjacent findings unless leaving them makes the change unsafe or incomplete. Quoted “keep” or “expand” wording is still a proposal, not explicit user expansion. If no prior change scope exists, adjudicate the verified defect as the requested goal without inventing adjacent work.
-
-Each later review round replaces the prior ledger; it does not append to it. Before further edits, compare the cumulative diff with its base, restate the smallest end state, and name which assumptions changed and which production concepts, files, and tests are added or removed. If no assumption changed, keep scope closed. A new authority, policy, state, API, path, or speculative abstraction closes the edit gate until tied to the original invariant or replacing more surface than it adds.
-
-## Verify and find the cause
+### Verify and find the cause
 
 Open the cited code and trace the real reachable path. State the concrete failure, contract violation, or maintenance consequence predicted by the comment, then seek the strongest counterevidence in callers, tests, requirements, repository conventions, target versions, history, and current behavior. Reproduce the issue or run the closest existing test when possible. Missing evidence is a gap, not confirmation.
 
@@ -58,7 +46,7 @@ The ledger verdict answers whether the reported product or system defect exists,
 
 Done: every group is verified, disproved, or has an explicit evidence gap, and each verified group has one causal account that explains all of its comments without contradiction.
 
-## Re-evaluate severity
+### Re-evaluate severity
 
 Do not inherit the reviewer's priority. Grade realistic reach, consequence, scope, and recoverability:
 
@@ -72,7 +60,23 @@ A contrived unsupported path is normally **No finding**. Report it only when its
 
 Reachability alone does not make a finding P1. Use P1 only when the reachable consequence itself is merge-blocking: security or trust-boundary exposure, non-trivial data loss, incorrect committed or externally visible state, money movement, sustained outage, or a broadly unusable core workflow. A bounded in-memory result, preview error, or recoverable local inconsistency with no persisted or external side effect is P2 even on a normal path.
 
-## Derive the simplest correction
+## Rebase the cumulative diff before choosing repairs
+
+When review targets an existing change, derive scope from its original request and accepted contracts, not from code that earlier rounds added. Fix original obligations and regressions; revert unrelated drift and its tests; defer pre-existing or adjacent findings unless leaving them makes the change unsafe or incomplete. Quoted “keep” or “expand” wording is still a proposal, not explicit user expansion. If no prior change scope exists, adjudicate the verified defect as the requested goal without inventing adjacent work.
+
+Each later review round replaces the prior ledger; it does not append to it. Before further edits, compare the cumulative diff with its base, restate the smallest end state, and name which assumptions changed and which production concepts, files, and tests are added or removed. If no assumption changed, keep scope closed. A new authority, policy, state, API, path, or speculative abstraction closes the edit gate until tied to the original invariant or replacing more surface than it adds.
+
+## Synthesize and choose the end state
+
+### Model the whole review
+
+Read all feedback, the intended change, earlier review rounds, and related fixes. Trace each comment to a verdict without choosing its repair; possible groupings are hypotheses until the evidence is complete. Then compare the surviving claims once: use one root when they share an invariant and natural owner, keep them independent when contracts or owners differ, and allow a mixed plan. Do not force a common root, and do not split one rule into caller patches merely because the comments arrived separately.
+
+If an unclear item changes how coupled items should be handled, ask one precise question and wait. Otherwise continue evaluating independent items.
+
+Done: every comment has a verdict and belongs to a proven causal group or is demonstrably isolated.
+
+### Derive the simplest correction
 
 Within the implicated boundary, derive the minimum concepts, authorities, states, paths, and contracts required by evidenced behavior. Treat extra representations, mirrored state, parallel paths, repeated validation, pass-through layers, speculative abstractions, and compatibility machinery without a proven producer as suspect—not as precedent.
 
@@ -94,7 +98,7 @@ Before deleting a compatibility or public path, verify persisted data, deployed 
 
 Stop local patching and reassess the owner when the same issue reaches a seam twice, a prior response produces an adjacent symptom, or several comments expose one duplicated authority or invalid state. Do not wait for a third patch.
 
-## Decide and communicate
+### Decide and communicate
 
 Choose exactly one outcome per ledger group:
 

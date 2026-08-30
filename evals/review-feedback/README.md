@@ -39,8 +39,8 @@ python3 evals/grader.py
 
 ## Current decision
 
-The baseline is the complete scope-aware skill at
-`fd4056164c7c7c618db5c4cc45f1d4cc3cb599df`. Compare it with the shipped skill on
+The baseline is the accepted five-stage behavior before workflow compression at
+`36021bbfa0fed9b63b7a286bf48d83264aad4417` (1,882 words). Compare it with the shipped skill on
 all twelve review-feedback fixtures, two paired repetitions each, using GPT-5.6 Luna
 with high reasoning. One pair is one fixture and repetition. Its score is the fraction
 of deterministic expectations passed, so fixtures have equal weight.
@@ -62,3 +62,57 @@ Earlier staged comparisons are retained in Git history rather than as parallel r
 The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
 check. Passing that check does not satisfy or replace this compression gate; see
 [`causal-synthesis.md`](causal-synthesis.md) for its separate decision.
+
+## Five-stage workflow compression result
+
+The 1,065-word candidate at `3ca212a` reorganized the skill into five explicit stages while
+retaining the ledger, P0-P3, shared/independent/mixed synthesis, owner selection, and cumulative
+diff rules in shorter form. It was frozen before evaluation and compared with `36021bb` in two
+fresh paired repetitions of all twelve fixtures: 24 pairs and 48 GPT-5.6 Luna/high executions,
+with no runner failures.
+
+- baseline mean: `88.9%`;
+- candidate mean: `77.5%`;
+- paired mean delta: `-11.3` percentage points;
+- paired outcomes: `4` wins, `4` ties, and `16` losses;
+- one-sided 90% paired-bootstrap lower bound: `-15.9` percentage points.
+
+The candidate followed the visible five-stage shape but repeatedly patched API/importer callers
+instead of the shared owner, accepted disproved empty-value suggestions, and lost cumulative-diff
+adjudication in both repetitions. These are artifact-level critical regressions, so the candidate
+was rejected without running holdouts or adding repetitions and was reverted by `a60a15e`.
+
+## Structure-only experiment
+
+The next candidate isolates information architecture from compression. It may move complete
+paragraphs, change heading levels, and add navigation headings, but it must preserve every
+non-heading line from `36021bb` exactly. Word count is descriptive, not an adoption criterion.
+
+Compare the frozen candidate with `36021bb` on the same twelve fixtures and two paired
+GPT-5.6 Luna/high repetitions. Adopt only if the one-sided 90% paired-bootstrap lower bound is
+above `-3%` and no critical behavior has a deterministic artifact failure or repeated paired loss:
+owner-level repair, Push back for disproved findings, and cumulative-diff rebase. If this gate
+passes, use new holdouts before claiming general improvement; do not tune wording against the
+regression fixtures.
+
+The structure-only candidate at `1ed9404` preserved every non-heading baseline line exactly and
+added only fourteen heading words. Across 24 fresh pairs and 48 executions with no runner failures:
+
+- baseline mean: `93.7%`;
+- candidate mean: `94.0%`;
+- paired mean delta: `+0.4` percentage points;
+- paired outcomes: `5` wins, `16` ties, and `3` losses;
+- one-sided 90% paired-bootstrap lower bound: `-2.0` percentage points.
+
+The aggregate gate passed and cumulative-diff scores improved in both repetitions. The owner
+submetric moved from `19/22` to `18/22`: two baseline-only passes and one candidate-only pass. One
+normalization run used an incomplete owner contract; one compatibility run patched callers; the
+candidate instead won one obsolete-toggle owner result. An initial strict reading of the
+cross-fixture tripwire rejected the candidate and produced revert `02c3604`.
+
+On review, that interpretation was too strong for the evidence. The overall comparison supports
+non-inferiority, the owner difference is one result across 22 checks, the paired losses did not
+repeat on the same fixture, and the baseline also failed the other compatibility repetition. Treat
+the owner outcomes as residual stochastic risk rather than an established structural regression.
+The structure-only candidate was accepted and restored by `da8bad0`; this result supports the
+reordering on the evaluated suite but does not claim a general behavior improvement.
