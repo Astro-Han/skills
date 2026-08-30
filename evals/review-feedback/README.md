@@ -1,5 +1,9 @@
 # Review Feedback Evals
 
+The experimental multi-flow synthesis gate and its predeclared decision rule live in
+[`causal-synthesis.md`](causal-synthesis.md). It is isolated from the shipped 12-case
+structural-compression gate below.
+
 Evaluation record for [`review-feedback`](../../skills/review-feedback/). Case definitions live in
 [`review_feedback_cases.py`](../review_feedback_cases.py). Fixtures cover owner-level causes,
 mirrored or obsolete representations, lifecycle rules, false findings, committed-state boundaries,
@@ -21,6 +25,10 @@ and compatibility obligations.
 | `transferlog` | compression holdout | A shared domain invariant whose violation reaches externally committed state and must remain P1. |
 | `credrotate` | compression holdout | A compatibility representation with a live deployed reader that must be preserved at one lifecycle owner. |
 | `mediathread` | cumulative-diff regression | A second review round that must retain owner-level fixes while removing adjacent scope expansion. |
+| `digestflow` | causal-synthesis design | Shuffled findings whose owner-level fixes must also cover an unmentioned sibling path without adding parallel identity or fallback state. |
+| `shipmentflow` | causal-synthesis holdout | A non-isomorphic identity case: two findings share an email owner, display names require a separate rule, and a live compatibility field must remain. |
+| `subscriptionflow` | fresh causal holdout | Mixed lifecycle, latest-revision projection, false runtime, speculative alias, and live renewal compatibility pressures. |
+| `policyflow` | fresh causal holdout | Similar string symptoms whose email, external-key, display, and deployed compatibility contracts require different owners. |
 
 ## Run
 
@@ -50,3 +58,7 @@ chase a perfect count.
 
 Earlier staged comparisons are retained in Git history rather than as parallel runner paths. This
 12-case comparison is the sole current review-feedback gate.
+
+The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
+check. Passing that check does not satisfy or replace this compression gate; see
+[`causal-synthesis.md`](causal-synthesis.md) for its separate decision.

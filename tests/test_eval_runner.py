@@ -46,6 +46,51 @@ class EvalRunnerSuiteTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unsupported suite"):
             runner.suite_runs("codex", reps=1, suite="all")
 
+    def test_review_feedback_causal_suites_are_explicit(self):
+        design = runner.suite_runs("codex", reps=1, suite="review-feedback-causal-design")
+        holdout = runner.suite_runs("codex", reps=1, suite="review-feedback-causal-holdout")
+        self.assertEqual(len(design), 2)
+        self.assertEqual(len(holdout), 6)
+        self.assertEqual(
+            {run["eval"] for run in holdout},
+            {
+                "synthesize-shipment-flows",
+                "synthesize-subscription-flows",
+                "synthesize-policy-flows",
+            },
+        )
+
+    def test_exact_case_filter_preserves_paired_repetitions(self):
+        runs = runner.suite_runs(
+            "codex", reps=2, suite="review-feedback-structural-compression"
+        )
+        selected = runner.select_cases(
+            runs, ["adjudicate-before-edit", "rebase-cumulative-diff"]
+        )
+        self.assertEqual(len(selected), 8)
+        self.assertEqual(
+            {run["eval"] for run in selected},
+            {"adjudicate-before-edit", "rebase-cumulative-diff"},
+        )
+        self.assertEqual({run["rep"] for run in selected}, {1, 2})
+        self.assertEqual({run["arm"] for run in selected}, {"baseline_skill", "candidate_skill"})
+
+        with self.assertRaisesRegex(ValueError, "cases not in suite"):
+            runner.select_cases(runs, ["missing-case"])
+
+    def test_exact_arm_filter_preserves_cases_and_repetitions(self):
+        runs = runner.suite_runs(
+            "codex", reps=2, suite="review-feedback-structural-compression"
+        )
+        selected = runner.select_arms(runs, ["candidate_skill"])
+        self.assertEqual(len(selected), 24)
+        self.assertEqual({run["rep"] for run in selected}, {1, 2})
+        self.assertEqual({run["arm"] for run in selected}, {"candidate_skill"})
+        self.assertEqual(len({run["eval"] for run in selected}), 12)
+
+        with self.assertRaisesRegex(ValueError, "arms not in suite"):
+            runner.select_arms(runs, ["missing-arm"])
+
 
 if __name__ == "__main__":
     unittest.main()

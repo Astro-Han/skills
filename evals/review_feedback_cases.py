@@ -355,4 +355,210 @@ REVIEW_FEEDBACK_CASES = {
         "acceptance": "accept_review_feedback_scope_rebase.py",
         "kind": "scope_rebase",
     },
+    "synthesize-digest-flows": {
+        "fixture": "digestflow",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "'.agents/skills/review-feedback-eval/SKILL.md'. We received a large review "
+            "of the scheduled digest change below. Please address the feedback and make "
+            "the necessary changes.\n\n"
+            "- D8 (P1): Migrated tasks inherit the snapshot permission, including `bypass`. "
+            "Force `ask` in `migrate_legacy`.\n"
+            "- D3 (P2): `report_rows` filters history by the current random task ID, so "
+            "deleting and recreating the task hides older reports. Keep a list of old task IDs.\n"
+            "- D11 (P2): Bridge v1 silently drops a requested date-range intent. Fall back "
+            "to the default range when the bridge is old.\n"
+            "- D1 (P1): Released version-1 snapshots use `model_connection`, but migration "
+            "rejects every schema except version 2. Add a version-1 branch.\n"
+            "- D6 (P2): A running Session with a partial Artifact is shown as a completed "
+            "report. Add a state check in `report_rows`.\n"
+            "- D4 (P1): Migration appends report Sessions before checking whether the target "
+            "can execute; a failed migration leaks interactive projections. Delete the new "
+            "Sessions on failure.\n"
+            "- D9 (P2): Edited Session revisions are counted as separate activity. Deduplicate "
+            "inside `activity_total`.\n"
+            "- D2 (P1): `create_task` resolves the connection from `selected_host` but stores "
+            "`default_host`, producing an impossible cross-host binding. Copy the selected host.\n"
+            "- D12 (P2): `active_conversations` returns only a number, removing the list and "
+            "open action. Return the canonical active Session rows instead.\n"
+            "- D7 (P2): Retrying migration appends another digest task. Check existing task "
+            "titles before appending.\n"
+            "- D5 (P1): A persisted active task without a connection raises forever during "
+            "recovery. Resolve the only ready connection, otherwise pause it.\n"
+            "- D10 (P2): Successful migration never retires the legacy snapshot. Add a "
+            "separate tombstone registry so startup can ignore it next time."
+        ),
+        "comments": tuple("D{}".format(index) for index in range(1, 13)),
+        "production_paths": (
+            "digestflow/migration.py",
+            "digestflow/execution.py",
+            "digestflow/projection.py",
+            "digestflow/models.py",
+        ),
+        "production_prefix": "digestflow/",
+        "authority_terms": ("retired", "preset", "permission", "authority", "权威"),
+        "entropy_forbidden": {
+            "digestflow/migration.py": ("tombstone",),
+            "digestflow/projection.py": ("old_task_ids", "legacy_task_ids"),
+            "digestflow/execution.py": ("default_range", "default_date_range"),
+        },
+        "acceptance_checks": (
+            ("migration flow", "accept_review_feedback_causal_migration.py"),
+            ("execution flow and unmentioned sibling", "accept_review_feedback_causal_execution.py"),
+            ("projection flow", "accept_review_feedback_causal_projection.py"),
+        ),
+        "kind": "causal_synthesis",
+        "cohort": "design",
+    },
+    "synthesize-shipment-flows": {
+        "fixture": "shipmentflow",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "'.agents/skills/review-feedback-eval/SKILL.md'. Please address this review "
+            "of recipient identity and label export.\n\n"
+            "- H5 (P1): `export_recipient` drops `legacy_route`, so deployed label scanners "
+            "cannot route old-format records. Preserve it in the exported record.\n"
+            "- H2 (P2): `add_invitation` compares raw email strings, so a case variant can "
+            "invite the same recipient twice. Lowercase locally before the loop.\n"
+            "- H7 (P2): `len([])` raises on an empty recipient list. Add an empty-list guard "
+            "to `add_invitation`.\n"
+            "- H4 (P2): Email and display-name cleanup are both normalization. Replace both "
+            "helpers with one shared `normalize_text` that lowercases every value.\n"
+            "- H1 (P2): `create_recipient` stores mixed-case email even though email is a "
+            "case-insensitive identity. Lowercase it before constructing the object.\n"
+            "- H8 (P2): Some locales capitalize family names differently. Expand this change "
+            "with a locale-aware name-policy registry.\n"
+            "- H3 (P2): `clean_display_name` lowercases user-selected capitalization. Preserve "
+            "the case while trimming surrounding whitespace.\n"
+            "- H6 (P2): `legacy_route` duplicates the new recipient ID. Delete the field and "
+            "make scanners migrate immediately."
+        ),
+        "comments": tuple("H{}".format(index) for index in range(1, 9)),
+        "production_paths": (
+            "shipmentflow/identity.py",
+            "shipmentflow/compat.py",
+            "shipmentflow/models.py",
+        ),
+        "production_prefix": "shipmentflow/",
+        "false_comment": "H7",
+        "deferred_comment": "H8",
+        "authority_terms": ("email", "display", "legacy_route", "scanner", "authority", "权威"),
+        "entropy_forbidden": {
+            "shipmentflow/identity.py": ("normalize_text",),
+        },
+        "acceptance_checks": (
+            ("identity, presentation, and compatibility", "accept_review_feedback_causal_holdout.py"),
+        ),
+        "kind": "causal_synthesis",
+        "cohort": "holdout",
+    },
+    "synthesize-subscription-flows": {
+        "fixture": "subscriptionflow",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "'.agents/skills/review-feedback-eval/SKILL.md'. Please address this review "
+            "of subscription lifecycle, activity, and renewal compatibility.\n\n"
+            "- U6 (P1): `export_subscription` omits `legacy_channel`, so deployed renewal "
+            "workers lose their route. Preserve it in the record.\n"
+            "- U2 (P2): `cancel_from_row` changes state without history. Append `cancelled` "
+            "in that importer function.\n"
+            "- U8 (P2): Add a global state-alias registry now so future billing states can "
+            "be migrated without another refactor.\n"
+            "- U4 (P2): `active_rows` shows superseded active revisions. Pass a list of old "
+            "session IDs from every caller and filter them locally.\n"
+            "- U1 (P2): `pause` changes state without history. Append `paused` in the API.\n"
+            "- U9 (P2): `len([])` raises when there are no sessions. Add empty-list guards "
+            "to both activity functions.\n"
+            "- U7 (P2): `legacy_channel` duplicates the subscription ID. Delete it and make "
+            "renewal workers upgrade immediately.\n"
+            "- U3 (P2): `Subscription.transition` recurses forever for a same-state request. "
+            "Add a same-state early return.\n"
+            "- U5 (P2): `active_total` counts old revisions separately. Deduplicate inside "
+            "that function."
+        ),
+        "comments": tuple("U{}".format(index) for index in range(1, 10)),
+        "production_paths": (
+            "subscriptionflow/actions.py",
+            "subscriptionflow/compat.py",
+            "subscriptionflow/models.py",
+            "subscriptionflow/projection.py",
+        ),
+        "production_prefix": "subscriptionflow/",
+        "false_comment": "U9",
+        "deferred_comment": "U8",
+        "authority_terms": (
+            "transition", "history", "root_id", "revision", "legacy_channel",
+            "authority", "owner", "权威", "所有者",
+        ),
+        "entropy_forbidden": {
+            "subscriptionflow/actions.py": ("history.append",),
+            "subscriptionflow/models.py": ("alias_registry", "state_aliases"),
+            "subscriptionflow/projection.py": ("old_session_ids",),
+        },
+        "acceptance_checks": (
+            ("lifecycle, latest projection, and renewal compatibility",
+             "accept_review_feedback_subscription_holdout.py"),
+        ),
+        "kind": "causal_synthesis",
+        "cohort": "fresh_holdout",
+    },
+    "synthesize-policy-flows": {
+        "fixture": "policyflow",
+        "prompt": (
+            "Use the review-feedback skill at "
+            "'.agents/skills/review-feedback-eval/SKILL.md'. Please address this review "
+            "of delivery destinations and export compatibility.\n\n"
+            "- P4 (P2): Email and bucket destinations are both identifiers. Replace their "
+            "helpers with one `normalize_identifier` that lowercases both.\n"
+            "- P1 (P2): `create_email_delivery` stores mixed-case email. Lowercase locally "
+            "before constructing the delivery.\n"
+            "- P7 (P1): `export_delivery` drops `legacy_route`, which deployed dispatch "
+            "scanners still read. Preserve it.\n"
+            "- P5 (P2): `clean_label` lowercases user-selected capitalization. Preserve case "
+            "while trimming whitespace.\n"
+            "- P9 (P2): `len([])` raises for an empty delivery list. Add an empty-list guard "
+            "to `find_email_delivery`.\n"
+            "- P2 (P2): `find_email_delivery` compares raw email case. Lowercase in that "
+            "caller before searching.\n"
+            "- P8 (P2): `legacy_route` duplicates destination identity. Delete it and require "
+            "all scanners to migrate now.\n"
+            "- P3 (P2): Bucket keys that differ only by case should be merged. Keep the "
+            "current lowercase behavior and add duplicate rejection.\n"
+            "- P10 (P2): Add a locale-aware label-policy registry for future capitalization "
+            "rules.\n"
+            "- P6 (P2): Replace email, bucket, and label helpers with one `normalize_text` "
+            "so every string follows the same policy."
+        ),
+        "comments": tuple("P{}".format(index) for index in range(1, 11)),
+        "production_paths": (
+            "policyflow/compat.py",
+            "policyflow/intake.py",
+            "policyflow/models.py",
+            "policyflow/normalization.py",
+        ),
+        "production_prefix": "policyflow/",
+        "false_comment": "P9",
+        "deferred_comment": "P10",
+        "authority_terms": (
+            "email", "bucket", "label", "legacy_route", "scanner", "contract",
+            "authority", "owner", "权威", "所有者",
+        ),
+        "entropy_forbidden": {
+            "policyflow/normalization.py": ("normalize_identifier", "normalize_text"),
+        },
+        "acceptance_checks": (
+            ("separate identity, external-key, presentation, and compatibility policies",
+             "accept_review_feedback_policy_holdout.py"),
+        ),
+        "kind": "causal_synthesis",
+        "cohort": "fresh_holdout",
+    },
 }
+
+
+CAUSAL_SYNTHESIS_DESIGN_CASES = ("synthesize-digest-flows",)
+CAUSAL_SYNTHESIS_HOLDOUT_CASES = (
+    "synthesize-shipment-flows",
+    "synthesize-subscription-flows",
+    "synthesize-policy-flows",
+)

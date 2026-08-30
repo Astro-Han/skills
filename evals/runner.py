@@ -16,7 +16,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from review_feedback_cases import REVIEW_FEEDBACK_CASES
+from review_feedback_cases import (
+    CAUSAL_SYNTHESIS_DESIGN_CASES,
+    CAUSAL_SYNTHESIS_HOLDOUT_CASES,
+    REVIEW_FEEDBACK_CASES,
+)
 from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
@@ -38,6 +42,7 @@ PR_REVIEW_PRE_REACHABILITY_REF = "3e9300fb74ebbecdcd07aad92c5e97a98457f55a"
 PR_REVIEW_COMPLETE_FACTS_REF = "72f6f3472fafaa798b5e651fb53f7547c7966749"
 PR_REVIEW_THREE_STATES_REF = "d4ea3b6bc9dc198a43024ae500373b8d0f5567ae"
 REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "fd4056164c7c7c618db5c4cc45f1d4cc3cb599df"
+REVIEW_FEEDBACK_CAUSAL_BASELINE_REF = "af79986"
 
 PROMPTS = {
     "shared-sections": (
@@ -192,6 +197,8 @@ def suite_runs(provider_name, reps=3, suite=None):
         "pr-review-no-statuses": PR_REVIEW_NO_STATUS_CASES,
     }
     supported_suites = set(pr_review_suites) | {
+        "review-feedback-causal-design",
+        "review-feedback-causal-holdout",
         "review-feedback-structural-compression",
         "debug",
         "tdd",
@@ -230,6 +237,25 @@ def suite_runs(provider_name, reps=3, suite=None):
             arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF),
                     ("candidate_skill", SHIPPED))
             for eval_name, case in REVIEW_FEEDBACK_CASES.items():
+                if case.get("kind") == "causal_synthesis":
+                    continue
+                for arm, skill_arm in arms:
+                    runs.append({"workspace": "review-feedback-workspace",
+                                 "eval": eval_name, "rep": rep,
+                                 "arm": arm, "fixture": case["fixture"],
+                                 "skill_arm": skill_arm,
+                                 "skill_name": "review-feedback",
+                                 "installed_skill_name": "review-feedback-eval"})
+            continue
+
+        if suite in ("review-feedback-causal-design", "review-feedback-causal-holdout"):
+            cases = (CAUSAL_SYNTHESIS_DESIGN_CASES
+                     if suite == "review-feedback-causal-design"
+                     else CAUSAL_SYNTHESIS_HOLDOUT_CASES)
+            arms = (("baseline_skill", "git:" + REVIEW_FEEDBACK_CAUSAL_BASELINE_REF),
+                    ("candidate_skill", SHIPPED))
+            for eval_name in cases:
+                case = REVIEW_FEEDBACK_CASES[eval_name]
                 for arm, skill_arm in arms:
                     runs.append({"workspace": "review-feedback-workspace",
                                  "eval": eval_name, "rep": rep,
@@ -261,6 +287,28 @@ def suite_runs(provider_name, reps=3, suite=None):
                              "rep": rep, "arm": arm, "fixture": "cartlib",
                              "skill_arm": skill_arm, "skill_name": "tdd"})
     return runs
+
+
+def select_cases(runs, case_names):
+    if not case_names:
+        return runs
+    requested = set(case_names)
+    selected = [run for run in runs if run["eval"] in requested]
+    missing = requested - {run["eval"] for run in selected}
+    if missing:
+        raise ValueError("cases not in suite: {}".format(", ".join(sorted(missing))))
+    return selected
+
+
+def select_arms(runs, arm_names):
+    if not arm_names:
+        return runs
+    requested = set(arm_names)
+    selected = [run for run in runs if run["arm"] in requested]
+    missing = requested - {run["arm"] for run in selected}
+    if missing:
+        raise ValueError("arms not in suite: {}".format(", ".join(sorted(missing))))
+    return selected
 
 
 # --- one run ---------------------------------------------------------------
@@ -385,9 +433,15 @@ def main():
     parser.add_argument("--iteration", default="iteration-1",
                         help="name of the output directory under each workspace")
     parser.add_argument("--reps", type=int, default=3)
+    parser.add_argument("--case", action="append", dest="cases",
+                        help="run only this exact case from the selected suite; repeatable")
+    parser.add_argument("--arm", action="append", dest="arms",
+                        help="run only this exact arm from the selected suite; repeatable")
     parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
                                             "pr-review-no-statuses",
+                                            "review-feedback-causal-design",
+                                            "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",
                                             "debug", "tdd"),
                         required=True)
@@ -400,7 +454,8 @@ def main():
         provider = Provider(provider.name, args.model, provider.timeout_s,
                             provider.command, provider.install_skill,
                             provider.keep_line, provider.parse, provider.strip_dotclaude)
-    runs = suite_runs(provider.name, args.reps, args.suite)
+    runs = select_cases(suite_runs(provider.name, args.reps, args.suite), args.cases)
+    runs = select_arms(runs, args.arms)
 
     if args.dry_run:
         for spec in runs:

@@ -2,6 +2,7 @@
 """Deterministic grader: parses stream-json transcripts and run outputs."""
 
 import argparse
+import ast
 import json
 import os
 import re
@@ -173,6 +174,47 @@ def looks_failed(text):
 
 def diff_files(diff):
     return set(re.findall(r"^diff --git a/(\S+)", diff, flags=re.M))
+
+
+def module_mutable_bindings(root, prefix):
+    """Count module-level containers that can become a second mutable authority."""
+    count = 0
+    package = root / prefix.rstrip("/")
+    if not package.exists():
+        return count
+    for path in package.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in tree.body:
+            value = None
+            names = []
+            if isinstance(node, ast.Assign):
+                value = node.value
+                names = [target.id for target in node.targets if isinstance(target, ast.Name)]
+            elif isinstance(node, ast.AnnAssign):
+                value = node.value
+                names = [node.target.id] if isinstance(node.target, ast.Name) else []
+            if not any(not name.startswith("__") for name in names):
+                continue
+            if isinstance(value, (ast.List, ast.Dict, ast.Set)):
+                count += 1
+            elif (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+                  and value.func.id in {"list", "dict", "set"}):
+                count += 1
+    return count
+
+
+def annotated_class_fields(root, prefix):
+    """Count persisted-looking class fields without prescribing their names."""
+    count = 0
+    package = root / prefix.rstrip("/")
+    if not package.exists():
+        return count
+    for path in package.rglob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                count += sum(isinstance(child, ast.AnnAssign) for child in node.body)
+    return count
 
 
 def added_lines(diff, path_sub):
@@ -548,6 +590,60 @@ def grade_scope_rebase_case(exp, events, work, files, tests_green, triggered, ca
     expect(exp, "Existing suite green at the end", tests_green, "")
 
 
+def grade_causal_synthesis_case(exp, events, work, files, tests_green, triggered, case):
+    src_edit = first_production_edit(events, case["production_paths"])
+    ledger_index, before_edit = adjudication_before(
+        events, src_edit if src_edit is not None else len(events), comments=case["comments"]
+    )
+
+    expect(exp, "Loaded the isolated review-feedback eval arm",
+           triggered, "local eval skill loaded: {}".format(triggered))
+    expect(exp, "Published a complete ledger before editing production code",
+           ledger_index is not None and src_edit is not None and ledger_index < src_edit,
+           "ledger idx {}, first source edit idx {}".format(ledger_index, src_edit))
+
+    authority_hits = [
+        term for term in case["authority_terms"] if term.lower() in before_edit.lower()
+    ]
+    expect(exp, "Reconstructed relevant system authorities before editing",
+           len(authority_hits) >= 2, "authority terms: {}".format(authority_hits))
+
+    if case.get("false_comment"):
+        false_lines = " ".join(comment_lines(before_edit, case["false_comment"])).lower()
+        expect(exp, "Rejected the false finding",
+               any(term in false_lines for term in ("disproved", "no finding", "不成立"))
+               and any(term in false_lines for term in (
+                   "push back", "拒绝", "不加", "不改", "不进入", "不实现"
+               )),
+               false_lines[:300])
+    if case.get("deferred_comment"):
+        deferred_lines = " ".join(comment_lines(before_edit, case["deferred_comment"])).lower()
+        expect(exp, "Kept the adjacent policy out of scope",
+               any(term in deferred_lines for term in (
+                   "defer", "push back", "out of scope", "延后", "拒绝", "范围外",
+                   "暂不进入", "不进入实现", "不实现", "不扩展", "暂不修"
+               )), deferred_lines[:300])
+
+    entropy_ok, entropy_evidence = source_terms_match(work, {}, case["entropy_forbidden"])
+    fixture_root = ROOT / "fixtures" / case["fixture"]
+    baseline_mutable = module_mutable_bindings(fixture_root, case["production_prefix"])
+    final_mutable = module_mutable_bindings(work, case["production_prefix"])
+    baseline_fields = annotated_class_fields(fixture_root, case["production_prefix"])
+    final_fields = annotated_class_fields(work, case["production_prefix"])
+    expect(exp, "Did not accept the reviewer's parallel authority or semantic fallback",
+           entropy_ok, entropy_evidence)
+    expect(exp, "Did not add mutable module authority",
+           final_mutable <= baseline_mutable,
+           "module mutable bindings: {} -> {}".format(baseline_mutable, final_mutable))
+    expect(exp, "Did not grow the persisted model to carry a patch",
+           final_fields <= baseline_fields,
+           "annotated class fields: {} -> {}".format(baseline_fields, final_fields))
+    for label, script in case["acceptance_checks"]:
+        ok, evidence = acceptance(work, script)
+        expect(exp, "Acceptance: {}".format(label), ok, evidence)
+    expect(exp, "Existing suite green at the end", tests_green, "")
+
+
 def grade_run(rundir, eval_name):
     events, final = load_events(rundir / "transcript.jsonl")
     diff = real_diff(rundir / "work")
@@ -640,6 +736,10 @@ def grade_run(rundir, eval_name):
         case = REVIEW_FEEDBACK_CASES[eval_name]
         if case.get("kind") == "scope_rebase":
             grade_scope_rebase_case(
+                exp, events, work, files, tests_green, triggered, case,
+            )
+        elif case.get("kind") == "causal_synthesis":
+            grade_causal_synthesis_case(
                 exp, events, work, files, tests_green, triggered, case,
             )
         else:

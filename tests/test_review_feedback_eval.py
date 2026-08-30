@@ -51,6 +51,48 @@ class ReviewFeedbackEvalTests(unittest.TestCase):
         self.assertEqual(case["seed_patch"], "mediathread-pr.patch")
         self.assertTrue((ROOT / "evals" / "seeds" / case["seed_patch"]).is_file())
 
+    def test_causal_synthesis_case_scores_contracts_not_prescribed_slices(self):
+        case = runner.REVIEW_FEEDBACK_CASES["synthesize-digest-flows"]
+        self.assertEqual(case["kind"], "causal_synthesis")
+        self.assertEqual(len(case["comments"]), 12)
+        self.assertNotIn("slices", case)
+        self.assertNotIn("expected_production_paths", case)
+        self.assertNotIn("false_comment", case)
+
+    def test_causal_design_suite_freezes_current_v3_as_baseline(self):
+        runs = runner.suite_runs("codex", reps=2, suite="review-feedback-causal-design")
+        self.assertEqual(len(runs), 4)
+        self.assertEqual({run["eval"] for run in runs}, {"synthesize-digest-flows"})
+        self.assertEqual(
+            {run["skill_arm"] for run in runs},
+            {"git:" + runner.REVIEW_FEEDBACK_CAUSAL_BASELINE_REF, runner.SHIPPED},
+        )
+
+    def test_entropy_helpers_measure_authority_growth_without_naming_the_solution(self):
+        fixture = ROOT / "evals" / "fixtures" / "shipmentflow"
+        self.assertEqual(grader.module_mutable_bindings(fixture, "shipmentflow/"), 0)
+        self.assertEqual(grader.annotated_class_fields(fixture, "shipmentflow/"), 4)
+
+    def test_causal_holdout_has_opposite_grouping_and_compatibility_pressure(self):
+        case = runner.REVIEW_FEEDBACK_CASES["synthesize-shipment-flows"]
+        self.assertEqual(case["cohort"], "holdout")
+        self.assertEqual(case["fixture"], "shipmentflow")
+        self.assertEqual(len(case["comments"]), 8)
+        self.assertIn("legacy_route", case["prompt"])
+        self.assertIn("normalize_text", case["prompt"])
+        self.assertNotIn("slices", case)
+
+    def test_fresh_holdouts_cover_mixed_and_independent_repair_shapes(self):
+        subscription = runner.REVIEW_FEEDBACK_CASES["synthesize-subscription-flows"]
+        policy = runner.REVIEW_FEEDBACK_CASES["synthesize-policy-flows"]
+        self.assertEqual(subscription["cohort"], "fresh_holdout")
+        self.assertEqual(policy["cohort"], "fresh_holdout")
+        self.assertEqual(len(subscription["comments"]), 9)
+        self.assertEqual(len(policy["comments"]), 10)
+        self.assertIn("transition", subscription["authority_terms"])
+        self.assertIn("bucket", policy["authority_terms"])
+        self.assertIn("legacy_route", policy["prompt"])
+
     def test_structural_compression_pairs_twelve_cases_with_current_full_skill(self):
         runs = runner.suite_runs(
             "codex", reps=2, suite="review-feedback-structural-compression"
