@@ -12,6 +12,7 @@
     "review_authorities": 1
   },
   "candidate": {
+    "commit": "1168cab9a345c7b845e46bf776fdf969509b50da",
     "sha256": "ea57669f319b30609c321d01c1d4b82bb394c37d2ee64ea8bfe190624bff5e58",
     "words": 743,
     "sections": 6,
