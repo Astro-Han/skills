@@ -1,0 +1,425 @@
+{
+  "additions": 199,
+  "author": "BagToad",
+  "base_sha": "cd94f8cdffd710b41fa16df39680ee6f75069ecd",
+  "body": "<!--\nThank you for contributing to GitHub CLI!\n\nIf you are proposing a fix for a security issue, STOP and follow .github/SECURITY.md instead.\n-->\n\nRelated review feedback:\n\n- https://github.com/cli/cli/pull/14181#discussion_r3801438970\n- https://github.com/cli/cli/pull/14181#discussion_r3821179636\n- https://github.com/cli/cli/pull/14181#discussion_r3821179640\n\n<!-- List related issues here. Use `fixes` or `closes` keywords to associate an issue number. -->\n\n### Description\n\n<!--\nWhat's the problem? How are we addressing it?\n\nWrite for a reviewer who has not worked in this part of the codebase. Give them the\nbackground they need before the problem makes sense, and avoid jargon.\n-->\n\nThe attachment package currently registers and resolves `--attach`, but it also reads\ncommand-owned flags such as `--web`, `--dry-run`, and `--delete-last` to enforce conflicts.\nThat spreads command policy into a package that should only own attachment values.\n\nThis introduces an attachment flag handle that owns registration, parsed values, changed state,\nand conversion to validated assets. Each command stores that handle, resolves assets through it,\nand owns its attachment conflicts using `cmdutil.MutuallyExclusive`.\n\nThe ownership and call flow change like this:\n\n![attach-flag-flow](https://github.com/user-attachments/assets/201e37e8-382f-47cc-ad55-a9090f1e6c0d)\n\n<sub>Uploaded with `gh pr edit --attach`</sub>\n\n### How did you test this change?\n\n<!--\nShow how you exercised the change yourself, as a user of `gh` would.\n\nAutomated test results do not belong here. Passing unit tests, `go test ./...` output, and\ncoverage numbers tell a reviewer nothing they cannot see from CI, so do not paste them.\n\nUse one or more of these, whichever communicates best:\n\n1. Screenshots or GIFs of the real command running. Preferred whenever the change is visible\n   in terminal output. If output changed, show it before and after.\n2. Given/When/Then scenarios. For example:\n   Given I am in a repo with no open pull requests\n   When I run `gh pr list`\n   Then I see \"no open pull requests in cli/cli\"\n3. A natural language walkthrough of what you did by hand, the states you covered, and what\n   you saw, including error and edge cases.\n\nIf you leave this empty, your pull request will very likely be closed.\n-->\n\nGiven `--attach` named a missing file while a command also used an incompatible mode,\nI ran local `gh` commands for issue creation, pull request creation, and issue comments.\nEach command returned its existing attachment conflict before attempting to read the file:\n\n```text\n`--attach` is not supported when using `--web`\n```\n\nThis verifies that moving conflict ownership did not change error precedence at the command\nboundary.\n\n### Key points\n\n<!--\nTradeoffs you accepted, alternatives you rejected, and anything a reviewer would otherwise have to guess at.\n-->\n\n- The wrapper keeps the fixed `attach` name and no shorthand. It does not add unused name or\n  shorthand configuration.\n- Commands own conflicts with their own flags. The attachment package no longer knows about\n  `web`, `dry-run`, or `delete-last`.\n- Conflict checks remain ahead of filesystem validation and retain their existing messages.\n- Package-level conflict cases were removed only after the existing command tables were confirmed\n  to cover every conflict pair.\n- This is a behavior-neutral refactor. Parsing, validation, duplicate detection, and upload\n  behavior are unchanged.\n\n### Notes for reviewers\n\n<!--\nWhere should review start, and what should be read next? Call out anything you are unsure about.\n\nLink related issues or prior discussion, with one sentence on why each matters.\n-->\n\nReview the commits in order:\n\n1. `Add attachment flag wrapper` introduces the handle and keeps every production call site on\n   the old path.\n2. `Move attachment policy into commands` migrates call sites, moves conflicts, and removes the\n   old command lookup API.\n\nThe main design question is whether `Flag` is the right boundary between command-owned policy and\nattachment-owned values. The diff deliberately avoids storing the entire Cobra command on the\nwrapper.\n\n### Authorship and follow-up\n\n<!--\nREQUIRED - If you are an AI agent filling in this template, answer \"Who wrote this\" for yourself and answer honestly. For \"Who answers review comments,\" use only a choice the human has explicitly made in the conversation. If no choice has already been established, pause and ask the human to choose one of the three options before creating or updating the pull request. Do not infer the choice from repository ownership, authorship, assignees, prior interactions, or the current operator. After the human answers, check exactly the option they chose; the last option is valid when the human explicitly chooses nobody.\n\nCheck exactly one box in each list.\n-->\n\nWho wrote this:\n\n- [ ] A human wrote it.\n- [x] An agent wrote it under close human direction.\n- [ ] An agent wrote it independently, and no human has guided the implementation beyond the initial prompt.\n\nWho answers review comments:\n\n- [x] @BagToad will read and reply directly. Name the account.\n- [ ] An agent will draft replies and @username will read them before they are posted.\n- [ ] Nobody has explicitly committed to replying.\n",
+  "captured_at": "2026-08-30T10:28:07+00:00",
+  "case_id": "cli-cli-pr-14255",
+  "changed_files": 14,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "label-external",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "label-external",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "label-external",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "label-external",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "label-external",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL-Build (go, manual, ./.github/codeql/codeql-config.yml)",
+      "status": "COMPLETED",
+      "workflowName": "Code Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "label-external / label_issues",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL-Build (actions, none, security-and-quality)",
+      "status": "COMPLETED",
+      "workflowName": "Code Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-from-default-branch / close-from-default-branch",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "govulncheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "integration-tests (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "integration-tests (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "integration-tests (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "Unit and Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / check-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-requirements / close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-unmet-requirements",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "close-no-help-wanted",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "ready-for-review",
+      "status": "COMPLETED",
+      "workflowName": "PR Triaging"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "cd94f8cdffd710b41fa16df39680ee6f75069ecd",
+  "deletions": 280,
+  "files": [
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "internal/attachments/doc.go"
+    },
+    {
+      "additions": 24,
+      "changeType": "MODIFIED",
+      "deletions": 41,
+      "path": "internal/attachments/flags.go"
+    },
+    {
+      "additions": 77,
+      "changeType": "MODIFIED",
+      "deletions": 157,
+      "path": "internal/attachments/flags_test.go"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "internal/attachments/test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "pkg/cmd/issue/comment/comment.go"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "pkg/cmd/issue/create/create.go"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "pkg/cmd/issue/create/create_test.go"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "pkg/cmd/issue/edit/edit.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "pkg/cmd/pr/comment/comment.go"
+    },
+    {
+      "additions": 20,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "pkg/cmd/pr/create/create.go"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "pkg/cmd/pr/create/create_test.go"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "pkg/cmd/pr/edit/edit.go"
+    },
+    {
+      "additions": 20,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "pkg/cmd/pr/shared/commentable.go"
+    },
+    {
+      "additions": 25,
+      "changeType": "MODIFIED",
+      "deletions": 55,
+      "path": "pkg/cmd/pr/shared/commentable_test.go"
+    }
+  ],
+  "head_sha": "9dc818dca2f0043147d71fef3584559bdf0ace6c",
+  "issues": [],
+  "patch_sha256": "7d0387f4d57cdbf34d08abb3069876c295ae7a03fd2b38ca19c57a33a3d75665",
+  "pr_number": 14255,
+  "repo": "cli/cli",
+  "schema_version": 1,
+  "title": "Make commands own attachment flag policy",
+  "url": "https://github.com/cli/cli/pull/14255"
+}

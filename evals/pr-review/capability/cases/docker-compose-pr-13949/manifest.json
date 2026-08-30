@@ -1,0 +1,330 @@
+{
+  "additions": 256,
+  "author": "glours",
+  "base_sha": "5bf5a21687107138629baa30be97f0bd9a0c55b2",
+  "body": "**What I did**\r\nWith the containerd image store and BuildKit provenance attestations (the default), a built image is stored as an attested index whose top-level digest also covers the attestation manifest. That digest churns on every build even when the runnable content is unchanged, so compose recreated containers on every `up --build`.\r\n\r\nCompare the digest of the \"image\" kind manifest instead, selected for the target platform and restricted to locally available manifests, so it is deterministic and reflects only config + layers. Both the build and up sides of the staleness check go through the same selection, and registry-only images keep the Bake-reported digest.\r\n\r\n**Related issue**\r\nFixes #13636\r\n\r\n**(not mandatory) A picture of a cute animal, if possible in relation to what you did**\r\n",
+  "captured_at": "2026-08-30T10:28:06+00:00",
+  "case_id": "docker-compose-pr-13949",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "CANCELLED",
+      "name": "save-context",
+      "status": "COMPLETED",
+      "workflowName": "PR Review - Trigger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "save-context",
+      "status": "COMPLETED",
+      "workflowName": "PR Review - Trigger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "save-context",
+      "status": "COMPLETED",
+      "workflowName": "PR Review - Trigger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (lint)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor / zizmor",
+      "status": "COMPLETED",
+      "workflowName": "zizmor"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-go-mod)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-headers)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-docs)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / prepare",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (0, darwin/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (1, darwin/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (2, linux/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (3, linux/arm/v6, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (4, linux/arm/v7, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (5, linux/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (6, linux/ppc64le, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (7, linux/riscv64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (8, linux/s390x, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (9, windows/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (10, windows/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / prepare",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (0, darwin/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (1, darwin/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (2, linux/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (3, linux/arm/v6, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (4, linux/arm/v7, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (5, linux/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (6, linux/ppc64le, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (7, linux/riscv64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (8, linux/s390x, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (9, windows/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (10, windows/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (plugin, stable)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (standalone, stable)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (plugin, oldstable)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (standalone, oldstable)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary-finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "coverage",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "release",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR Review",
+      "status": "COMPLETED",
+      "workflowName": "PR Review - Trigger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codecov/patch",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "5bf5a21687107138629baa30be97f0bd9a0c55b2",
+  "deletions": 14,
+  "files": [
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "pkg/compose/build.go"
+    },
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "pkg/compose/build_bake.go"
+    },
+    {
+      "additions": 70,
+      "changeType": "MODIFIED",
+      "deletions": 13,
+      "path": "pkg/compose/images.go"
+    },
+    {
+      "additions": 161,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "pkg/compose/images_test.go"
+    }
+  ],
+  "head_sha": "32290a0db0f7a8271a3cfbfab93e0644f70d5281",
+  "issues": [
+    {
+      "body": "### Description\n\nWhen Docker Engine uses the containerd image store (default for new installations since\nDocker 28), `docker compose build` produces a new image ID on every rebuild even when no\nfiles have changed. This causes `docker compose up` to unnecessarily recreate all containers\non every deploy.\n\nDisabling the containerd image store on the same server fixes the issue \u2014 the second build\nreuses the cache completely and the image ID stays the same.\n\n### Steps To Reproduce\n\nUse Docker CE on Linux with the containerd image store enabled (default for fresh installs):\n\n```\n$ docker info -f '{{.Driver}}'\noverlayfs\n```\n\nCreate these three files:\n\n**Dockerfile:**\n```dockerfile\nFROM alpine:3.21\nRUN echo \"hello\" > /hello.txt\nCOPY config.txt /config.txt\nCMD [\"cat\", \"/hello.txt\", \"/config.txt\"]\n```\n\n**config.txt:**\n```\nstatic config file\n```\n\n**docker-compose.yml:**\n```yaml\nservices:\n  app:\n    build: .\n    container_name: test-cache\n```\n\nThen run:\n\n```bash\n# Build twice with nothing changed in between:\ndocker compose build\ndocker images --format '{{.ID}}' --filter reference='*-app'\n\ndocker compose build\ndocker images --format '{{.ID}}' --filter reference='*-app'\n```\n\n## Expected behavior\n\nSecond build reuses cache. Image ID is the same. `docker compose up` does not recreate the\ncontainer.\n\n## Actual behavior\n\nSecond build produces a different image ID. `docker compose up` sees a different image and\nrecreates the container.\n\nNote: individual build steps show `CACHED` for RUN/COPY layers, but the final image still\ngets a new ID. The exporting steps (`exporting layers`, `writing image`, `naming`) take\n0.1\u20130.2s instead of 0.0s, suggesting they actually re-export rather than reuse.\n\n### Compose Version\n\n```Text\nDocker Compose version v5.1.0\n```\n\n### Docker Environment\n\n```Text\nClient: Docker Engine - Community\n Version:    29.3.0\n Context:    default\n Debug Mode: false\n Plugins:\n  buildx: Docker Buildx (Docker Inc.)\n    Version:  v0.31.1\n    Path:     /usr/libexec/docker/cli-plugins/docker-buildx\n  compose: Docker Compose (Docker Inc.)\n    Version:  v5.1.0\n    Path:     /usr/libexec/docker/cli-plugins/docker-compose\n\nServer:\n Containers: 8\n  Running: 7\n  Paused: 0\n  Stopped: 1\n Images: 8\n Server Version: 29.3.0\n Storage Driver: overlayfs\n  driver-type: io.containerd.snapshotter.v1\n Logging Driver: local\n Cgroup Driver: systemd\n Cgroup Version: 2\n Plugins:\n  Volume: local\n  Network: bridge host ipvlan macvlan null overlay\n  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog\n CDI spec directories:\n  /etc/cdi\n  /var/run/cdi\n Swarm: inactive\n Runtimes: io.containerd.runc.v2 runc\n Default Runtime: runc\n Init Binary: docker-init\n containerd version: 301b2dac98f15c27117da5c8af12118a041a31d9\n runc version: v1.3.4-0-gd6d73eb8\n init version: de40ad0\n Security Options:\n  apparmor\n  seccomp\n   Profile: builtin\n  cgroupns\n Kernel Version: 6.8.0-106-generic\n Operating System: Ubuntu 24.04.4 LTS\n OSType: linux\n Architecture: x86_64\n CPUs: 4\n Total Memory: 7.57GiB\n Name: secondary\n ID: 091526cd-489b-4f47-acad-33efcea821cb\n Docker Root Dir: /var/lib/docker\n Debug Mode: false\n Experimental: false\n Insecure Registries:\n  ::1/128\n  127.0.0.0/8\n Live Restore Enabled: false\n Firewall Backend: iptables\n```\n\n### Anything else?\n\n## Related issues\n\n- docker/for-mac#7341 \u2014 same symptom on macOS Docker Desktop\n- docker/for-mac#7359 \u2014 layer not cached under containerd image store (fixed by increasing\n  `defaultKeepStorage`, but that does not help here \u2014 layers are small)\n\n## Workaround\n\nDisable the containerd image store:\n\n```json\n{\n  \"features\": {\n    \"containerd-snapshotter\": false\n  }\n}\n```\n\nAfter changing `daemon.json` and restarting Docker, existing images are no longer available\n(format is incompatible) and need to be rebuilt/re-pulled. Volumes are preserved.",
+      "number": 13636,
+      "title": "[BUG] `docker compose build` produces different image IDs on each rebuild with containerd image store, but works correctly with overlay2",
+      "url": "https://github.com/docker/compose/issues/13636"
+    }
+  ],
+  "patch_sha256": "6830d002eee5ff57f7f34d38fcc7ab62a52407a08b3e460c1d2ecbe794e2faff",
+  "pr_number": 13949,
+  "repo": "docker/compose",
+  "schema_version": 1,
+  "title": "fix(build): use platform image-manifest digest, not attested index",
+  "url": "https://github.com/docker/compose/pull/13949"
+}

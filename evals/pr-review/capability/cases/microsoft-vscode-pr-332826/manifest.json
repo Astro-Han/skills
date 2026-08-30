@@ -1,0 +1,299 @@
+{
+  "additions": 320,
+  "author": "connor4312",
+  "base_sha": "e340d31886e8a80a86624ad2c3f4a8c5fe1015ff",
+  "body": "Merge remote-tracking branch 'origin/main' into connor4312/chat-draft-contribution\n\n",
+  "captured_at": "2026-08-30T10:28:05+00:00",
+  "case_id": "microsoft-vscode-pr-332826",
+  "changed_files": 9,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compile & Hygiene",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (actions)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Screenshots & Tests",
+      "status": "COMPLETED",
+      "workflowName": "Component Fixtures"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Monaco Editor checks",
+      "status": "COMPLETED",
+      "workflowName": "Monaco Editor checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check metadata",
+      "status": "COMPLETED",
+      "workflowName": "Telemetry"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (c-cpp)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (csharp)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (java-kotlin)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (javascript-typescript)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (python)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (ruby)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (rust)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / CLI",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Check Test Cache",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Check Telemetry",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Test (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Test (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Dependencies Check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "VS Code PR Check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "license/cla",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "e340d31886e8a80a86624ad2c3f4a8c5fe1015ff",
+  "deletions": 64,
+  "files": [
+    {
+      "additions": 22,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/vs/platform/agentHost/common/agentHostChatContributionsService.ts"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "src/vs/platform/agentHost/node/agentHostChatContributionsService.ts"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 36,
+      "path": "src/vs/platform/agentHost/node/agentService.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 23,
+      "path": "src/vs/platform/agentHost/node/agentSideEffects.ts"
+    },
+    {
+      "additions": 35,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/vs/platform/agentHost/node/chatContributions/TODO.md"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/vs/platform/agentHost/node/chatContributions/builtInChatContributions.ts"
+    },
+    {
+      "additions": 74,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "src/vs/platform/agentHost/node/chatContributions/chatDraft/chatDraftContribution.ts"
+    },
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "src/vs/platform/agentHost/node/chatContributions/sessionTitle/sessionTitleContribution.ts"
+    },
+    {
+      "additions": 131,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "src/vs/platform/agentHost/test/node/chatContributions.test.ts"
+    }
+  ],
+  "head_sha": "1444f8143d31faf45027129dc2eb5d1cd09f395b",
+  "issues": [],
+  "patch_sha256": "6412345194be90a619402360a10406a2303ae04003483d8c31483252830bfc5e",
+  "pr_number": 332826,
+  "repo": "microsoft/vscode",
+  "schema_version": 1,
+  "title": "agentHost: move chat draft and title restore into chat contributions",
+  "url": "https://github.com/microsoft/vscode/pull/332826"
+}

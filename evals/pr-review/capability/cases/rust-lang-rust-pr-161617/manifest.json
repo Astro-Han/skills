@@ -1,0 +1,125 @@
+{
+  "additions": 265,
+  "author": "maxdexh",
+  "base_sha": "9a4ad59ae3073b013cd62f53f8349ddc61a012e8",
+  "body": "Adds custom allocators to `(try_)map` on `Box`, `Rc`, `Arc`. \r\n\r\nNot on `UniqueArc`/`UniqueRc` because too much allocator-related API is missing atm and I didn't want to end up writing unsound garbage. The `else` branch in those needs to drop a weakref, I'll get to that later.\r\n\r\ncc rust-lang/rust#160534\r\n\r\nr? nia-e",
+  "captured_at": "2026-08-30T10:28:17+00:00",
+  "case_id": "rust-lang-rust-pr-161617",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Calculate job matrix",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - pr-check-1",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - pr-check-2",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - tidy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-llvm-21",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - aarch64-gnu-llvm-21-1",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - aarch64-gnu-llvm-21-2",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-tools",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-miri",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-gcc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-gcc-core-tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PR - x86_64-gnu-next-trait-solver-polonius",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "publish toolstate",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "9a4ad59ae3073b013cd62f53f8349ddc61a012e8",
+  "deletions": 252,
+  "files": [
+    {
+      "additions": 71,
+      "changeType": "MODIFIED",
+      "deletions": 76,
+      "path": "library/alloc/src/boxed.rs"
+    },
+    {
+      "additions": 96,
+      "changeType": "MODIFIED",
+      "deletions": 87,
+      "path": "library/alloc/src/rc.rs"
+    },
+    {
+      "additions": 96,
+      "changeType": "MODIFIED",
+      "deletions": 87,
+      "path": "library/alloc/src/sync.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "tests/ui/privacy/suggest-box-new.stderr"
+    }
+  ],
+  "head_sha": "c158e179965998fdc994c82f19f6398550750271",
+  "issues": [],
+  "patch_sha256": "309d93157b914118fc6452d420d4c133e9a67c647821348969c12d007004d576",
+  "pr_number": 161617,
+  "repo": "rust-lang/rust",
+  "schema_version": 1,
+  "title": "Add custom allocators to `(try_)map` on `Box`, `Rc`, `Arc`",
+  "url": "https://github.com/rust-lang/rust/pull/161617"
+}

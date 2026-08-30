@@ -1,0 +1,140 @@
+{
+  "additions": 204,
+  "author": "Nic-Polumeyv",
+  "base_sha": "aadc97ce1be06e3dad4b98469ac385a07f34fd06",
+  "body": "A `<select>` with nothing selected stays that way when `defaultValue` is applied, a default whose option arrives later gets selected, and applying a default no longer touches every option on unrelated updates.\n\n`set_default_select_value` in `internal/client/dom/elements/bindings/select.js` marks the default options with the `selected` attribute, then writes `option.selected = selected.has(option)` to every option to restore the current selection. Each of those writes asks the select for a reset, so when no option was selected (`value={null}`, or a `bind:value` that matches nothing) the browser picks the first enabled option. The same restore treats the browser's implicit first-option pick as a choice, so `<select defaultValue=\"b\">` whose options come from an `#each` that fills later never selects `b`. The call is also unconditional, so a spread `attribute_effect` or the element's template effect rerunning for an unrelated attribute repeats it; on a 500 option select a class change costs 501 property writes and 499 attribute writes. `<select value={x} defaultValue>` compiles to two `$.init_select` calls, one from `build_element_special_value_attribute` and one from the `defaultValue` block, so two `MutationObserver`s run both passes per mutation.\n\n`set_default_select_value` returns early when `__defaultValue` is unchanged. After mount a default change never moves the current selection, the same contract as `set_default_value` for inputs, and the restore only writes where something moved, through `selectedIndex` for a single select and per option for `multiple`. When the options change the attributes are applied without restoring, so an option that arrives later carrying the default gets selected the way an inserted `<option selected>` does natively, and `__value` re-asserts the value afterwards. `init_select` is emitted once per `<select>` by the compiler, with `attribute_effect` covering spreads.\n\nFollow-up to #18591.\n",
+  "captured_at": "2026-08-30T10:28:21+00:00",
+  "case_id": "sveltejs-svelte-pr-18719",
+  "changed_files": 8,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, macOS-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (22, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (24, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TestNoAsync",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TSGo",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "vite-ecosystem-ci",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Vercel Agent Review",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "aadc97ce1be06e3dad4b98469ac385a07f34fd06",
+  "deletions": 42,
+  "files": [
+    {
+      "additions": 20,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/svelte/src/internal/client/dom/elements/attributes.js"
+    },
+    {
+      "additions": 41,
+      "changeType": "MODIFIED",
+      "deletions": 23,
+      "path": "packages/svelte/src/internal/client/dom/elements/bindings/select.js"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/svelte/tests/runtime-runes/samples/form-default-value-select/_config.js"
+    },
+    {
+      "additions": 52,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js"
+    },
+    {
+      "additions": 37,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte"
+    },
+    {
+      "additions": 30,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js"
+    },
+    {
+      "additions": 21,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte"
+    }
+  ],
+  "head_sha": "cd3f5474d28e199f5080dc91ee30718c24bdbddd",
+  "issues": [],
+  "patch_sha256": "cc0a75993a9d0d7e1f4c52a29aa3ca4eda3960c642a6c12a8f43e8ae341e5f68",
+  "pr_number": 18719,
+  "repo": "sveltejs/svelte",
+  "schema_version": 1,
+  "title": "fix: keep the current selection of a `<select>` when its `defaultValue` is applied",
+  "url": "https://github.com/sveltejs/svelte/pull/18719"
+}

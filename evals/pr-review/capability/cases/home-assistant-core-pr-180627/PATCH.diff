@@ -1,0 +1,416 @@
+From f8edaf6fbf3fa18aa3ae2c494a2b5ed28db18067 Mon Sep 17 00:00:00 2001
+From: Alex Fishlock <alex.fishlock@racingjag.com>
+Date: Sat, 29 Aug 2026 14:54:19 +0100
+Subject: [PATCH 1/2] Migrate the Lyngdorf number platform to the lyngdorf 2.0
+ API
+
+Trims are a mapping of controls in 2.0 rather than a per-band triple of
+attributes, so the six trims become one lookup each and the entity
+description loses a field.
+
+range_fn stays the test for whether the model has a control. On the 1.11
+pin lipsync also reads None until the device reports a value, and
+connect() does not wait for that, so keying entity creation off the
+control would drop the entity at startup.
+---
+ homeassistant/components/lyngdorf/number.py   | 65 ++++++++++---------
+ tests/components/lyngdorf/conftest.py         | 42 ++++++++++--
+ .../lyngdorf/snapshots/test_diagnostics.ambr  |  2 +-
+ tests/components/lyngdorf/test_number.py      | 62 +++++++++++-------
+ 4 files changed, 111 insertions(+), 60 deletions(-)
+
+diff --git a/homeassistant/components/lyngdorf/number.py b/homeassistant/components/lyngdorf/number.py
+index cdf186a032e7d..0ce171b4665a5 100644
+--- a/homeassistant/components/lyngdorf/number.py
++++ b/homeassistant/components/lyngdorf/number.py
+@@ -1,11 +1,10 @@
+ """Number platform for Lyngdorf integration."""
+ 
+-from collections.abc import Callable
++from collections.abc import Awaitable, Callable
+ from dataclasses import dataclass
+ from typing import TYPE_CHECKING, override
+ 
+-from lyngdorf.device import Receiver
+-from lyngdorf.models.base import NumericRange
++from lyngdorf import LyngdorfReceiver, NumericControl, NumericRange, Trim
+ 
+ from homeassistant.components.number import (
+     NumberDeviceClass,
+@@ -27,9 +26,12 @@
+ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+     """Describe a Lyngdorf number entity."""
+ 
+-    value_fn: Callable[[Receiver], float | None]
+-    set_value_fn: Callable[[Receiver, float], None]
+-    range_fn: Callable[[Receiver], NumericRange | None]
++    # range_fn must not depend on the device having reported a value: on the
++    # 1.11 pin lipsync reads None until it does, and the entity would be
++    # dropped at startup. It doubles as the "model has this control" test.
++    range_fn: Callable[[LyngdorfReceiver], NumericRange | None]
++    control_fn: Callable[[LyngdorfReceiver], NumericControl | None]
++    set_value_fn: Callable[[NumericControl, float], Awaitable[None]]
+ 
+ 
+ NUMBER_ENTITIES: tuple[LyngdorfNumberEntityDescription, ...] = (
+@@ -39,28 +41,28 @@ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+         device_class=NumberDeviceClass.DURATION,
+         native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.lipsync,
+-        # The device takes lip sync as whole milliseconds.
+-        set_value_fn=lambda r, v: r.set_lipsync(round(v)),
+         range_fn=lambda r: r.lipsync_range,
++        control_fn=lambda r: r.lipsync,
++        # The device takes lip sync as whole milliseconds.
++        set_value_fn=lambda c, v: c.set(round(v)),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_bass",
+         translation_key="trim_bass",
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_bass,
+-        set_value_fn=lambda r, v: r.set_trim_bass(v),
+-        range_fn=lambda r: r.trim_bass_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.BASS)) else None,
++        control_fn=lambda r: r.trims.get(Trim.BASS),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_treble",
+         translation_key="trim_treble",
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_treble,
+-        set_value_fn=lambda r, v: r.set_trim_treble(v),
+-        range_fn=lambda r: r.trim_treble_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.TREBLE)) else None,
++        control_fn=lambda r: r.trims.get(Trim.TREBLE),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_centre",
+@@ -68,9 +70,9 @@ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+         entity_registry_enabled_default=False,
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_centre,
+-        set_value_fn=lambda r, v: r.set_trim_centre(v),
+-        range_fn=lambda r: r.trim_centre_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.CENTER)) else None,
++        control_fn=lambda r: r.trims.get(Trim.CENTER),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_height",
+@@ -78,9 +80,9 @@ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+         entity_registry_enabled_default=False,
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_height,
+-        set_value_fn=lambda r, v: r.set_trim_height(v),
+-        range_fn=lambda r: r.trim_height_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.HEIGHT)) else None,
++        control_fn=lambda r: r.trims.get(Trim.HEIGHT),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_lfe",
+@@ -88,9 +90,9 @@ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+         entity_registry_enabled_default=False,
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_lfe,
+-        set_value_fn=lambda r, v: r.set_trim_lfe(v),
+-        range_fn=lambda r: r.trim_lfe_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.LFE)) else None,
++        control_fn=lambda r: r.trims.get(Trim.LFE),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+     LyngdorfNumberEntityDescription(
+         key="trim_surround",
+@@ -98,9 +100,9 @@ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+         entity_registry_enabled_default=False,
+         native_unit_of_measurement=UnitOfSoundPressure.DECIBEL,
+         entity_category=EntityCategory.CONFIG,
+-        value_fn=lambda r: r.trim_surround,
+-        set_value_fn=lambda r, v: r.set_trim_surround(v),
+-        range_fn=lambda r: r.trim_surround_range,
++        range_fn=lambda r: c.range if (c := r.trims.get(Trim.SURROUND)) else None,
++        control_fn=lambda r: r.trims.get(Trim.SURROUND),
++        set_value_fn=lambda c, v: c.set(v),
+     ),
+ )
+ 
+@@ -114,7 +116,6 @@ async def async_setup_entry(
+     runtime_data = config_entry.runtime_data
+     receiver = runtime_data.receiver
+ 
+-    # A None range means the model has no such control at all.
+     async_add_entities(
+         LyngdorfNumber(receiver, config_entry, runtime_data.device_info, description)
+         for description in NUMBER_ENTITIES
+@@ -129,7 +130,7 @@ class LyngdorfNumber(LyngdorfEntity, NumberEntity):
+ 
+     def __init__(
+         self,
+-        receiver: Receiver,
++        receiver: LyngdorfReceiver,
+         config_entry: LyngdorfConfigEntry,
+         device_info: DeviceInfo,
+         description: LyngdorfNumberEntityDescription,
+@@ -172,9 +173,11 @@ def native_step(self) -> float:
+     @property
+     def native_value(self) -> float | None:
+         """Return the current value."""
+-        return self.entity_description.value_fn(self._receiver)
++        control = self.entity_description.control_fn(self._receiver)
++        return control.value if control is not None else None
+ 
+     @override
+     async def async_set_native_value(self, value: float) -> None:
+         """Set the value."""
+-        self.entity_description.set_value_fn(self._receiver, value)
++        if (control := self.entity_description.control_fn(self._receiver)) is not None:
++            await self.entity_description.set_value_fn(control, value)
+diff --git a/tests/components/lyngdorf/conftest.py b/tests/components/lyngdorf/conftest.py
+index 1233278c1b8b6..f00cf05616f06 100644
+--- a/tests/components/lyngdorf/conftest.py
++++ b/tests/components/lyngdorf/conftest.py
+@@ -3,11 +3,17 @@
+ from __future__ import annotations
+ 
+ from collections.abc import Generator
++from typing import Self
+ from unittest.mock import AsyncMock, MagicMock, Mock, patch
+ 
+-from lyngdorf import LyngdorfModel, LyngdorfReceiver
+-from lyngdorf.models.base import NumericRange
+-from lyngdorf.remote import RemoteKey
++from lyngdorf import (
++    LyngdorfModel,
++    LyngdorfReceiver,
++    NumericControl,
++    NumericRange,
++    RemoteKey,
++    Trim,
++)
+ import pytest
+ 
+ from homeassistant.components.lyngdorf.const import (
+@@ -54,6 +60,26 @@ def mock_setup_entry() -> Generator[None]:
+         yield
+ 
+ 
++class _FloatControl(float):
++    """A float that is also a control, as the library's 1.x values are."""
++
++    def __new__(cls, value: float, value_range: NumericRange) -> Self:
++        """Return a float carrying the control interface alongside it."""
++        control = super().__new__(cls, value)
++        control.value = value
++        control.range = value_range
++        control.set = AsyncMock()
++        return control
++
++
++def _control(value: float | None, value_range: NumericRange) -> MagicMock:
++    """Return a mocked numeric control."""
++    control = MagicMock(spec=NumericControl)
++    control.value = value
++    control.range = value_range
++    return control
++
++
+ @pytest.fixture
+ def mock_create_receiver() -> Generator[MagicMock]:
+     """Return a mocked create_receiver factory."""
+@@ -124,8 +150,16 @@ def mock_receiver(mock_create_receiver: MagicMock) -> MagicMock:
+     receiver.can_shuffle = False
+     receiver.available_repeat_modes = frozenset()
+ 
+-    receiver.lipsync = 50
++    receiver.lipsync = _FloatControl(50, NumericRange(0, 500, 1))
+     receiver.lipsync_range = NumericRange(0, 500, 1)
++    receiver.trims = {
++        Trim.BASS: _control(3.0, NumericRange(-12.0, 12.0, 0.1)),
++        Trim.TREBLE: _control(0.0, NumericRange(-12.0, 12.0, 0.1)),
++        Trim.CENTER: _control(0.0, NumericRange(-10.0, 10.0, 0.1)),
++        Trim.HEIGHT: _control(4.0, NumericRange(-10.0, 10.0, 0.1)),
++        Trim.LFE: _control(3.0, NumericRange(-10.0, 10.0, 0.1)),
++        Trim.SURROUND: _control(0.0, NumericRange(-10.0, 10.0, 0.1)),
++    }
+     receiver.trim_bass = 3.0
+     receiver.trim_treble = 0.0
+     receiver.trim_centre = 0.0
+diff --git a/tests/components/lyngdorf/snapshots/test_diagnostics.ambr b/tests/components/lyngdorf/snapshots/test_diagnostics.ambr
+index 95ce728a22165..ae8f67c0dfabc 100644
+--- a/tests/components/lyngdorf/snapshots/test_diagnostics.ambr
++++ b/tests/components/lyngdorf/snapshots/test_diagnostics.ambr
+@@ -89,7 +89,7 @@
+         'Movie',
+       ]),
+       'connected': True,
+-      'lipsync': 50,
++      'lipsync': 50.0,
+       'max_volume': 0.0,
+       'model': 'MP_60',
+       'mute_enabled': False,
+diff --git a/tests/components/lyngdorf/test_number.py b/tests/components/lyngdorf/test_number.py
+index fe361e3b30886..7535385de7768 100644
+--- a/tests/components/lyngdorf/test_number.py
++++ b/tests/components/lyngdorf/test_number.py
+@@ -2,7 +2,7 @@
+ 
+ from unittest.mock import MagicMock, patch
+ 
+-from lyngdorf.const import LyngdorfModel
++from lyngdorf import LyngdorfModel, Trim
+ import pytest
+ from syrupy.assertion import SnapshotAssertion
+ 
+@@ -52,7 +52,7 @@ async def test_set_lipsync(
+     mock_receiver: MagicMock,
+ ) -> None:
+     """Test setting the lipsync value."""
+-    mock_receiver.lipsync = 0
++    mock_receiver.lipsync.value = 0
+ 
+     notify_receiver_update(mock_receiver)
+     await hass.async_block_till_done()
+@@ -67,26 +67,18 @@ async def test_set_lipsync(
+         blocking=True,
+     )
+ 
+-    mock_receiver.set_lipsync.assert_called_once_with(75)
++    mock_receiver.lipsync.set.assert_awaited_once_with(75)
+ 
+ 
+ @pytest.mark.parametrize(
+-    ("entity_id", "attribute", "method"),
++    ("entity_id", "trim"),
+     [
+-        pytest.param(TRIM_BASS_ENTITY_ID, "trim_bass", "set_trim_bass", id="bass"),
+-        pytest.param(
+-            TRIM_TREBLE_ENTITY_ID, "trim_treble", "set_trim_treble", id="treble"
+-        ),
+-        pytest.param(
+-            TRIM_CENTRE_ENTITY_ID, "trim_centre", "set_trim_centre", id="centre"
+-        ),
+-        pytest.param(
+-            TRIM_HEIGHT_ENTITY_ID, "trim_height", "set_trim_height", id="height"
+-        ),
+-        pytest.param(TRIM_LFE_ENTITY_ID, "trim_lfe", "set_trim_lfe", id="lfe"),
+-        pytest.param(
+-            TRIM_SURROUND_ENTITY_ID, "trim_surround", "set_trim_surround", id="surround"
+-        ),
++        pytest.param(TRIM_BASS_ENTITY_ID, Trim.BASS, id="bass"),
++        pytest.param(TRIM_TREBLE_ENTITY_ID, Trim.TREBLE, id="treble"),
++        pytest.param(TRIM_CENTRE_ENTITY_ID, Trim.CENTER, id="centre"),
++        pytest.param(TRIM_HEIGHT_ENTITY_ID, Trim.HEIGHT, id="height"),
++        pytest.param(TRIM_LFE_ENTITY_ID, Trim.LFE, id="lfe"),
++        pytest.param(TRIM_SURROUND_ENTITY_ID, Trim.SURROUND, id="surround"),
+     ],
+ )
+ @pytest.mark.usefixtures("entity_registry_enabled_by_default", "init_integration")
+@@ -94,11 +86,10 @@ async def test_set_trim(
+     hass: HomeAssistant,
+     mock_receiver: MagicMock,
+     entity_id: str,
+-    attribute: str,
+-    method: str,
++    trim: Trim,
+ ) -> None:
+     """Test setting each trim value."""
+-    setattr(mock_receiver, attribute, 0.0)
++    mock_receiver.trims[trim].value = 0.0
+ 
+     notify_receiver_update(mock_receiver)
+     await hass.async_block_till_done()
+@@ -113,7 +104,7 @@ async def test_set_trim(
+         blocking=True,
+     )
+ 
+-    getattr(mock_receiver, method).assert_called_once_with(-6.0)
++    mock_receiver.trims[trim].set.assert_awaited_once_with(-6.0)
+ 
+ 
+ async def test_number_none_values(
+@@ -123,7 +114,7 @@ async def test_number_none_values(
+ ) -> None:
+     """Test a number shows unknown when the device reports nothing."""
+     mock_receiver.lipsync = None
+-    mock_receiver.trim_bass = None
++    mock_receiver.trims[Trim.BASS].value = None
+     notify_receiver_update(mock_receiver)
+     await hass.async_block_till_done()
+ 
+@@ -131,6 +122,29 @@ async def test_number_none_values(
+     assert hass.states.get(TRIM_BASS_ENTITY_ID).state == STATE_UNKNOWN
+ 
+ 
++@pytest.mark.usefixtures("entity_registry_enabled_by_default")
++async def test_entity_created_before_the_device_reports_a_value(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_receiver: MagicMock,
++) -> None:
++    """Test a control the model has still gets an entity before its first report."""
++    mock_receiver.lipsync = None
++    mock_config_entry.add_to_hass(hass)
++
++    with (
++        patch(
++            "homeassistant.components.lyngdorf.lookup_model",
++            return_value=LyngdorfModel.MP_60,
++        ),
++        patch("homeassistant.components.lyngdorf.PLATFORMS", [Platform.NUMBER]),
++    ):
++        await hass.config_entries.async_setup(mock_config_entry.entry_id)
++        await hass.async_block_till_done()
++
++    assert hass.states.get(LIPSYNC_ENTITY_ID).state == STATE_UNKNOWN
++
++
+ @pytest.mark.usefixtures("entity_registry_enabled_by_default", "mock_receiver")
+ async def test_entities_absent_for_controls_the_model_lacks(
+     hass: HomeAssistant,
+@@ -139,7 +153,7 @@ async def test_entities_absent_for_controls_the_model_lacks(
+ ) -> None:
+     """Test no entity is created where the model has no such control."""
+     mock_receiver.lipsync_range = None
+-    mock_receiver.trim_surround_range = None
++    del mock_receiver.trims[Trim.SURROUND]
+     mock_config_entry.add_to_hass(hass)
+ 
+     with (
+
+From 8259f5f576ab2e67d048f12995759c55a363d1f8 Mon Sep 17 00:00:00 2001
+From: Alex Fishlock <alex.fishlock@racingjag.com>
+Date: Sat, 29 Aug 2026 15:13:55 +0100
+Subject: [PATCH 2/2] Describe the range_fn contract without naming a library
+ version
+
+A comment naming the pinned version goes stale on the next bump; the
+requirement it describes does not.
+---
+ homeassistant/components/lyngdorf/number.py | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/homeassistant/components/lyngdorf/number.py b/homeassistant/components/lyngdorf/number.py
+index 0ce171b4665a5..e7edb15a69e3c 100644
+--- a/homeassistant/components/lyngdorf/number.py
++++ b/homeassistant/components/lyngdorf/number.py
+@@ -26,9 +26,8 @@
+ class LyngdorfNumberEntityDescription(NumberEntityDescription):
+     """Describe a Lyngdorf number entity."""
+ 
+-    # range_fn must not depend on the device having reported a value: on the
+-    # 1.11 pin lipsync reads None until it does, and the entity would be
+-    # dropped at startup. It doubles as the "model has this control" test.
++    # Whether the model has this control at all. Must not depend on the device
++    # having reported a value, or the entity is dropped at startup.
+     range_fn: Callable[[LyngdorfReceiver], NumericRange | None]
+     control_fn: Callable[[LyngdorfReceiver], NumericControl | None]
+     set_value_fn: Callable[[NumericControl, float], Awaitable[None]]

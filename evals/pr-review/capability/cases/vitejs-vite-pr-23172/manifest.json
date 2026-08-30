@@ -1,0 +1,194 @@
+{
+  "additions": 39,
+  "author": "sapphi-red",
+  "base_sha": "616296895bd135386d35069a479a5f188c7de298",
+  "body": "This PR removes the \"HmrUrl\" concept.\r\n\r\nThere were three \"Url\" concept in Vite:\r\n\r\n- \"ModuleUrl\"\r\n  - the URL used in the module graph.\r\n  - does not replace `\\0`\r\n  - does not have base\r\n  - Example: `\\0virtual:foo`\r\n- \"BrowserUrl\"\r\n  - the URL used by the browser\r\n  - replaces `\\0`\r\n  - has base\r\n  - Example: `/base/@id/__x00__virtual:foo?t=123`\r\n- \"HmrUrl\"\r\n  - the URL used in the HMR client.\r\n  - replaces `\\0`\r\n  - does not have base\r\n  - Example: `/@id/__x00__virtual:foo`\r\n\r\nIt is confusing to have three kinds of representation. I think the HmrUrl is not needed as well.\r\n\r\n---\r\n\r\n<sub>Stack created with <a href=\"https://github.com/github/gh-stack\">GitHub Stacks CLI</a> \u2022 <a href=\"https://gh.io/stacks-feedback\">Give Feedback \ud83d\udcac</a></sub>",
+  "captured_at": "2026-08-30T10:28:22+00:00",
+  "case_id": "vitejs-vite-pr-23172",
+  "changed_files": 7,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "copilot-setup-steps",
+      "status": "COMPLETED",
+      "workflowName": ".github/workflows/copilot-setup-steps.yml"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Get changed files",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (actions)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "preview",
+      "status": "COMPLETED",
+      "workflowName": "Preview release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Semantic Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "Semantic Pull Request"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "Zizmor"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-20, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-22, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-26, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-24, macos-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-24.15.0, windows-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build & Test Passed or Skipped",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build & Test Failed",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Redirect rules - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Continuous Releases",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "616296895bd135386d35069a479a5f188c7de298",
+  "deletions": 29,
+  "files": [
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/vite/src/client/client.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/vite/src/module-runner/hmrHandler.ts"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "packages/vite/src/node/plugins/importAnalysis.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "packages/vite/src/node/server/hmr.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/vite/src/node/server/transformRequest.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/vite/types/customEvent.d.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/vite/types/hmrPayload.d.ts"
+    }
+  ],
+  "head_sha": "796cd47ba8c13e3ad08ce573f52f81e113ffc6af",
+  "issues": [],
+  "patch_sha256": "aaa06d7e04425f947c9bf0408bbb638130fbd829c97c76604ff187804bef8065",
+  "pr_number": 23172,
+  "repo": "vitejs/vite",
+  "schema_version": 1,
+  "title": "refactor: remove HmrUrl concept",
+  "url": "https://github.com/vitejs/vite/pull/23172"
+}

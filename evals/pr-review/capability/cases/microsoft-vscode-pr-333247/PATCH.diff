@@ -1,0 +1,236 @@
+From 80399c0f74209c773704de8b04a1ee94b4771470 Mon Sep 17 00:00:00 2001
+From: Dmitriy Vasyura <dmitriv@microsoft.com>
+Date: Fri, 28 Aug 2026 13:19:37 -0700
+Subject: [PATCH] Fix chat customization migration dependency cycle
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ .../chat/browser/chat.shared.contribution.ts  | 16 +++++++++++++
+ .../chat/common/chatService/chatService.ts    |  4 +++-
+ .../common/chatService/chatServiceImpl.ts     | 23 +++++++++++++++----
+ .../common/chatService/chatService.test.ts    | 16 +++++++++----
+ .../common/chatService/mockChatService.ts     |  5 ++++
+ 5 files changed, 54 insertions(+), 10 deletions(-)
+
+diff --git a/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts b/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
+index 8fa6cd8aa99d0..06a2fd57b13e6 100644
+--- a/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
++++ b/src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts
+@@ -3098,6 +3098,21 @@ class ChatSpeechToTextInitContribution implements IWorkbenchContribution {
+ 	}
+ }
+ 
++class CustomizationMigrationHintContribution extends Disposable implements IWorkbenchContribution {
++
++	static readonly ID = 'workbench.contrib.customizationMigrationHint';
++
++	constructor(
++		@IChatService chatService: IChatService,
++		@ICustomizationMigrationService customizationMigrationService: ICustomizationMigrationService,
++	) {
++		super();
++		this._register(chatService.registerCustomizationMigrationHintProvider(
++			sessionResource => customizationMigrationService.computeMigrationHint(sessionResource)
++		));
++	}
++}
++
+ AccessibleViewRegistry.register(new ChatTerminalOutputAccessibleView());
+ AccessibleViewRegistry.register(new ChatResponseAccessibleView());
+ AccessibleViewRegistry.register(new PanelChatAccessibilityHelp());
+@@ -3113,6 +3128,7 @@ Registry.as<IEditorFactoryRegistry>(EditorExtensions.EditorFactory).registerEdit
+ 
+ registerWorkbenchContribution2(CopilotTelemetryContribution.ID, CopilotTelemetryContribution, WorkbenchPhase.BlockRestore);
+ registerWorkbenchContribution2(ChatSpeechToTextInitContribution.ID, ChatSpeechToTextInitContribution, WorkbenchPhase.BlockRestore);
++registerWorkbenchContribution2(CustomizationMigrationHintContribution.ID, CustomizationMigrationHintContribution, WorkbenchPhase.AfterRestored);
+ registerWorkbenchContribution2(ChatResolverContribution.ID, ChatResolverContribution, WorkbenchPhase.BlockStartup);
+ registerWorkbenchContribution2(ChatDebugResolverContribution.ID, ChatDebugResolverContribution, WorkbenchPhase.BlockStartup);
+ registerWorkbenchContribution2(PromptsDebugContribution.ID, PromptsDebugContribution, WorkbenchPhase.BlockRestore);
+diff --git a/src/vs/workbench/contrib/chat/common/chatService/chatService.ts b/src/vs/workbench/contrib/chat/common/chatService/chatService.ts
+index f82b3e2e7a656..0612938936a16 100644
+--- a/src/vs/workbench/contrib/chat/common/chatService/chatService.ts
++++ b/src/vs/workbench/contrib/chat/common/chatService/chatService.ts
+@@ -10,7 +10,7 @@ import { CancellationToken } from '../../../../../base/common/cancellation.js';
+ import { IStringDictionary } from '../../../../../base/common/collections.js';
+ import { Event } from '../../../../../base/common/event.js';
+ import { IMarkdownString } from '../../../../../base/common/htmlContent.js';
+-import { DisposableStore, IReference } from '../../../../../base/common/lifecycle.js';
++import { DisposableStore, IDisposable, IReference } from '../../../../../base/common/lifecycle.js';
+ import { autorun, autorunSelfDisposable, IObservable, IReader } from '../../../../../base/common/observable.js';
+ import { ThemeIcon } from '../../../../../base/common/themables.js';
+ import { hasKey } from '../../../../../base/common/types.js';
+@@ -1984,6 +1984,8 @@ export interface IChatService {
+ 
+ 	readonly onDidCreateModel: Event<IChatModel>;
+ 
++	registerCustomizationMigrationHintProvider(provider: (sessionResource: URI) => Promise<string | undefined>): IDisposable;
++
+ 	/**
+ 	 * An observable containing all live chat models.
+ 	 */
+diff --git a/src/vs/workbench/contrib/chat/common/chatService/chatServiceImpl.ts b/src/vs/workbench/contrib/chat/common/chatService/chatServiceImpl.ts
+index 54f10a55b3089..7ad78f421d5d0 100644
+--- a/src/vs/workbench/contrib/chat/common/chatService/chatServiceImpl.ts
++++ b/src/vs/workbench/contrib/chat/common/chatService/chatServiceImpl.ts
+@@ -12,7 +12,7 @@ import { Emitter, Event } from '../../../../../base/common/event.js';
+ import { Codicon } from '../../../../../base/common/codicons.js';
+ import { createMarkdownCommandLink, MarkdownString } from '../../../../../base/common/htmlContent.js';
+ import { Iterable } from '../../../../../base/common/iterator.js';
+-import { Disposable, DisposableResourceMap, DisposableStore, IDisposable, MutableDisposable } from '../../../../../base/common/lifecycle.js';
++import { Disposable, DisposableResourceMap, DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
+ import { ResourceMap } from '../../../../../base/common/map.js';
+ import { revive } from '../../../../../base/common/marshalling.js';
+ import { equals } from '../../../../../base/common/objects.js';
+@@ -65,7 +65,6 @@ import { ComputeAutomaticInstructions } from '../promptSyntax/computeAutomaticIn
+ import { findLast } from '../../../../../base/common/arraysFind.js';
+ import { ChatMode } from '../chatModes.js';
+ import { AICustomizationManagementCommands, getCustomizationMigrationHintDismissedStorageKey } from '../aiCustomizationWorkspaceService.js';
+-import { ICustomizationMigrationService } from '../promptSyntax/service/customizationMigrationService.js';
+ 
+ const serializedChatKey = 'interactive.sessions';
+ const customizationMigrationHintShownStateKey = 'customizationMigrationHintShown';
+@@ -223,6 +222,7 @@ export class ChatService extends Disposable implements IChatService {
+ 	private readonly _sessionFollowupCancelTokens = this._register(new DisposableResourceMap<CancellationTokenSource>());
+ 	private readonly _chatServiceTelemetry: ChatServiceTelemetry;
+ 	private readonly _chatSessionStore: ChatSessionStore;
++	private _customizationMigrationHintProvider: ((sessionResource: URI) => Promise<string | undefined>) | undefined;
+ 
+ 	readonly requestInProgressObs: IObservable<boolean>;
+ 
+@@ -242,6 +242,19 @@ export class ChatService extends Disposable implements IChatService {
+ 		return this._sessionModels.waitForModelDisposals();
+ 	}
+ 
++	registerCustomizationMigrationHintProvider(provider: (sessionResource: URI) => Promise<string | undefined>): IDisposable {
++		if (this._customizationMigrationHintProvider) {
++			throw new BugIndicatingError('A customization migration hint provider is already registered');
++		}
++
++		this._customizationMigrationHintProvider = provider;
++		return toDisposable(() => {
++			if (this._customizationMigrationHintProvider === provider) {
++				this._customizationMigrationHintProvider = undefined;
++			}
++		});
++	}
++
+ 	private get isEmptyWindow(): boolean {
+ 		const workspace = this.workspaceContextService.getWorkspace();
+ 		return !workspace.configuration && workspace.folders.length === 0;
+@@ -261,7 +274,6 @@ export class ChatService extends Disposable implements IChatService {
+ 		@IChatSessionsService private readonly chatSessionService: IChatSessionsService,
+ 		@IMcpService private readonly mcpService: IMcpService,
+ 		@IPromptsService private readonly promptsService: IPromptsService,
+-		@ICustomizationMigrationService private readonly customizationMigrationService: ICustomizationMigrationService,
+ 		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
+ 		@ILanguageModelsService private readonly languageModelsService: ILanguageModelsService,
+ 		@IChatDebugService private readonly chatDebugService: IChatDebugService,
+@@ -1572,12 +1584,13 @@ export class ChatService extends Disposable implements IChatService {
+ 				if (!isAgentHostTarget(sessionType)
+ 					|| (hintMode !== CustomizationMigrationHintMode.Once && hintMode !== CustomizationMigrationHintMode.Always)
+ 					|| this.storageService.getBoolean(getCustomizationMigrationHintDismissedStorageKey(sessionType), StorageScope.WORKSPACE)
+-					|| (hintMode === CustomizationMigrationHintMode.Once && hintAlreadyShown)) {
++					|| (hintMode === CustomizationMigrationHintMode.Once && hintAlreadyShown)
++					|| !this._customizationMigrationHintProvider) {
+ 					return undefined;
+ 				}
+ 
+ 				try {
+-					const message = await this.customizationMigrationService.computeMigrationHint(sessionResource);
++					const message = await this._customizationMigrationHintProvider(sessionResource);
+ 					if (message && !token.isCancellationRequested) {
+ 						return message;
+ 					}
+diff --git a/src/vs/workbench/contrib/chat/test/common/chatService/chatService.test.ts b/src/vs/workbench/contrib/chat/test/common/chatService/chatService.test.ts
+index 7beb5269ecdf9..dc61678843838 100644
+--- a/src/vs/workbench/contrib/chat/test/common/chatService/chatService.test.ts
++++ b/src/vs/workbench/contrib/chat/test/common/chatService/chatService.test.ts
+@@ -2123,7 +2123,6 @@ suite('ChatService', () => {
+ 		const sessionResource = URI.from({ scheme: sessionType, path: '/session' });
+ 		const migrationService = mockObject<ICustomizationMigrationService>()({ _serviceBrand: undefined });
+ 		migrationService.computeMigrationHint.resolves('Found 3 customization files that could be migrated.');
+-		instantiationService.stub(ICustomizationMigrationService, migrationService);
+ 
+ 		const mockSessionsService = new MockChatSessionsService();
+ 		mockSessionsService.setContributions([{
+@@ -2145,6 +2144,9 @@ suite('ChatService', () => {
+ 		testDisposables.add(chatAgentService.registerAgentImplementation(sessionType, { async invoke() { return {}; } }));
+ 
+ 		const testService = createChatService();
++		testDisposables.add(testService.registerCustomizationMigrationHintProvider(
++			sessionResource => migrationService.computeMigrationHint(sessionResource)
++		));
+ 		const ref = await testService.acquireOrLoadSession(sessionResource, ChatAgentLocation.Chat, CancellationToken.None);
+ 		assert.ok(ref);
+ 		testDisposables.add(ref);
+@@ -2224,7 +2226,6 @@ suite('ChatService', () => {
+ 		const sessionResource = URI.from({ scheme: sessionType, path: '/restored-session' });
+ 		const migrationService = mockObject<ICustomizationMigrationService>()({ _serviceBrand: undefined });
+ 		migrationService.computeMigrationHint.resolves('Found customization files that could be migrated.');
+-		instantiationService.stub(ICustomizationMigrationService, migrationService);
+ 
+ 		const mockSessionsService = new MockChatSessionsService();
+ 		mockSessionsService.setContributions([{
+@@ -2248,6 +2249,9 @@ suite('ChatService', () => {
+ 		const configurationService = instantiationService.get(IConfigurationService) as TestConfigurationService;
+ 		await configurationService.setUserConfiguration(ChatConfiguration.ChatCustomizationsMigrationHint, CustomizationMigrationHintMode.Once);
+ 		const testService = createChatService();
++		testDisposables.add(testService.registerCustomizationMigrationHintProvider(
++			sessionResource => migrationService.computeMigrationHint(sessionResource)
++		));
+ 		const firstRef = await testService.acquireOrLoadSession(sessionResource, ChatAgentLocation.Chat, CancellationToken.None);
+ 		assert.ok(firstRef);
+ 		const firstResponse = await testService.sendRequest(sessionResource, 'first', { agentId: sessionType });
+@@ -2275,8 +2279,10 @@ suite('ChatService', () => {
+ 
+ 	test('customization migration hint is not computed for local sessions', async () => {
+ 		const migrationService = mockObject<ICustomizationMigrationService>()({ _serviceBrand: undefined });
+-		instantiationService.stub(ICustomizationMigrationService, migrationService);
+ 		const testService = createChatService();
++		testDisposables.add(testService.registerCustomizationMigrationHintProvider(
++			sessionResource => migrationService.computeMigrationHint(sessionResource)
++		));
+ 		const model = startSessionModel(testService).object;
+ 		const response = await testService.sendRequest(model.sessionResource, 'test');
+ 		ChatSendResult.assertSent(response);
+@@ -2293,7 +2299,6 @@ suite('ChatService', () => {
+ 		const sessionType = 'extension-host-harness';
+ 		const sessionResource = URI.from({ scheme: sessionType, path: '/session' });
+ 		const migrationService = mockObject<ICustomizationMigrationService>()({ _serviceBrand: undefined });
+-		instantiationService.stub(ICustomizationMigrationService, migrationService);
+ 
+ 		const mockSessionsService = new MockChatSessionsService();
+ 		mockSessionsService.setContributions([{
+@@ -2315,6 +2320,9 @@ suite('ChatService', () => {
+ 		testDisposables.add(chatAgentService.registerAgentImplementation(sessionType, { async invoke() { return {}; } }));
+ 
+ 		const testService = createChatService();
++		testDisposables.add(testService.registerCustomizationMigrationHintProvider(
++			sessionResource => migrationService.computeMigrationHint(sessionResource)
++		));
+ 		const ref = await testService.acquireOrLoadSession(sessionResource, ChatAgentLocation.Chat, CancellationToken.None);
+ 		assert.ok(ref);
+ 		testDisposables.add(ref);
+diff --git a/src/vs/workbench/contrib/chat/test/common/chatService/mockChatService.ts b/src/vs/workbench/contrib/chat/test/common/chatService/mockChatService.ts
+index dc611e8fe6615..608b50a2ee047 100644
+--- a/src/vs/workbench/contrib/chat/test/common/chatService/mockChatService.ts
++++ b/src/vs/workbench/contrib/chat/test/common/chatService/mockChatService.ts
+@@ -5,6 +5,7 @@
+ 
+ import { CancellationToken } from '../../../../../../base/common/cancellation.js';
+ import { Emitter, Event } from '../../../../../../base/common/event.js';
++import { Disposable, IDisposable } from '../../../../../../base/common/lifecycle.js';
+ import { ResourceMap } from '../../../../../../base/common/map.js';
+ import { ISettableObservable, observableValue } from '../../../../../../base/common/observable.js';
+ import { URI } from '../../../../../../base/common/uri.js';
+@@ -26,6 +27,10 @@ export class MockChatService implements IChatService {
+ 	private readonly _onDidCreateModel = new Emitter<IChatModel>();
+ 	readonly onDidCreateModel = this._onDidCreateModel.event;
+ 
++	registerCustomizationMigrationHintProvider(_provider: (sessionResource: URI) => Promise<string | undefined>): IDisposable {
++		return Disposable.None;
++	}
++
+ 	private readonly sessions = new ResourceMap<IChatModel>();
+ 	private liveSessionItems: IChatDetail[] = [];
+ 	private historySessionItems: IChatDetail[] = [];

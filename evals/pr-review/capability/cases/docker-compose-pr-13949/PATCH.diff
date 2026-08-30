@@ -1,0 +1,414 @@
+From 32290a0db0f7a8271a3cfbfab93e0644f70d5281 Mon Sep 17 00:00:00 2001
+From: Guillaume Lours <glours@users.noreply.github.com>
+Date: Fri, 17 Jul 2026 14:50:03 +0200
+Subject: [PATCH] fix(build): use platform image-manifest digest, not attested
+ index
+
+With the containerd image store and BuildKit provenance attestations
+(the default), a built image is stored as an attested index whose
+top-level digest also covers the attestation manifest. That digest
+churns on every build even when the runnable content is unchanged,
+so compose recreated containers on every `up --build`.
+
+Compare the digest of the "image" kind manifest instead, selected for
+the target platform and restricted to locally available manifests, so
+it is deterministic and reflects only config + layers. Both the build
+and up sides of the staleness check go through the same selection, and
+registry-only images keep the Bake-reported digest.
+
+Fixes #13636
+
+Signed-off-by: Guillaume Lours <glours@users.noreply.github.com>
+---
+ pkg/compose/build.go       |   5 +-
+ pkg/compose/build_bake.go  |  21 +++++
+ pkg/compose/images.go      |  83 ++++++++++++++++---
+ pkg/compose/images_test.go | 161 +++++++++++++++++++++++++++++++++++++
+ 4 files changed, 256 insertions(+), 14 deletions(-)
+
+diff --git a/pkg/compose/build.go b/pkg/compose/build.go
+index 7b9cc76f96c..b9e1c99cc9c 100644
+--- a/pkg/compose/build.go
++++ b/pkg/compose/build.go
+@@ -215,7 +215,10 @@ func (s *composeService) getLocalImagesDigests(ctx context.Context, project *typ
+ 			if err != nil {
+ 				return nil, err
+ 			}
+-			inspect, err := s.apiClient().ImageInspect(ctx, img.ID)
++			// inspect by name, not img.ID: img.ID now holds a content-manifest
++			// digest (see contentDigest) which is not necessarily inspectable,
++			// whereas the image name always resolves.
++			inspect, err := s.apiClient().ImageInspect(ctx, imgName)
+ 			if err != nil {
+ 				return nil, err
+ 			}
+diff --git a/pkg/compose/build_bake.go b/pkg/compose/build_bake.go
+index 6260b0b3c97..fe5b9b4355b 100644
+--- a/pkg/compose/build_bake.go
++++ b/pkg/compose/build_bake.go
+@@ -404,6 +404,7 @@ func (s *composeService) doBuildBake(ctx context.Context, project *types.Project
+ 	}
+ 
+ 	results := map[string]string{}
++	var builtImages []string
+ 	for name := range serviceToBeBuild {
+ 		image := expectedImages[name]
+ 		target := targets[name]
+@@ -412,8 +413,28 @@ func (s *composeService) doBuildBake(ctx context.Context, project *types.Project
+ 			return nil, fmt.Errorf("build result not found in Bake metadata for service %s", name)
+ 		}
+ 		results[image] = built.Digest
++		builtImages = append(builtImages, image)
+ 		s.events.On(builtEvent(image))
+ 	}
++
++	// Bake reports the top-level attested image/index digest, which changes on
++	// every build when provenance attestations are enabled — even for a fully
++	// cached build (see https://github.com/docker/compose/issues/13636). For
++	// images loaded into the local engine (the common non-push case), substitute
++	// the content digest so unchanged rebuilds don't recreate containers.
++	// Registry-only images (push/multi-platform) aren't inspectable locally, so
++	// they keep the Bake-reported digest.
++	// Best effort: if the built images can't be inspected, keep the
++	// Bake-reported digests rather than failing an already-successful build.
++	summaries, err := s.getImageSummaries(ctx, builtImages)
++	if err != nil {
++		logrus.Debugf("unable to inspect built images for content digest, keeping bake digests: %v", err)
++	} else {
++		for image, summary := range summaries {
++			results[image] = summary.ID
++		}
++	}
++
+ 	return results, nil
+ }
+ 
+diff --git a/pkg/compose/images.go b/pkg/compose/images.go
+index d97f1812204..6502f4cf53a 100644
+--- a/pkg/compose/images.go
++++ b/pkg/compose/images.go
+@@ -28,6 +28,7 @@ import (
+ 	"github.com/containerd/platforms"
+ 	"github.com/distribution/reference"
+ 	"github.com/moby/moby/api/types/container"
++	"github.com/moby/moby/api/types/image"
+ 	"github.com/moby/moby/client"
+ 	"github.com/moby/moby/client/pkg/versions"
+ 	"golang.org/x/sync/errgroup"
+@@ -69,14 +70,14 @@ func (s *composeService) Images(ctx context.Context, projectName string, options
+ 	eg, ctx := errgroup.WithContext(ctx)
+ 	for _, c := range containers {
+ 		eg.Go(func() error {
+-			image, err := s.apiClient().ImageInspect(ctx, c.Image)
++			img, err := s.apiClient().ImageInspect(ctx, c.Image)
+ 			if err != nil {
+ 				return err
+ 			}
+-			id := image.ID // platform-specific image ID can't be combined with image tag, see https://github.com/moby/moby/issues/49995
++			id := img.ID // platform-specific image ID can't be combined with image tag, see https://github.com/moby/moby/issues/49995
+ 
+ 			if withPlatform && c.ImageManifestDescriptor != nil && c.ImageManifestDescriptor.Platform != nil {
+-				image, err = s.apiClient().ImageInspect(ctx, c.Image, client.ImageInspectWithPlatform(c.ImageManifestDescriptor.Platform))
++				img, err = s.apiClient().ImageInspect(ctx, c.Image, client.ImageInspectWithPlatform(c.ImageManifestDescriptor.Platform))
+ 				if err != nil {
+ 					return err
+ 				}
+@@ -93,8 +94,8 @@ func (s *composeService) Images(ctx context.Context, projectName string, options
+ 			}
+ 
+ 			var created *time.Time
+-			if image.Created != "" {
+-				t, err := time.Parse(time.RFC3339Nano, image.Created)
++			if img.Created != "" {
++				t, err := time.Parse(time.RFC3339Nano, img.Created)
+ 				if err != nil {
+ 					return err
+ 				}
+@@ -108,14 +109,14 @@ func (s *composeService) Images(ctx context.Context, projectName string, options
+ 				Repository: repository,
+ 				Tag:        tag,
+ 				Platform: platforms.Platform{
+-					Architecture: image.Architecture,
+-					OS:           image.Os,
+-					OSVersion:    image.OsVersion,
+-					Variant:      image.Variant,
++					Architecture: img.Architecture,
++					OS:           img.Os,
++					OSVersion:    img.OsVersion,
++					Variant:      img.Variant,
+ 				},
+-				Size:        image.Size,
++				Size:        img.Size,
+ 				Created:     created,
+-				LastTagTime: image.Metadata.LastTagTime,
++				LastTagTime: img.Metadata.LastTagTime,
+ 			}
+ 			return nil
+ 		})
+@@ -128,10 +129,20 @@ func (s *composeService) Images(ctx context.Context, projectName string, options
+ func (s *composeService) getImageSummaries(ctx context.Context, repoTags []string) (map[string]api.ImageSummary, error) {
+ 	summary := map[string]api.ImageSummary{}
+ 	l := sync.Mutex{}
++
++	withManifests, err := s.manifestsSupported(ctx)
++	if err != nil {
++		return nil, err
++	}
++
+ 	eg, ctx := errgroup.WithContext(ctx)
+ 	for _, repoTag := range repoTags {
+ 		eg.Go(func() error {
+-			inspect, err := s.apiClient().ImageInspect(ctx, repoTag)
++			var opts []client.ImageInspectOption
++			if withManifests {
++				opts = append(opts, client.ImageInspectWithManifests(true))
++			}
++			inspect, err := s.apiClient().ImageInspect(ctx, repoTag, opts...)
+ 			if err != nil {
+ 				if errdefs.IsNotFound(err) {
+ 					return nil
+@@ -150,7 +161,7 @@ func (s *composeService) getImageSummaries(ctx context.Context, repoTags []strin
+ 			}
+ 			l.Lock()
+ 			summary[repoTag] = api.ImageSummary{
+-				ID:          inspect.ID,
++				ID:          contentDigest(inspect.InspectResponse, platforms.Default()),
+ 				Repository:  repository,
+ 				Tag:         tag,
+ 				Size:        inspect.Size,
+@@ -162,3 +173,49 @@ func (s *composeService) getImageSummaries(ctx context.Context, repoTags []strin
+ 	}
+ 	return summary, eg.Wait()
+ }
++
++// manifestsSupported reports whether the engine can return per-manifest data on
++// image inspect (Engine >= 28.0 / API >= 1.48). Older engines fall back to the
++// plain image ID.
++func (s *composeService) manifestsSupported(ctx context.Context) (bool, error) {
++	version, err := s.RuntimeAPIVersion(ctx)
++	if err != nil {
++		return false, err
++	}
++	return versions.GreaterThanOrEqualTo(version, apiVersion148), nil
++}
++
++// contentDigest returns the digest identifying an image's runnable content
++// (config + layers) for the given platform. With BuildKit provenance
++// attestations enabled (the default since recent Buildx/BuildKit), the image is
++// stored as an index whose top-level digest (inspect.ID) also covers the
++// attestation manifest, so it changes on every build even when the runnable
++// image is unchanged — making compose recreate containers needlessly (see
++// https://github.com/docker/compose/issues/13636). The digest of the "image"
++// kind manifest reflects only the image content, which is what compose needs to
++// detect staleness.
++//
++// Selection is platform-aware and deterministic so the same image always maps
++// to the same digest across rebuilds: the available manifest matching the
++// requested platform wins; a lone available image manifest is used as-is
++// (single-platform images, whatever their platform); otherwise we fall back to
++// inspect.ID (engines that don't report manifests — where inspect.ID is already
++// the config digest — or a multi-platform image whose requested platform isn't
++// available locally, which the caller then treats as a platform miss).
++func contentDigest(inspect image.InspectResponse, platform platforms.MatchComparer) string {
++	var available []image.ManifestSummary
++	for _, m := range inspect.Manifests {
++		if m.Kind == image.ManifestKindImage && m.Available {
++			available = append(available, m)
++		}
++	}
++	for _, m := range available {
++		if m.ImageData != nil && platform.Match(m.ImageData.Platform) {
++			return m.ID
++		}
++	}
++	if len(available) == 1 {
++		return available[0].ID
++	}
++	return inspect.ID
++}
+diff --git a/pkg/compose/images_test.go b/pkg/compose/images_test.go
+index 9a7d2c12e20..5d26231aed8 100644
+--- a/pkg/compose/images_test.go
++++ b/pkg/compose/images_test.go
+@@ -22,13 +22,17 @@ import (
+ 	"testing"
+ 	"time"
+ 
++	"github.com/containerd/errdefs"
++	"github.com/containerd/platforms"
+ 	"github.com/moby/moby/api/types/container"
+ 	"github.com/moby/moby/api/types/image"
+ 	"github.com/moby/moby/client"
++	specs "github.com/opencontainers/image-spec/specs-go/v1"
+ 	"go.uber.org/mock/gomock"
+ 	"gotest.tools/v3/assert"
+ 
+ 	compose "github.com/docker/compose/v5/pkg/api"
++	"github.com/docker/compose/v5/pkg/mocks"
+ )
+ 
+ func TestImages(t *testing.T) {
+@@ -100,6 +104,163 @@ func imageInspect(id string, imageReference string, size int64, created string)
+ 	}
+ }
+ 
++func imageManifest(id, arch string, available bool) image.ManifestSummary {
++	return image.ManifestSummary{
++		ID:        id,
++		Kind:      image.ManifestKindImage,
++		Available: available,
++		ImageData: &image.ImageProperties{
++			Platform: specs.Platform{OS: "linux", Architecture: arch},
++		},
++	}
++}
++
++func attestationManifest() image.ManifestSummary {
++	return image.ManifestSummary{ID: "sha256:att", Kind: image.ManifestKindAttestation, Available: true}
++}
++
++func TestContentDigest(t *testing.T) {
++	amd64 := platforms.Only(specs.Platform{OS: "linux", Architecture: "amd64"})
++	arm64 := platforms.Only(specs.Platform{OS: "linux", Architecture: "arm64"})
++
++	t.Run("no manifests falls back to the plain image ID", func(t *testing.T) {
++		inspect := image.InspectResponse{ID: "sha256:top"}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:top")
++	})
++
++	t.Run("attested image ignores the attestation manifest", func(t *testing.T) {
++		// sha256:index changes on every build due to attestation metadata churn;
++		// the image-kind manifest digest is what actually reflects the content.
++		inspect := image.InspectResponse{
++			ID: "sha256:index",
++			Manifests: []image.ManifestSummary{
++				imageManifest("sha256:amd64", "amd64", true),
++				attestationManifest(),
++			},
++		}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:amd64")
++	})
++
++	t.Run("single image manifest is used even when the platform does not match", func(t *testing.T) {
++		// single-platform image built for a non-host platform stays resolvable
++		inspect := image.InspectResponse{
++			ID:        "sha256:index",
++			Manifests: []image.ManifestSummary{imageManifest("sha256:arm64", "arm64", true)},
++		}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:arm64")
++	})
++
++	t.Run("multi-platform picks the matching platform manifest", func(t *testing.T) {
++		inspect := image.InspectResponse{
++			ID: "sha256:index",
++			Manifests: []image.ManifestSummary{
++				imageManifest("sha256:amd64", "amd64", true),
++				imageManifest("sha256:arm64", "arm64", true),
++				attestationManifest(),
++			},
++		}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:amd64")
++		assert.Equal(t, contentDigest(inspect, arm64), "sha256:arm64")
++	})
++
++	t.Run("unavailable manifests are skipped", func(t *testing.T) {
++		// amd64 is referenced by the index but not pulled locally; only arm64 is usable
++		inspect := image.InspectResponse{
++			ID: "sha256:index",
++			Manifests: []image.ManifestSummary{
++				imageManifest("sha256:amd64", "amd64", false),
++				imageManifest("sha256:arm64", "arm64", true),
++			},
++		}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:arm64")
++	})
++
++	t.Run("only attestation manifests falls back to the plain image ID", func(t *testing.T) {
++		inspect := image.InspectResponse{
++			ID:        "sha256:top",
++			Manifests: []image.ManifestSummary{attestationManifest()},
++		}
++		assert.Equal(t, contentDigest(inspect, amd64), "sha256:top")
++	})
++
++	t.Run("ambiguous multi-platform with no match falls back to the plain image ID", func(t *testing.T) {
++		inspect := image.InspectResponse{
++			ID: "sha256:index",
++			Manifests: []image.ManifestSummary{
++				imageManifest("sha256:amd64", "amd64", true),
++				imageManifest("sha256:arm64", "arm64", true),
++			},
++		}
++		windows := platforms.Only(specs.Platform{OS: "windows", Architecture: "amd64"})
++		assert.Equal(t, contentDigest(inspect, windows), "sha256:index")
++	})
++}
++
++func newTestComposeService(t *testing.T, mockCtrl *gomock.Controller, apiVersion string) (*mocks.MockAPIClient, *composeService) {
++	t.Helper()
++	api, cli := prepareMocks(mockCtrl)
++	tested, err := NewComposeService(cli)
++	assert.NilError(t, err)
++	api.EXPECT().Ping(gomock.Any(), client.PingOptions{NegotiateAPIVersion: true}).
++		Return(client.PingResult{APIVersion: apiVersion}, nil).AnyTimes()
++	api.EXPECT().ClientVersion().Return(apiVersion).AnyTimes()
++	return api, tested.(*composeService)
++}
++
++func TestGetImageSummariesUsesContentDigest(t *testing.T) {
++	mockCtrl := gomock.NewController(t)
++	defer mockCtrl.Finish()
++	api, tested := newTestComposeService(t, mockCtrl, "1.48")
++
++	inspect := image.InspectResponse{
++		ID: "sha256:index", // attested index digest, churns every build
++		Manifests: []image.ManifestSummary{
++			imageManifest("sha256:image", "amd64", true),
++			attestationManifest(),
++		},
++	}
++	api.EXPECT().
++		ImageInspect(anyCancellableContext(), "foo:1", gomock.Any()).
++		Return(client.ImageInspectResult{InspectResponse: inspect}, nil)
++
++	summaries, err := tested.getImageSummaries(t.Context(), []string{"foo:1"})
++	assert.NilError(t, err)
++	assert.Equal(t, summaries["foo:1"].ID, "sha256:image")
++}
++
++func TestGetImageSummariesLegacyEngineUsesPlainID(t *testing.T) {
++	// Engine < 28.0 (API < 1.48) can't report manifests, so we keep the plain ID.
++	mockCtrl := gomock.NewController(t)
++	defer mockCtrl.Finish()
++	api, tested := newTestComposeService(t, mockCtrl, "1.47")
++
++	inspect := image.InspectResponse{ID: "sha256:plain"}
++	api.EXPECT().
++		ImageInspect(anyCancellableContext(), "foo:1").
++		Return(client.ImageInspectResult{InspectResponse: inspect}, nil)
++
++	summaries, err := tested.getImageSummaries(t.Context(), []string{"foo:1"})
++	assert.NilError(t, err)
++	assert.Equal(t, summaries["foo:1"].ID, "sha256:plain")
++}
++
++func TestGetImageSummariesSkipsMissingImages(t *testing.T) {
++	// Registry-only images (push/multi-platform) aren't inspectable locally;
++	// they must be omitted so the caller keeps the Bake-reported digest.
++	mockCtrl := gomock.NewController(t)
++	defer mockCtrl.Finish()
++	api, tested := newTestComposeService(t, mockCtrl, "1.48")
++
++	api.EXPECT().
++		ImageInspect(anyCancellableContext(), "missing:1", gomock.Any()).
++		Return(client.ImageInspectResult{}, errdefs.ErrNotFound)
++
++	summaries, err := tested.getImageSummaries(t.Context(), []string{"missing:1"})
++	assert.NilError(t, err)
++	_, ok := summaries["missing:1"]
++	assert.Assert(t, !ok)
++}
++
+ func containerDetail(service string, id string, status container.ContainerState, imageName string) container.Summary {
+ 	return container.Summary{
+ 		ID:     id,

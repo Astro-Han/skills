@@ -1,0 +1,1042 @@
+From 3e315cba0411eeaf6d740cf157a2cd885fc6ce24 Mon Sep 17 00:00:00 2001
+From: Morax <james20081204@gmail.com>
+Date: Mon, 10 Aug 2026 12:37:24 +0200
+Subject: [PATCH 1/2] ui: show effective scrape pool configuration
+
+Signed-off-by: Morax <james20081204@gmail.com>
+---
+ docs/querying/api.md                          | 30 +++++++
+ web/api/v1/api.go                             | 21 +++++
+ web/api/v1/api_scenarios_test.go              | 34 ++++++++
+ web/api/v1/api_test.go                        | 54 +++++++++++-
+ web/api/v1/openapi.go                         |  1 +
+ web/api/v1/openapi_examples.go                | 17 ++++
+ web/api/v1/openapi_paths.go                   | 15 ++++
+ web/api/v1/openapi_schemas.go                 | 15 ++++
+ web/api/v1/openapi_test.go                    |  1 +
+ web/api/v1/testdata/openapi_3.1_golden.yaml   | 86 +++++++++++++++++++
+ web/api/v1/testdata/openapi_3.2_golden.yaml   | 86 +++++++++++++++++++
+ .../src/api/responseTypes/config.ts           |  3 +-
+ .../src/components/ScrapePoolConfig.test.tsx  | 71 +++++++++++++++
+ .../src/components/ScrapePoolConfig.tsx       | 57 ++++++++++++
+ .../ServiceDiscoveryPoolsList.tsx             |  2 +
+ .../src/pages/targets/ScrapePoolsList.tsx     |  2 +
+ 16 files changed, 490 insertions(+), 5 deletions(-)
+ create mode 100644 web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
+ create mode 100644 web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
+
+diff --git a/docs/querying/api.md b/docs/querying/api.md
+index f7846bdcca7..5604d6fce3c 100644
+--- a/docs/querying/api.md
++++ b/docs/querying/api.md
+@@ -839,6 +839,36 @@ curl http://localhost:9090/api/v1/scrape_pools
+ 
+ *New in v2.42*
+ 
++### Scrape pool configuration
++
++This endpoint is **experimental** and might change in the future. It is
++currently intended for use by Prometheus' own web UI.
++
++The following endpoint returns the effective configuration for a scrape pool.
++This includes scrape configurations loaded through `scrape_config_files`.
++Authentication credentials and other secrets are redacted.
++
++The `scrapePool` query parameter is required and must contain the name of a
++configured scrape pool.
++
++```
++GET /api/v1/scrape_pools/config?scrapePool=<scrape_pool_name>
++```
++
++```bash
++curl -G http://localhost:9090/api/v1/scrape_pools/config \
++  --data-urlencode 'scrapePool=prometheus'
++```
++
++```json
++{
++  "status": "success",
++  "data": {
++    "yaml": "job_name: prometheus\nscrape_interval: 15s\nscrape_timeout: 10s\nmetrics_path: /metrics\nscheme: http\n"
++  }
++}
++```
++
+ ## Targets
+ 
+ The following endpoint returns an overview of the current state of the
+diff --git a/web/api/v1/api.go b/web/api/v1/api.go
+index 4542444bd5e..ef203b3fd26 100644
+--- a/web/api/v1/api.go
++++ b/web/api/v1/api.go
+@@ -45,6 +45,7 @@ import (
+ 	"go.opentelemetry.io/otel/attribute"
+ 	"go.opentelemetry.io/otel/codes"
+ 	"go.opentelemetry.io/otel/trace"
++	"go.yaml.in/yaml/v2"
+ 	"google.golang.org/protobuf/encoding/protojson"
+ 
+ 	"github.com/prometheus/prometheus/config"
+@@ -465,6 +466,7 @@ func (api *API) Register(r *route.Router) {
+ 	r.Post("/series", wrapAgent(api.series))
+ 
+ 	r.Get("/scrape_pools", wrap(api.scrapePools))
++	r.Get("/scrape_pools/config", wrap(api.scrapePoolConfig))
+ 	r.Get("/targets", wrap(api.targets))
+ 	r.Get("/targets/metadata", wrap(api.targetMetadata))
+ 	r.Get("/targets/relabel_steps", wrap(api.targetRelabelSteps))
+@@ -1273,6 +1275,25 @@ func (api *API) scrapePools(r *http.Request) apiFuncResult {
+ 	return apiFuncResult{data: res, err: nil, warnings: nil, finalizer: nil}
+ }
+ 
++func (api *API) scrapePoolConfig(r *http.Request) apiFuncResult {
++	scrapePool := r.FormValue("scrapePool")
++	if scrapePool == "" {
++		return apiFuncResult{nil, &apiError{errorBadData, errors.New("no scrapePool parameter provided")}, nil, nil}
++	}
++
++	scrapeConfig, err := api.targetRetriever(r.Context()).ScrapePoolConfig(scrapePool)
++	if err != nil {
++		return apiFuncResult{nil, &apiError{errorBadData, fmt.Errorf("error retrieving scrape config: %w", err)}, nil, nil}
++	}
++
++	configYAML, err := yaml.Marshal(scrapeConfig)
++	if err != nil {
++		return apiFuncResult{nil, &apiError{errorInternal, fmt.Errorf("error marshaling scrape config: %w", err)}, nil, nil}
++	}
++
++	return apiFuncResult{&prometheusConfig{YAML: string(configYAML)}, nil, nil, nil}
++}
++
+ func (api *API) targets(r *http.Request) apiFuncResult {
+ 	getSortedPools := func(targets map[string][]*scrape.Target) ([]string, int) {
+ 		var n int
+diff --git a/web/api/v1/api_scenarios_test.go b/web/api/v1/api_scenarios_test.go
+index d4692614abe..0370c371201 100644
+--- a/web/api/v1/api_scenarios_test.go
++++ b/web/api/v1/api_scenarios_test.go
+@@ -18,10 +18,20 @@ import (
+ 	"testing"
+ 	"time"
+ 
++	"github.com/prometheus/prometheus/config"
+ 	"github.com/prometheus/prometheus/storage"
+ 	"github.com/prometheus/prometheus/web/api/testhelpers"
+ )
+ 
++type scrapeConfigTargetRetriever struct {
++	*testhelpers.FakeTargetRetriever
++	scrapeConfig *config.ScrapeConfig
++}
++
++func (r *scrapeConfigTargetRetriever) ScrapePoolConfig(string) (*config.ScrapeConfig, error) {
++	return r.scrapeConfig, nil
++}
++
+ // TODO: Generate automated tests from OpenAPI spec to validate API responses.
+ 
+ // TestAPIEmpty tests the API with no metrics and no rules.
+@@ -77,6 +87,30 @@ func TestAPIEmpty(t *testing.T) {
+ 			RequireJSONPathExists("$.data.activeTargets")
+ 	})
+ 
++	t.Run("GET /api/v1/scrape_pools/config requires a pool", func(t *testing.T) {
++		testhelpers.GET(t, api, "/api/v1/scrape_pools/config").
++			RequireStatusCode(400).
++			RequireError().
++			RequireEquals("$.errorType", "bad_data")
++	})
++
++	t.Run("GET /api/v1/scrape_pools/config returns effective config", func(t *testing.T) {
++		targetRetriever := &scrapeConfigTargetRetriever{
++			FakeTargetRetriever: testhelpers.NewEmptyTargetRetriever(),
++			scrapeConfig:        &config.ScrapeConfig{JobName: "prometheus"},
++		}
++		configAPI := newTestAPI(t, testhelpers.APIConfig{
++			TargetRetriever: testhelpers.NewLazyLoader(func() testhelpers.TargetRetriever {
++				return targetRetriever
++			}),
++		})
++
++		testhelpers.GET(t, configAPI, "/api/v1/scrape_pools/config", "scrapePool", "prometheus").
++			RequireSuccess().
++			ValidateOpenAPI().
++			RequireJSONPathExists("$.data.yaml")
++	})
++
+ 	t.Run("GET /api/v1/rules returns success with empty groups", func(t *testing.T) {
+ 		testhelpers.GET(t, api, "/api/v1/rules").
+ 			RequireSuccess().
+diff --git a/web/api/v1/api_test.go b/web/api/v1/api_test.go
+index 55aa4b8d839..87b19ee9b9f 100644
+--- a/web/api/v1/api_test.go
++++ b/web/api/v1/api_test.go
+@@ -108,8 +108,9 @@ func (*testMetaStore) LengthMetadata() int { return 0 }
+ // testTargetRetriever represents a list of targets to scrape.
+ // It is used to represent targets as part of test cases.
+ type testTargetRetriever struct {
+-	activeTargets  map[string][]*scrape.Target
+-	droppedTargets map[string][]*scrape.Target
++	activeTargets       map[string][]*scrape.Target
++	droppedTargets      map[string][]*scrape.Target
++	scrapePoolConfigErr error
+ }
+ 
+ type testTargetParams struct {
+@@ -171,8 +172,18 @@ func (t testTargetRetriever) TargetsDroppedCounts() map[string]int {
+ 	return r
+ }
+ 
+-func (testTargetRetriever) ScrapePoolConfig(pool string) (*config.ScrapeConfig, error) {
++func (t testTargetRetriever) ScrapePoolConfig(pool string) (*config.ScrapeConfig, error) {
++	if t.scrapePoolConfigErr != nil {
++		return nil, t.scrapePoolConfigErr
++	}
++
+ 	cfg := &config.ScrapeConfig{
++		JobName: pool,
++		HTTPClientConfig: config_util.HTTPClientConfig{
++			Authorization: &config_util.Authorization{
++				Credentials: config_util.Secret("credential helper secret"),
++			},
++		},
+ 		RelabelConfigs: []*relabel.Config{
+ 			{
+ 				Action:               relabel.Replace,
+@@ -582,6 +593,43 @@ func TestEndpoints(t *testing.T) {
+ 	})
+ }
+ 
++func TestScrapePoolConfig(t *testing.T) {
++	api := &API{targetRetriever: (&testTargetRetriever{}).toFactory()}
++
++	t.Run("returns redacted effective config", func(t *testing.T) {
++		req := httptest.NewRequest(http.MethodGet, "/?scrapePool=testpool", http.NoBody)
++		res := api.scrapePoolConfig(req)
++
++		require.Nil(t, res.err)
++		cfg, ok := res.data.(*prometheusConfig)
++		require.True(t, ok)
++		require.Contains(t, cfg.YAML, "job_name: testpool")
++		require.Contains(t, cfg.YAML, "credentials: <secret>")
++		require.NotContains(t, cfg.YAML, "credential helper secret")
++	})
++
++	t.Run("requires scrape pool", func(t *testing.T) {
++		req := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
++		res := api.scrapePoolConfig(req)
++
++		assertAPIError(t, res.err, errorBadData)
++		require.EqualError(t, res.err.err, "no scrapePool parameter provided")
++	})
++
++	t.Run("reports unknown scrape pool", func(t *testing.T) {
++		api := &API{
++			targetRetriever: (&testTargetRetriever{
++				scrapePoolConfigErr: errors.New("scrape pool not found"),
++			}).toFactory(),
++		}
++		req := httptest.NewRequest(http.MethodGet, "/?scrapePool=missing", http.NoBody)
++		res := api.scrapePoolConfig(req)
++
++		assertAPIError(t, res.err, errorBadData)
++		require.EqualError(t, res.err.err, "error retrieving scrape config: scrape pool not found")
++	})
++}
++
+ type byLabels []labels.Labels
+ 
+ func (b byLabels) Len() int           { return len(b) }
+diff --git a/web/api/v1/openapi.go b/web/api/v1/openapi.go
+index 4ad9aaef25f..6dc165af131 100644
+--- a/web/api/v1/openapi.go
++++ b/web/api/v1/openapi.go
+@@ -297,6 +297,7 @@ func (b *OpenAPIBuilder) getAllPathDefinitions() *orderedmap.Map[string, *v3.Pat
+ 
+ 	// Target endpoints.
+ 	paths.Set("/scrape_pools", b.scrapePoolsPath())
++	paths.Set("/scrape_pools/config", b.scrapePoolConfigPath())
+ 	paths.Set("/targets", b.targetsPath())
+ 	paths.Set("/targets/metadata", b.targetsMetadataPath())
+ 	paths.Set("/targets/relabel_steps", b.targetsRelabelStepsPath())
+diff --git a/web/api/v1/openapi_examples.go b/web/api/v1/openapi_examples.go
+index e0296eca73d..e74706fda29 100644
+--- a/web/api/v1/openapi_examples.go
++++ b/web/api/v1/openapi_examples.go
+@@ -682,6 +682,23 @@ func scrapePoolsResponseExamples() *orderedmap.Map[string, *base.Example] {
+ 	return examples
+ }
+ 
++// scrapePoolConfigResponseExamples returns examples for /scrape_pools/config response.
++func scrapePoolConfigResponseExamples() *orderedmap.Map[string, *base.Example] {
++	examples := orderedmap.New[string, *base.Example]()
++
++	examples.Set("scrapePoolConfig", &base.Example{
++		Summary: "Effective configuration for a scrape pool",
++		Value: createYAMLNode(map[string]any{
++			"status": "success",
++			"data": map[string]any{
++				"yaml": "job_name: prometheus\nscrape_interval: 15s\nscrape_timeout: 10s\nmetrics_path: /metrics\nscheme: http\n",
++			},
++		}),
++	})
++
++	return examples
++}
++
+ // targetsMetadataResponseExamples returns examples for /targets/metadata response.
+ func targetsMetadataResponseExamples() *orderedmap.Map[string, *base.Example] {
+ 	examples := orderedmap.New[string, *base.Example]()
+diff --git a/web/api/v1/openapi_paths.go b/web/api/v1/openapi_paths.go
+index 83b2b0b8ab2..95cca6be92d 100644
+--- a/web/api/v1/openapi_paths.go
++++ b/web/api/v1/openapi_paths.go
+@@ -374,6 +374,21 @@ func (*OpenAPIBuilder) scrapePoolsPath() *v3.PathItem {
+ 	}
+ }
+ 
++func (*OpenAPIBuilder) scrapePoolConfigPath() *v3.PathItem {
++	params := []*v3.Parameter{
++		queryParamWithExample("scrapePool", "Name of the scrape pool.", true, stringSchema(), []example{{"example", "prometheus"}}),
++	}
++	return &v3.PathItem{
++		Get: &v3.Operation{
++			OperationId: "get-scrape-pool-config",
++			Summary:     "Get scrape pool configuration",
++			Tags:        []string{"targets"},
++			Parameters:  params,
++			Responses:   responsesWithErrorExamples("ScrapePoolConfigOutputBody", scrapePoolConfigResponseExamples(), errorResponseExamples(), "Scrape pool configuration retrieved successfully.", "Error retrieving scrape pool configuration."),
++		},
++	}
++}
++
+ func (*OpenAPIBuilder) targetsPath() *v3.PathItem {
+ 	params := []*v3.Parameter{
+ 		queryParamWithExample("scrapePool", "Filter targets by scrape pool name.", false, stringSchema(), []example{{"example", "prometheus"}}),
+diff --git a/web/api/v1/openapi_schemas.go b/web/api/v1/openapi_schemas.go
+index a24890d1ece..90b0bf9681e 100644
+--- a/web/api/v1/openapi_schemas.go
++++ b/web/api/v1/openapi_schemas.go
+@@ -75,6 +75,8 @@ func (b *OpenAPIBuilder) buildComponents() *v3.Components {
+ 	schemas.Set("TargetMetadataOutputBody", b.metricMetadataArrayResponseBodySchema())
+ 	schemas.Set("ScrapePoolsDiscovery", b.scrapePoolsDiscoverySchema())
+ 	schemas.Set("ScrapePoolsOutputBody", b.refResponseBodySchema("ScrapePoolsDiscovery", "Response body for scrape pools endpoint."))
++	schemas.Set("ScrapePoolConfigData", b.scrapePoolConfigDataSchema())
++	schemas.Set("ScrapePoolConfigOutputBody", b.refResponseBodySchema("ScrapePoolConfigData", "Response body for scrape pool config endpoint."))
+ 
+ 	// Relabel schemas.
+ 	schemas.Set("Config", b.configSchema())
+@@ -962,6 +964,19 @@ func (*OpenAPIBuilder) scrapePoolsDiscoverySchema() *base.SchemaProxy {
+ 	})
+ }
+ 
++func (*OpenAPIBuilder) scrapePoolConfigDataSchema() *base.SchemaProxy {
++	props := orderedmap.New[string, *base.SchemaProxy]()
++	props.Set("yaml", stringSchemaWithDescription("Effective scrape pool configuration in YAML format."))
++
++	return base.CreateSchemaProxy(&base.Schema{
++		Type:                 []string{"object"},
++		Description:          "Effective configuration for a scrape pool.",
++		AdditionalProperties: &base.DynamicValue[*base.SchemaProxy, bool]{N: 1, B: false},
++		Required:             []string{"yaml"},
++		Properties:           props,
++	})
++}
++
+ func (*OpenAPIBuilder) configSchema() *base.SchemaProxy {
+ 	props := orderedmap.New[string, *base.SchemaProxy]()
+ 	props.Set("source_labels", stringArraySchemaWithDescription("Source labels for relabeling."))
+diff --git a/web/api/v1/openapi_test.go b/web/api/v1/openapi_test.go
+index 7b029e5ee54..e92f9ce66da 100644
+--- a/web/api/v1/openapi_test.go
++++ b/web/api/v1/openapi_test.go
+@@ -168,6 +168,7 @@ func TestOpenAPISchemaCompleteness(t *testing.T) {
+ 		"QueryOutputBody",
+ 		"LabelsOutputBody",
+ 		"SeriesOutputBody",
++		"ScrapePoolConfigOutputBody",
+ 		"TargetsOutputBody",
+ 		"AlertsOutputBody",
+ 		"RulesOutputBody",
+diff --git a/web/api/v1/testdata/openapi_3.1_golden.yaml b/web/api/v1/testdata/openapi_3.1_golden.yaml
+index 8b666c4f7ea..0c4928ec863 100644
+--- a/web/api/v1/testdata/openapi_3.1_golden.yaml
++++ b/web/api/v1/testdata/openapi_3.1_golden.yaml
+@@ -2088,6 +2088,55 @@ paths:
+                                         error: TSDB not ready
+                                         errorType: internal
+                                         status: error
++    /scrape_pools/config:
++        get:
++            tags:
++                - targets
++            summary: Get scrape pool configuration
++            operationId: get-scrape-pool-config
++            parameters:
++                - name: scrapePool
++                  in: query
++                  description: Name of the scrape pool.
++                  required: true
++                  explode: false
++                  schema:
++                    type: string
++                  examples:
++                    example:
++                        value: prometheus
++            responses:
++                "200":
++                    description: Scrape pool configuration retrieved successfully.
++                    content:
++                        application/json:
++                            schema:
++                                $ref: '#/components/schemas/ScrapePoolConfigOutputBody'
++                            examples:
++                                scrapePoolConfig:
++                                    summary: Effective configuration for a scrape pool
++                                    value:
++                                        data:
++                                            yaml: |
++                                                job_name: prometheus
++                                                scrape_interval: 15s
++                                                scrape_timeout: 10s
++                                                metrics_path: /metrics
++                                                scheme: http
++                                        status: success
++                default:
++                    description: Error retrieving scrape pool configuration.
++                    content:
++                        application/json:
++                            schema:
++                                $ref: '#/components/schemas/Error'
++                            examples:
++                                tsdbNotReady:
++                                    summary: TSDB not ready
++                                    value:
++                                        error: TSDB not ready
++                                        errorType: internal
++                                        status: error
+     /targets:
+         get:
+             tags:
+@@ -4553,6 +4602,43 @@ components:
+                 - data
+             additionalProperties: false
+             description: Response body for scrape pools endpoint.
++        ScrapePoolConfigData:
++            type: object
++            properties:
++                yaml:
++                    type: string
++                    description: Effective scrape pool configuration in YAML format.
++            required:
++                - yaml
++            additionalProperties: false
++            description: Effective configuration for a scrape pool.
++        ScrapePoolConfigOutputBody:
++            type: object
++            properties:
++                status:
++                    type: string
++                    enum:
++                        - success
++                        - error
++                    description: Response status.
++                    example: success
++                data:
++                    $ref: '#/components/schemas/ScrapePoolConfigData'
++                warnings:
++                    type: array
++                    items:
++                        type: string
++                    description: Only set if there were warnings while executing the request. There will still be data in the data field.
++                infos:
++                    type: array
++                    items:
++                        type: string
++                    description: Only set if there were info-level annotations while executing the request.
++            required:
++                - status
++                - data
++            additionalProperties: false
++            description: Response body for scrape pool config endpoint.
+         Config:
+             type: object
+             properties:
+diff --git a/web/api/v1/testdata/openapi_3.2_golden.yaml b/web/api/v1/testdata/openapi_3.2_golden.yaml
+index 32bfa40c55e..704a0a0a0e7 100644
+--- a/web/api/v1/testdata/openapi_3.2_golden.yaml
++++ b/web/api/v1/testdata/openapi_3.2_golden.yaml
+@@ -2088,6 +2088,55 @@ paths:
+                                         error: TSDB not ready
+                                         errorType: internal
+                                         status: error
++    /scrape_pools/config:
++        get:
++            tags:
++                - targets
++            summary: Get scrape pool configuration
++            operationId: get-scrape-pool-config
++            parameters:
++                - name: scrapePool
++                  in: query
++                  description: Name of the scrape pool.
++                  required: true
++                  explode: false
++                  schema:
++                    type: string
++                  examples:
++                    example:
++                        value: prometheus
++            responses:
++                "200":
++                    description: Scrape pool configuration retrieved successfully.
++                    content:
++                        application/json:
++                            schema:
++                                $ref: '#/components/schemas/ScrapePoolConfigOutputBody'
++                            examples:
++                                scrapePoolConfig:
++                                    summary: Effective configuration for a scrape pool
++                                    value:
++                                        data:
++                                            yaml: |
++                                                job_name: prometheus
++                                                scrape_interval: 15s
++                                                scrape_timeout: 10s
++                                                metrics_path: /metrics
++                                                scheme: http
++                                        status: success
++                default:
++                    description: Error retrieving scrape pool configuration.
++                    content:
++                        application/json:
++                            schema:
++                                $ref: '#/components/schemas/Error'
++                            examples:
++                                tsdbNotReady:
++                                    summary: TSDB not ready
++                                    value:
++                                        error: TSDB not ready
++                                        errorType: internal
++                                        status: error
+     /targets:
+         get:
+             tags:
+@@ -4591,6 +4640,43 @@ components:
+                 - data
+             additionalProperties: false
+             description: Response body for scrape pools endpoint.
++        ScrapePoolConfigData:
++            type: object
++            properties:
++                yaml:
++                    type: string
++                    description: Effective scrape pool configuration in YAML format.
++            required:
++                - yaml
++            additionalProperties: false
++            description: Effective configuration for a scrape pool.
++        ScrapePoolConfigOutputBody:
++            type: object
++            properties:
++                status:
++                    type: string
++                    enum:
++                        - success
++                        - error
++                    description: Response status.
++                    example: success
++                data:
++                    $ref: '#/components/schemas/ScrapePoolConfigData'
++                warnings:
++                    type: array
++                    items:
++                        type: string
++                    description: Only set if there were warnings while executing the request. There will still be data in the data field.
++                infos:
++                    type: array
++                    items:
++                        type: string
++                    description: Only set if there were info-level annotations while executing the request.
++            required:
++                - status
++                - data
++            additionalProperties: false
++            description: Response body for scrape pool config endpoint.
+         Config:
+             type: object
+             properties:
+diff --git a/web/ui/mantine-ui/src/api/responseTypes/config.ts b/web/ui/mantine-ui/src/api/responseTypes/config.ts
+index 4f509f9e003..00df39c784f 100644
+--- a/web/ui/mantine-ui/src/api/responseTypes/config.ts
++++ b/web/ui/mantine-ui/src/api/responseTypes/config.ts
+@@ -1,5 +1,4 @@
+-// Result type for /api/v1/status/config endpoint.
+-// See: https://prometheus.io/docs/prometheus/latest/querying/api/#config
++// Result type for API endpoints that return configuration as YAML.
+ export default interface ConfigResult {
+   yaml: string;
+ }
+diff --git a/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx b/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
+new file mode 100644
+index 00000000000..25ef8ab9170
+--- /dev/null
++++ b/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
+@@ -0,0 +1,71 @@
++// Copyright The Prometheus Authors
++
++import { MantineProvider } from "@mantine/core";
++import { fireEvent, render, screen } from "@testing-library/react";
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { MemoryRouter } from "react-router-dom";
++import { useSuspenseAPIQuery } from "../api/api";
++import ScrapePoolConfig from "./ScrapePoolConfig";
++
++vi.mock("../api/api", () => ({
++  useSuspenseAPIQuery: vi.fn(),
++}));
++
++vi.mock("@mantine/code-highlight", () => ({
++  CodeHighlight: ({ code }: { code: string }) => (
++    <pre data-testid="scrape-config-yaml">{code}</pre>
++  ),
++}));
++
++describe("ScrapePoolConfig", () => {
++  beforeEach(() => {
++    Object.defineProperty(window, "matchMedia", {
++      writable: true,
++      value: vi.fn().mockImplementation((query: string) => ({
++        matches: false,
++        media: query,
++        onchange: null,
++        addListener: vi.fn(),
++        removeListener: vi.fn(),
++        addEventListener: vi.fn(),
++        removeEventListener: vi.fn(),
++        dispatchEvent: vi.fn(),
++      })),
++    });
++    vi.mocked(useSuspenseAPIQuery).mockReturnValue({
++      data: {
++        data: {
++          yaml: "job_name: imported-job\nscrape_interval: 30s\n",
++        },
++      },
++    } as never);
++  });
++
++  it("loads the selected pool only when expanded", () => {
++    render(
++      <MantineProvider>
++        <MemoryRouter>
++          <ScrapePoolConfig pool="imported-job" />
++        </MemoryRouter>
++      </MantineProvider>,
++    );
++
++    expect(useSuspenseAPIQuery).not.toHaveBeenCalled();
++
++    const control = screen.getByRole("button", {
++      name: "Scrape configuration",
++    });
++    fireEvent.click(control);
++
++    expect(useSuspenseAPIQuery).toHaveBeenCalledWith({
++      path: "/scrape_pools/config",
++      params: { scrapePool: "imported-job" },
++    });
++    expect(screen.getByTestId("scrape-config-yaml")).toHaveTextContent(
++      "job_name: imported-job",
++    );
++
++    fireEvent.click(control);
++    expect(screen.queryByTestId("scrape-config-yaml")).not.toBeInTheDocument();
++  });
++});
+diff --git a/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx b/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
+new file mode 100644
+index 00000000000..e48fc0c3065
+--- /dev/null
++++ b/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
+@@ -0,0 +1,57 @@
++import { Accordion, Box, Skeleton } from "@mantine/core";
++import { CodeHighlight } from "@mantine/code-highlight";
++import { Suspense, useState } from "react";
++import { useSuspenseAPIQuery } from "../api/api";
++import ConfigResult from "../api/responseTypes/config";
++import ErrorBoundary from "./ErrorBoundary";
++
++const ScrapePoolConfigContent = ({ pool }: { pool: string }) => {
++  const {
++    data: {
++      data: { yaml },
++    },
++  } = useSuspenseAPIQuery<ConfigResult>({
++    path: "/scrape_pools/config",
++    params: { scrapePool: pool },
++  });
++
++  return <CodeHighlight code={yaml} language="yaml" maw="100%" />;
++};
++
++const ScrapePoolConfig = ({ pool }: { pool: string }) => {
++  const [opened, setOpened] = useState(false);
++
++  return (
++    <Accordion
++      value={opened ? "config" : null}
++      onChange={(value) => setOpened(value === "config")}
++      variant="contained"
++      mb="md"
++    >
++      <Accordion.Item value="config">
++        <Accordion.Control>Scrape configuration</Accordion.Control>
++        <Accordion.Panel>
++          {opened && (
++            <ErrorBoundary
++              key={pool}
++              title="Error loading scrape configuration"
++            >
++              <Suspense
++                fallback={
++                  <Box py="xs">
++                    <Skeleton height={24} mb="xs" />
++                    <Skeleton height={120} />
++                  </Box>
++                }
++              >
++                <ScrapePoolConfigContent pool={pool} />
++              </Suspense>
++            </ErrorBoundary>
++          )}
++        </Accordion.Panel>
++      </Accordion.Item>
++    </Accordion>
++  );
++};
++
++export default ScrapePoolConfig;
+diff --git a/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx b/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
+index e7eae9de391..fe73594e1d6 100644
+--- a/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
++++ b/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
+@@ -33,6 +33,7 @@ import { targetPoolDisplayLimit } from "./ServiceDiscoveryPage";
+ import { LabelBadges } from "../../components/LabelBadges";
+ import ErrorBoundary from "../../components/ErrorBoundary";
+ import RelabelSteps from "./RelabelSteps";
++import ScrapePoolConfig from "../../components/ScrapePoolConfig";
+ 
+ type TargetLabels = {
+   discoveredLabels: Labels;
+@@ -282,6 +283,7 @@ const ScrapePoolList: FC<ScrapePoolListProp> = ({
+                 </Group>
+               </Accordion.Control>
+               <Accordion.Panel>
++                <ScrapePoolConfig pool={poolName} />
+                 {pool.total !== pool.serverTotal && (
+                   <Alert
+                     title="Only showing partial dropped targets"
+diff --git a/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx b/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
+index f06c30f0a01..58121381f88 100644
+--- a/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
++++ b/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
+@@ -22,6 +22,7 @@ import {
+ } from "../../state/targetsPageSlice";
+ import EndpointLink from "../../components/EndpointLink";
+ import CustomInfiniteScroll from "../../components/CustomInfiniteScroll";
++import ScrapePoolConfig from "../../components/ScrapePoolConfig";
+ 
+ import badgeClasses from "../../Badge.module.css";
+ import panelClasses from "../../Panel.module.css";
+@@ -258,6 +259,7 @@ const ScrapePoolList: FC<ScrapePoolListProp> = memo(
+                   </Group>
+                 </Accordion.Control>
+                 <Accordion.Panel>
++                  <ScrapePoolConfig pool={poolName} />
+                   {pool.count === 0 ? (
+                     <Alert title="No targets" icon={<IconInfoCircle />}>
+                       No active targets in this scrape pool.
+
+From e3d37797c51598b686602bab6d4b5aa06eed62fe Mon Sep 17 00:00:00 2001
+From: Morax <james20081204@gmail.com>
+Date: Wed, 19 Aug 2026 19:21:06 +0200
+Subject: [PATCH 2/2] ui: make scrape config toggle compact
+
+Signed-off-by: Morax <james20081204@gmail.com>
+---
+ .../src/components/ScrapePoolConfig.test.tsx  | 26 +++++---
+ .../src/components/ScrapePoolConfig.tsx       | 62 +++++++++----------
+ .../ServiceDiscoveryPoolsList.tsx             | 28 ++++++++-
+ .../src/pages/targets/ScrapePoolsList.tsx     | 30 ++++++++-
+ 4 files changed, 103 insertions(+), 43 deletions(-)
+
+diff --git a/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx b/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
+index 25ef8ab9170..c09d8547f3a 100644
+--- a/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
++++ b/web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx
+@@ -1,7 +1,7 @@
+ // Copyright The Prometheus Authors
+ 
+ import { MantineProvider } from "@mantine/core";
+-import { fireEvent, render, screen } from "@testing-library/react";
++import { render, screen } from "@testing-library/react";
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ import { MemoryRouter } from "react-router-dom";
+ import { useSuspenseAPIQuery } from "../api/api";
+@@ -42,20 +42,23 @@ describe("ScrapePoolConfig", () => {
+   });
+ 
+   it("loads the selected pool only when expanded", () => {
+-    render(
++    const { rerender } = render(
+       <MantineProvider>
+         <MemoryRouter>
+-          <ScrapePoolConfig pool="imported-job" />
++          <ScrapePoolConfig pool="imported-job" expanded={false} />
+         </MemoryRouter>
+       </MantineProvider>,
+     );
+ 
+     expect(useSuspenseAPIQuery).not.toHaveBeenCalled();
+ 
+-    const control = screen.getByRole("button", {
+-      name: "Scrape configuration",
+-    });
+-    fireEvent.click(control);
++    rerender(
++      <MantineProvider>
++        <MemoryRouter>
++          <ScrapePoolConfig pool="imported-job" expanded />
++        </MemoryRouter>
++      </MantineProvider>,
++    );
+ 
+     expect(useSuspenseAPIQuery).toHaveBeenCalledWith({
+       path: "/scrape_pools/config",
+@@ -65,7 +68,14 @@ describe("ScrapePoolConfig", () => {
+       "job_name: imported-job",
+     );
+ 
+-    fireEvent.click(control);
++    rerender(
++      <MantineProvider>
++        <MemoryRouter>
++          <ScrapePoolConfig pool="imported-job" expanded={false} />
++        </MemoryRouter>
++      </MantineProvider>,
++    );
++
+     expect(screen.queryByTestId("scrape-config-yaml")).not.toBeInTheDocument();
+   });
+ });
+diff --git a/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx b/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
+index e48fc0c3065..a3a0b3d3bf3 100644
+--- a/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
++++ b/web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx
+@@ -1,6 +1,6 @@
+-import { Accordion, Box, Skeleton } from "@mantine/core";
++import { Box, Collapse, Skeleton } from "@mantine/core";
+ import { CodeHighlight } from "@mantine/code-highlight";
+-import { Suspense, useState } from "react";
++import { Suspense } from "react";
+ import { useSuspenseAPIQuery } from "../api/api";
+ import ConfigResult from "../api/responseTypes/config";
+ import ErrorBoundary from "./ErrorBoundary";
+@@ -18,39 +18,37 @@ const ScrapePoolConfigContent = ({ pool }: { pool: string }) => {
+   return <CodeHighlight code={yaml} language="yaml" maw="100%" />;
+ };
+ 
+-const ScrapePoolConfig = ({ pool }: { pool: string }) => {
+-  const [opened, setOpened] = useState(false);
++type ScrapePoolConfigProps = {
++  pool: string;
++  expanded: boolean;
++  id?: string;
++};
++
++const ScrapePoolConfig = ({ pool, expanded, id }: ScrapePoolConfigProps) => {
++  const collapseId = id ?? `scrape-config-${pool}`;
+ 
+   return (
+-    <Accordion
+-      value={opened ? "config" : null}
+-      onChange={(value) => setOpened(value === "config")}
+-      variant="contained"
+-      mb="md"
+-    >
+-      <Accordion.Item value="config">
+-        <Accordion.Control>Scrape configuration</Accordion.Control>
+-        <Accordion.Panel>
+-          {opened && (
+-            <ErrorBoundary
+-              key={pool}
+-              title="Error loading scrape configuration"
++    <Collapse expanded={expanded} id={collapseId}>
++      {expanded && (
++        <Box mb="md">
++          <ErrorBoundary
++            key={pool}
++            title="Error loading scrape configuration"
++          >
++            <Suspense
++              fallback={
++                <Box py="xs">
++                  <Skeleton height={24} mb="xs" />
++                  <Skeleton height={120} />
++                </Box>
++              }
+             >
+-              <Suspense
+-                fallback={
+-                  <Box py="xs">
+-                    <Skeleton height={24} mb="xs" />
+-                    <Skeleton height={120} />
+-                  </Box>
+-                }
+-              >
+-                <ScrapePoolConfigContent pool={pool} />
+-              </Suspense>
+-            </ErrorBoundary>
+-          )}
+-        </Accordion.Panel>
+-      </Accordion.Item>
+-    </Accordion>
++              <ScrapePoolConfigContent pool={pool} />
++            </Suspense>
++          </ErrorBoundary>
++        </Box>
++      )}
++    </Collapse>
+   );
+ };
+ 
+diff --git a/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx b/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
+index fe73594e1d6..86e8c45f580 100644
+--- a/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
++++ b/web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx
+@@ -172,6 +172,9 @@ const ScrapePoolList: FC<ScrapePoolListProp> = ({
+     labels: Labels;
+     pool: string;
+   } | null>(null);
++  const [expandedConfigs, setExpandedConfigs] = useState<
++    Record<string, boolean>
++  >({});
+ 
+   // Based on the selected pool (if any), load the list of targets.
+   const {
+@@ -249,12 +252,31 @@ const ScrapePoolList: FC<ScrapePoolListProp> = ({
+       >
+         {shownPoolNames.map((poolName) => {
+           const pool = allPools[poolName];
++          const configId = `scrape-config-${poolName}`;
++          const configExpanded = Boolean(expandedConfigs[poolName]);
+           return (
+             <Accordion.Item key={poolName} value={poolName}>
+               <Accordion.Control>
+                 <Group wrap="nowrap" justify="space-between" mr="lg">
+                   <Text>{poolName}</Text>
+                   <Group gap="xs">
++                    <Anchor
++                      component="button"
++                      type="button"
++                      size="xs"
++                      onClick={(event) => {
++                        event.preventDefault();
++                        event.stopPropagation();
++                        setExpandedConfigs((previous) => ({
++                          ...previous,
++                          [poolName]: !previous[poolName],
++                        }));
++                      }}
++                      aria-expanded={configExpanded}
++                      aria-controls={configId}
++                    >
++                      {configExpanded ? "Hide config" : "Show config"}
++                    </Anchor>
+                     <Text c="gray.6">
+                       {pool.active} / {pool.serverTotal}
+                     </Text>
+@@ -283,7 +305,11 @@ const ScrapePoolList: FC<ScrapePoolListProp> = ({
+                 </Group>
+               </Accordion.Control>
+               <Accordion.Panel>
+-                <ScrapePoolConfig pool={poolName} />
++                <ScrapePoolConfig
++                  pool={poolName}
++                  expanded={configExpanded}
++                  id={configId}
++                />
+                 {pool.total !== pool.serverTotal && (
+                   <Alert
+                     title="Only showing partial dropped targets"
+diff --git a/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx b/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
+index 58121381f88..9eeb0d78722 100644
+--- a/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
++++ b/web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx
+@@ -13,7 +13,7 @@ import { KVSearch } from "@nexucis/kvsearch";
+ import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
+ import { useSuspenseAPIQuery } from "../../api/api";
+ import { Target, TargetsResult } from "../../api/responseTypes/targets";
+-import React, { FC, memo, useMemo } from "react";
++import React, { FC, memo, useMemo, useState } from "react";
+ import { useLocalStorage } from "@mantine/hooks";
+ import { useAppDispatch, useAppSelector } from "../../state/hooks";
+ import {
+@@ -158,6 +158,9 @@ const ScrapePoolList: FC<ScrapePoolListProp> = memo(
+     const { collapsedPools, showLimitAlert } = useAppSelector(
+       (state) => state.targetsPage
+     );
++    const [expandedConfigs, setExpandedConfigs] = useState<
++      Record<string, boolean>
++    >({});
+ 
+     const allPools = useMemo(
+       () =>
+@@ -220,6 +223,8 @@ const ScrapePoolList: FC<ScrapePoolListProp> = memo(
+         >
+           {shownPoolNames.map((poolName) => {
+             const pool = allPools[poolName];
++            const configId = `scrape-config-${poolName}`;
++            const configExpanded = Boolean(expandedConfigs[poolName]);
+             return (
+               <Accordion.Item
+                 key={poolName}
+@@ -230,6 +235,23 @@ const ScrapePoolList: FC<ScrapePoolListProp> = memo(
+                   <Group wrap="nowrap" justify="space-between" mr="lg">
+                     <Text>{poolName}</Text>
+                     <Group gap="xs">
++                      <Anchor
++                        component="button"
++                        type="button"
++                        size="xs"
++                        onClick={(event) => {
++                          event.preventDefault();
++                          event.stopPropagation();
++                          setExpandedConfigs((previous) => ({
++                            ...previous,
++                            [poolName]: !previous[poolName],
++                          }));
++                        }}
++                        aria-expanded={configExpanded}
++                        aria-controls={configId}
++                      >
++                        {configExpanded ? "Hide config" : "Show config"}
++                      </Anchor>
+                       <Text c="gray.6">
+                         {pool.upCount} / {pool.count} up
+                       </Text>
+@@ -259,7 +281,11 @@ const ScrapePoolList: FC<ScrapePoolListProp> = memo(
+                   </Group>
+                 </Accordion.Control>
+                 <Accordion.Panel>
+-                  <ScrapePoolConfig pool={poolName} />
++                  <ScrapePoolConfig
++                    pool={poolName}
++                    expanded={configExpanded}
++                    id={configId}
++                  />
+                   {pool.count === 0 ? (
+                     <Alert title="No targets" icon={<IconInfoCircle />}>
+                       No active targets in this scrape pool.

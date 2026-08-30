@@ -1,0 +1,297 @@
+From d25fabf6e4f59f9a76f78c32651d5d2452eb92ac Mon Sep 17 00:00:00 2001
+From: Nicolas Grekas <nicolas.grekas@gmail.com>
+Date: Sat, 29 Aug 2026 10:51:52 +0200
+Subject: [PATCH] [HttpClient] Drop credentials when a redirect changes the
+ scheme
+
+---
+ .../Component/HttpClient/CurlHttpClient.php   |  8 ++--
+ .../Component/HttpClient/NativeHttpClient.php | 10 ++---
+ .../HttpClient/NoPrivateNetworkHttpClient.php |  5 ++-
+ .../HttpClient/Response/AmpResponse.php       |  2 +-
+ .../Tests/Fixtures/tls/redirect-server.php    | 42 +++++++++++++++++++
+ .../HttpClient/Tests/HttpClientTestCase.php   | 22 ++++++++++
+ .../Tests/NoPrivateNetworkHttpClientTest.php  | 23 ++++++++++
+ .../HttpClient/Tests/TestRedirectServer.php   | 40 ++++++++++++++++++
+ 8 files changed, 141 insertions(+), 11 deletions(-)
+ create mode 100644 src/Symfony/Component/HttpClient/Tests/Fixtures/tls/redirect-server.php
+ create mode 100644 src/Symfony/Component/HttpClient/Tests/TestRedirectServer.php
+
+diff --git a/src/Symfony/Component/HttpClient/CurlHttpClient.php b/src/Symfony/Component/HttpClient/CurlHttpClient.php
+index e5c22ca5fa826..1a5a14ce1bdc4 100644
+--- a/src/Symfony/Component/HttpClient/CurlHttpClient.php
++++ b/src/Symfony/Component/HttpClient/CurlHttpClient.php
+@@ -319,7 +319,7 @@ public function request(string $method, string $url, array $options = []): Respo
+             }
+         }
+ 
+-        return $pushedResponse ?? new CurlResponse($multi, $ch, $options, $this->logger, $method, self::createRedirectResolver($options, $host), CurlClientState::$curlVersion['version_number']);
++        return $pushedResponse ?? new CurlResponse($multi, $ch, $options, $this->logger, $method, self::createRedirectResolver($options, $scheme, $host), CurlClientState::$curlVersion['version_number']);
+     }
+ 
+     /**
+@@ -405,10 +405,11 @@ private static function readRequestBody(int $length, \Closure $body, string &$bu
+      *
+      * Work around CVE-2018-1000007: Authorization and Cookie headers should not follow redirects - fixed in Curl 7.64
+      */
+-    private static function createRedirectResolver(array $options, string $host): \Closure
++    private static function createRedirectResolver(array $options, string $scheme, string $host): \Closure
+     {
+         $redirectHeaders = [];
+         if (0 < $options['max_redirects']) {
++            $redirectHeaders['scheme'] = $scheme;
+             $redirectHeaders['host'] = $host;
+             $redirectHeaders['with_auth'] = $redirectHeaders['no_auth'] = array_filter($options['headers'], static function ($h) {
+                 return 0 !== stripos($h, 'Host:');
+@@ -439,7 +440,8 @@ private static function createRedirectResolver(array $options, string $host): \C
+             }
+ 
+             if ($redirectHeaders && isset($location['authority'])) {
+-                $requestHeaders = parse_url($location['authority'], \PHP_URL_HOST) === $redirectHeaders['host'] ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
++                // Authorization and Cookie headers MUST NOT follow except for the initial scheme and host name
++                $requestHeaders = $url['scheme'] === $redirectHeaders['scheme'] && parse_url($url['authority'], \PHP_URL_HOST) === $redirectHeaders['host'] ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
+                 curl_setopt($ch, \CURLOPT_HTTPHEADER, $requestHeaders);
+             } elseif ($noContent && $redirectHeaders) {
+                 curl_setopt($ch, \CURLOPT_HTTPHEADER, $redirectHeaders['with_auth']);
+diff --git a/src/Symfony/Component/HttpClient/NativeHttpClient.php b/src/Symfony/Component/HttpClient/NativeHttpClient.php
+index 81f2a431c7b56..b0a2319fa56bb 100644
+--- a/src/Symfony/Component/HttpClient/NativeHttpClient.php
++++ b/src/Symfony/Component/HttpClient/NativeHttpClient.php
+@@ -257,7 +257,7 @@ public function request(string $method, string $url, array $options = []): Respo
+                 $url['authority'] = substr_replace($url['authority'], $ip, -\strlen($host) - \strlen($port), \strlen($host));
+             }
+ 
+-            return [self::createRedirectResolver($options, $host, $proxy, $info, $onProgress), implode('', $url)];
++            return [self::createRedirectResolver($options, $url['scheme'], $host, $proxy, $info, $onProgress), implode('', $url)];
+         };
+ 
+         return new NativeResponse($this->multi, $context, implode('', $url), $options, $info, $resolver, $onProgress, $this->logger);
+@@ -360,11 +360,11 @@ private static function dnsResolve($host, NativeClientState $multi, array &$info
+     /**
+      * Handles redirects - the native logic is too buggy to be used.
+      */
+-    private static function createRedirectResolver(array $options, string $host, ?array $proxy, array &$info, ?\Closure $onProgress): \Closure
++    private static function createRedirectResolver(array $options, string $scheme, string $host, ?array $proxy, array &$info, ?\Closure $onProgress): \Closure
+     {
+         $redirectHeaders = [];
+         if (0 < $maxRedirects = $options['max_redirects']) {
+-            $redirectHeaders = ['host' => $host];
++            $redirectHeaders = ['scheme' => $scheme, 'host' => $host];
+             $redirectHeaders['with_auth'] = $redirectHeaders['no_auth'] = array_filter($options['headers'], static function ($h) {
+                 return 0 !== stripos($h, 'Host:');
+             });
+@@ -428,8 +428,8 @@ private static function createRedirectResolver(array $options, string $host, ?ar
+             [$host, $port] = self::parseHostPort($url, $info);
+ 
+             if ($locationHasHost) {
+-                // Authorization and Cookie headers MUST NOT follow except for the initial host name
+-                $requestHeaders = $redirectHeaders['host'] === $host ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
++                // Authorization and Cookie headers MUST NOT follow except for the initial scheme and host name
++                $requestHeaders = $url['scheme'] === $redirectHeaders['scheme'] && $redirectHeaders['host'] === $host ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
+                 $requestHeaders[] = 'Host: '.$host.$port;
+                 $dnsResolve = !self::configureHeadersAndProxy($context, $host, $requestHeaders, $proxy, 'https:' === $url['scheme']);
+             } else {
+diff --git a/src/Symfony/Component/HttpClient/NoPrivateNetworkHttpClient.php b/src/Symfony/Component/HttpClient/NoPrivateNetworkHttpClient.php
+index 7c6eb1fba1866..11223c29a9f1c 100644
+--- a/src/Symfony/Component/HttpClient/NoPrivateNetworkHttpClient.php
++++ b/src/Symfony/Component/HttpClient/NoPrivateNetworkHttpClient.php
+@@ -100,6 +100,7 @@ public function request(string $method, string $url, array $options = []): Respo
+         [$url, $options] = self::prepareRequest($method, $url, $options, $this->defaultOptions, true);
+ 
+         $redirectHeaders = parse_url($url['authority']);
++        $redirectHeaders['scheme'] = $url['scheme'];
+         $host = $redirectHeaders['host'];
+         $url = implode('', $url);
+         $dnsCache = $this->dnsCache;
+@@ -170,8 +171,8 @@ public function request(string $method, string $url, array $options = []): Respo
+                 }
+             }
+ 
+-            // Authorization and Cookie headers MUST NOT follow except for the initial host name
+-            $options['headers'] = $redirectHeaders['host'] === $host ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
++            // Authorization and Cookie headers MUST NOT follow except for the initial scheme and host name
++            $options['headers'] = parse_url($url, \PHP_URL_SCHEME).':' === $redirectHeaders['scheme'] && $redirectHeaders['host'] === $host ? $redirectHeaders['with_auth'] : $redirectHeaders['no_auth'];
+ 
+             static $redirectCount = 0;
+             $context->setInfo('redirect_count', ++$redirectCount);
+diff --git a/src/Symfony/Component/HttpClient/Response/AmpResponse.php b/src/Symfony/Component/HttpClient/Response/AmpResponse.php
+index e4999b73688c0..7ac264362fd5e 100644
+--- a/src/Symfony/Component/HttpClient/Response/AmpResponse.php
++++ b/src/Symfony/Component/HttpClient/Response/AmpResponse.php
+@@ -360,7 +360,7 @@ private static function followRedirects(Request $originRequest, AmpClientState $
+                 $request->addHeader($name, $value);
+             }
+ 
+-            if ($request->getUri()->getAuthority() !== $originRequest->getUri()->getAuthority()) {
++            if ($request->getUri()->getScheme() !== $originRequest->getUri()->getScheme() || $request->getUri()->getAuthority() !== $originRequest->getUri()->getAuthority()) {
+                 $request->removeHeader('authorization');
+                 $request->removeHeader('cookie');
+                 $request->removeHeader('host');
+diff --git a/src/Symfony/Component/HttpClient/Tests/Fixtures/tls/redirect-server.php b/src/Symfony/Component/HttpClient/Tests/Fixtures/tls/redirect-server.php
+new file mode 100644
+index 0000000000000..23d893f24d0a5
+--- /dev/null
++++ b/src/Symfony/Component/HttpClient/Tests/Fixtures/tls/redirect-server.php
+@@ -0,0 +1,42 @@
++<?php
++
++/*
++ * This file is part of the Symfony package.
++ *
++ * (c) Fabien Potencier <fabien@symfony.com>
++ *
++ * For the full copyright and license information, please view the LICENSE
++ * file that was distributed with this source code.
++ */
++
++// Serves both TLS and plain HTTP on one port: TLS requests are redirected to the
++// plain URL of the same host and port, plain requests echo their headers as JSON.
++
++$port = (int) ($argv[1] ?? 8059);
++$context = stream_context_create(['ssl' => ['local_cert' => __DIR__.'/server.crt', 'local_pk' => __DIR__.'/server.key']]);
++$server = stream_socket_server('tcp://127.0.0.1:'.$port, $errno, $errstr, \STREAM_SERVER_BIND | \STREAM_SERVER_LISTEN, $context);
++
++while ($conn = @stream_socket_accept($server, 30)) {
++    $tls = "\x16" === stream_socket_recvfrom($conn, 1, \STREAM_PEEK);
++
++    if ($tls && !@stream_socket_enable_crypto($conn, true, \STREAM_CRYPTO_METHOD_TLS_SERVER)) {
++        fclose($conn);
++        continue;
++    }
++
++    $headers = [];
++    while (false !== ($line = fgets($conn)) && '' !== ($line = trim($line))) {
++        if (false !== $i = strpos($line, ':')) {
++            $headers[strtolower(substr($line, 0, $i))] = trim(substr($line, $i + 1));
++        }
++    }
++
++    if ($tls) {
++        fwrite($conn, "HTTP/1.1 301 Moved Permanently\r\nLocation: http://127.0.0.1:$port/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
++    } else {
++        $body = json_encode($headers);
++        fwrite($conn, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: ".strlen($body)."\r\nConnection: close\r\n\r\n".$body);
++    }
++
++    fclose($conn);
++}
+diff --git a/src/Symfony/Component/HttpClient/Tests/HttpClientTestCase.php b/src/Symfony/Component/HttpClient/Tests/HttpClientTestCase.php
+index d18cc46431135..d14e84d35627f 100644
+--- a/src/Symfony/Component/HttpClient/Tests/HttpClientTestCase.php
++++ b/src/Symfony/Component/HttpClient/Tests/HttpClientTestCase.php
+@@ -44,6 +44,28 @@ public function testTimeoutOnDestruct()
+         parent::testTimeoutOnDestruct();
+     }
+ 
++    /**
++     * @requires extension openssl
++     */
++    public function testRedirectToADifferentSchemeDropsCredentials()
++    {
++        TestRedirectServer::start();
++        $client = $this->getHttpClient(__FUNCTION__);
++
++        $response = $client->request('GET', 'https://127.0.0.1:8059/', [
++            'auth_basic' => 'foo:bar',
++            'headers' => ['Cookie' => 'a=b', 'X-Custom' => 'kept'],
++            'verify_peer' => false,
++            'verify_host' => false,
++        ]);
++        $headers = $response->toArray();
++
++        $this->assertSame('http://127.0.0.1:8059/', $response->getInfo('url'));
++        $this->assertSame('kept', $headers['x-custom']);
++        $this->assertArrayNotHasKey('authorization', $headers);
++        $this->assertArrayNotHasKey('cookie', $headers);
++    }
++
+     public function testAcceptHeader()
+     {
+         $client = $this->getHttpClient(__FUNCTION__);
+diff --git a/src/Symfony/Component/HttpClient/Tests/NoPrivateNetworkHttpClientTest.php b/src/Symfony/Component/HttpClient/Tests/NoPrivateNetworkHttpClientTest.php
+index 437f7a44c9db4..f59e76fc3e5f5 100644
+--- a/src/Symfony/Component/HttpClient/Tests/NoPrivateNetworkHttpClientTest.php
++++ b/src/Symfony/Component/HttpClient/Tests/NoPrivateNetworkHttpClientTest.php
+@@ -16,6 +16,7 @@
+ use Symfony\Component\HttpClient\Exception\InvalidArgumentException;
+ use Symfony\Component\HttpClient\Exception\TransportException;
+ use Symfony\Component\HttpClient\MockHttpClient;
++use Symfony\Component\HttpClient\NativeHttpClient;
+ use Symfony\Component\HttpClient\NoPrivateNetworkHttpClient;
+ use Symfony\Component\HttpClient\Response\MockResponse;
+ 
+@@ -178,6 +179,28 @@ public function testNonCallableOnProgressCallback()
+         $client->request('GET', $url, ['on_progress' => $customCallback]);
+     }
+ 
++    /**
++     * @requires extension openssl
++     */
++    public function testRedirectToADifferentSchemeDropsCredentials()
++    {
++        TestRedirectServer::start();
++        $client = new NoPrivateNetworkHttpClient(new NativeHttpClient(), '10.0.0.0/8');
++
++        $response = $client->request('GET', 'https://127.0.0.1:8059/', [
++            'auth_basic' => 'foo:bar',
++            'headers' => ['Cookie' => 'a=b', 'X-Custom' => 'kept'],
++            'verify_peer' => false,
++            'verify_host' => false,
++        ]);
++        $headers = $response->toArray();
++
++        $this->assertSame('http://127.0.0.1:8059/', $response->getInfo('url'));
++        $this->assertSame('kept', $headers['x-custom']);
++        $this->assertArrayNotHasKey('authorization', $headers);
++        $this->assertArrayNotHasKey('cookie', $headers);
++    }
++
+     public function testConstructor()
+     {
+         $this->expectException(\TypeError::class);
+diff --git a/src/Symfony/Component/HttpClient/Tests/TestRedirectServer.php b/src/Symfony/Component/HttpClient/Tests/TestRedirectServer.php
+new file mode 100644
+index 0000000000000..c1624d39e62c5
+--- /dev/null
++++ b/src/Symfony/Component/HttpClient/Tests/TestRedirectServer.php
+@@ -0,0 +1,40 @@
++<?php
++
++/*
++ * This file is part of the Symfony package.
++ *
++ * (c) Fabien Potencier <fabien@symfony.com>
++ *
++ * For the full copyright and license information, please view the LICENSE
++ * file that was distributed with this source code.
++ */
++
++namespace Symfony\Component\HttpClient\Tests;
++
++use Symfony\Component\Process\PhpExecutableFinder;
++use Symfony\Component\Process\Process;
++
++/**
++ * Starts a server that redirects TLS requests to the plain URL of the same host and port.
++ */
++class TestRedirectServer
++{
++    private static $process;
++
++    public static function start(): void
++    {
++        if (self::$process) {
++            return;
++        }
++
++        $finder = new PhpExecutableFinder();
++        $process = new Process(array_merge([$finder->find(false)], $finder->findArguments(), [__DIR__.'/Fixtures/tls/redirect-server.php', '8059']));
++        $process->start();
++        self::$process = $process;
++        register_shutdown_function([$process, 'stop']);
++
++        do {
++            usleep(50000);
++        } while ($process->isRunning() && !@fsockopen('127.0.0.1', 8059));
++    }
++}

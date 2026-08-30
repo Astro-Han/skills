@@ -1,0 +1,227 @@
+{
+  "additions": 86,
+  "author": "dunglas",
+  "base_sha": "50e54ee279aa1e504fe218ca49ab6ae16c100410",
+  "body": "Advisory: [GHSA-m8m5-v4jf-3wcm](https://github.com/caddyserver/caddy/security/advisories/GHSA-m8m5-v4jf-3wcm)\nReported by [@z3k0sec](https://github.com/z3k0sec).\n\n## Affected versions\n\nNo released version is affected. `url_pattern` support was added in #7787 and has not been part of a tagged release; the bug only exists on `master`.\n\n## Problem\n\nThe `http.matchers.url_pattern` matcher evaluated the raw, percent-encoded request URI (`r.URL.RequestURI()`), while every path-consuming handler resolves the decoded, cleaned `r.URL.Path`. An encoded-slash payload like `..%2f` stays a single opaque segment for the WHATWG `URLPattern` parser, so:\n\n- `/public/..%2fadmin/secret` **matches** an allow-list pattern of `/public/*`\n- handlers decode `%2f` to `/` and resolve `/admin/secret`\n\nMatcher and handler ran two different path models on the same request, so any route ACL built with `url_pattern` could be bypassed by an unauthenticated request (`file_server`, `reverse_proxy`, `php_fastcgi`, internal routes).\n\nThe classic `path` matcher is unaffected; it already compares the cleaned, decoded path (#4407).\n\n## Fix\n\nMatch against the same path model the handlers resolve:\n\n1. decode via `r.URL.Path`\n2. `normalizeWindowsPath` + `CleanPath` (collapses `..` and, per the pattern, doubled slashes, mirroring `MatchPath`)\n3. re-encode through `url.URL` to a canonical escaped form before `Exec`\n\n`mergeSlashes` is derived once in `Provision` from the pattern's path part, matching the path matcher's `//` rule.\n\nThe `github.com/dunglas/go-urlpattern` library is spec-correct: keeping `%2F` encoded is required by RFC 3986 and matches browser `URLPattern` behavior. The defect is in the integration, so the fix stays in Caddy. This PR also bumps go-urlpattern from its pseudo-version to the first tagged release, `v1.0.0`.\n\n## Tests\n\nAdded regression cases: encoded-slash (`..%2f`, `..%2F`), encoded dots (`%2e%2e`), raw dots (`../`), positive re-match on the real decoded target, slash collapsing, empty-segment preservation, and encoded-character decode. Verified against the advisory's live reproduction: all three payloads now return `403`, control paths still serve.\n\n## Assistance Disclosure\n\nPatched by Claude, reviewed by me.",
+  "captured_at": "2026-08-30T10:28:14+00:00",
+  "case_id": "caddyserver-caddy-pr-7941",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (aix, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (linux)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scorecard analysis",
+      "status": "COMPLETED",
+      "workflowName": "OpenSSF Scorecard supply-chain security"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (linux, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (linux, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (mac)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (mac, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (solaris, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (windows)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (windows, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (illumos, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (dragonfly, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (freebsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (openbsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (windows, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (darwin, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (netbsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test (s390x on IBM Z)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "govulncheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "goreleaser-check",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dependency-review",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Scorecard",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "50e54ee279aa1e504fe218ca49ab6ae16c100410",
+  "deletions": 4,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "go.mod"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "go.sum"
+    },
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "modules/caddyhttp/urlpatternmatcher.go"
+    },
+    {
+      "additions": 56,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "modules/caddyhttp/urlpatternmatcher_test.go"
+    }
+  ],
+  "head_sha": "9355e8b2bbf6c2cebff7e05cd4202a2ed4d96d0c",
+  "issues": [],
+  "patch_sha256": "99743e1a3d8b50b1f88c858f9d18ec8d63af8c981c7fc9632bdb9f29c0ec87a7",
+  "pr_number": 7941,
+  "repo": "caddyserver/caddy",
+  "schema_version": 1,
+  "title": "caddyhttp: fix url_pattern authorization bypass via encoded-slash traversal",
+  "url": "https://github.com/caddyserver/caddy/pull/7941"
+}

@@ -1,0 +1,269 @@
+{
+  "additions": 49,
+  "author": "tr4nt0r",
+  "base_sha": "3320b683eb0e5891e86ef847afcedb351d5b373c",
+  "body": "<!--\r\n  You are amazing! Thanks for contributing to our project!\r\n  Please, DO NOT DELETE ANY TEXT from this template! (unless instructed).\r\n-->\r\n\r\n## Proposed change\r\n<!--\r\n  Describe the big picture of your changes here to communicate to the\r\n  maintainers why we should accept this pull request. If it fixes a bug\r\n  or resolves a feature request, be sure to link to that issue in the\r\n  additional information section.\r\n-->\r\nAdds priority support to the `smtp.send_message` action and includes the X-Priority header in outgoing emails.\r\n\r\n\r\n## Type of change\r\n<!--\r\n  What type of change does your PR introduce to Home Assistant?\r\n  NOTE: Please, check only 1! box!\r\n  If your PR requires multiple boxes to be checked, you'll most likely need to\r\n  split it into multiple PRs. This makes things easier and faster to code review.\r\n-->\r\n\r\n- [ ] Dependency upgrade\r\n- [ ] Bugfix (non-breaking change which fixes an issue)\r\n- [ ] New integration (thank you!)\r\n- [x] New feature (which adds functionality to an existing integration)\r\n- [ ] Deprecation (breaking change to happen in the future)\r\n- [ ] Breaking change (fix/feature causing existing functionality to break)\r\n- [ ] Code quality improvements to existing code or addition of tests\r\n\r\n## Additional information\r\n<!--\r\n  Details are important, and help maintainers processing your PR.\r\n  Please be sure to fill out additional details, if applicable.\r\n-->\r\n\r\n- This PR fixes or closes issue: fixes #\r\n- This PR is related to issue: \r\n- Link to documentation pull request: https://github.com/home-assistant/home-assistant.io/pull/47645\r\n- Link to developer documentation pull request: \r\n- Link to frontend pull request: \r\n\r\n## Checklist\r\n<!--\r\n  Put an `x` in the boxes that apply. You can also fill these out after\r\n  creating the PR. If you're unsure about any of them, don't hesitate to ask.\r\n  We're here to help! This is simply a reminder of what we are going to look\r\n  for before merging your code.\r\n\r\n  AI tools are welcome, but contributors are responsible for *fully*\r\n  understanding the code before submitting a PR. Please follow our AI policy:\r\n  https://developers.home-assistant.io/docs/ai_policy\r\n-->\r\n\r\n- [ ] I understand the code I am submitting and can explain how it works.\r\n- [x] The code change is tested and works locally.\r\n- [x] Local tests pass. **Your PR cannot be merged unless tests pass**\r\n- [x] There is no commented out code in this PR.\r\n- [x] I have followed the [development checklist][dev-checklist]\r\n- [x] I have followed the [perfect PR recommendations][perfect-pr]\r\n- [x] The code has been formatted using Ruff (`ruff format homeassistant tests`)\r\n- [x] Tests have been added to verify that the new code works.\r\n- [ ] Any generated code has been carefully reviewed for correctness and compliance with project standards.\r\n\r\nIf user exposed functionality or configuration variables are added/changed:\r\n\r\n- [x] Documentation added/updated for [www.home-assistant.io][docs-repository]\r\n\r\nIf the code communicates with devices, web services, or third-party tools:\r\n\r\n- [ ] The [manifest file][manifest-docs] has all fields filled out correctly.  \r\n      Updated and included derived files by running: `python3 -m script.hassfest`.\r\n- [ ] New or updated dependencies have been added to `requirements_all.txt`.  \r\n      Updated by running `python3 -m script.gen_requirements_all`.\r\n- [ ] For the updated dependencies a diff between library versions and ideally a link to the changelog/release notes is added to the PR description.\r\n\r\n<!--\r\n  This project is very active and we have a high turnover of pull requests.\r\n\r\n  Unfortunately, the number of incoming pull requests is higher than what our\r\n  reviewers can review and merge so there is a long backlog of pull requests\r\n  waiting for review. You can help here!\r\n  \r\n  By reviewing another pull request, you will help raise the code quality of\r\n  that pull request and the final review will be faster. This way the general\r\n  pace of pull request reviews will go up and your wait time will go down.\r\n  \r\n  When picking a pull request to review, try to choose one that hasn't yet\r\n  been reviewed.\r\n\r\n  Thanks for helping out!\r\n-->\r\n\r\nTo help with the load of incoming pull requests:\r\n\r\n- [ ] I have reviewed two other [open pull requests][prs] in this repository.\r\n\r\n[prs]: https://github.com/home-assistant/core/pulls?q=is%3Aopen+is%3Apr+-author%3A%40me+-draft%3Atrue+-label%3Awaiting-for-upstream+sort%3Acreated-desc+review%3Anone+-status%3Afailure\r\n\r\n<!--\r\n  Thank you for contributing <3\r\n\r\n  Below, some useful links you could explore:\r\n-->\r\n[dev-checklist]: https://developers.home-assistant.io/docs/development_checklist/\r\n[manifest-docs]: https://developers.home-assistant.io/docs/creating_integration_manifest/\r\n[quality-scale]: https://developers.home-assistant.io/docs/integration_quality_scale_index/\r\n[docs-repository]: https://github.com/home-assistant/home-assistant.io\r\n[perfect-pr]: https://developers.home-assistant.io/docs/review-process/#creating-the-perfect-pr\r\n",
+  "captured_at": "2026-08-30T10:28:18+00:00",
+  "case_id": "home-assistant-core-pr-180358",
+  "changed_files": 7,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Collect information & changes data",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run prek checks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check GitHub Actions workflows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check Dockerfile",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check Dockerfile.dev",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check script/hassfest/docker/Dockerfile",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Prepare dependencies (3.14.5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check copilot instructions",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Check recorder database versions",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check hassfest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check all requirements",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Dependency review",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Audit licenses",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check pylint",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check pylint on tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check mypy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Split tests for full run",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run ${{ matrix.mariadb-group }} tests Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run ${{ matrix.postgresql-group }} tests Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run SQLite ${{ matrix.sqlite-group.version }} tests Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run tests Python 3.14.5 (smtp)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run tests Python ${{ matrix.python-version }} (${{ matrix.group }})",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Upload test coverage to Codecov (partial suite)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Upload test coverage to Codecov (full suite)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Upload test results to Codecov",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codecov/patch",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codecov/patch/required",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codecov/project",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codecov/project/required",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "3cdbf029a7c79fa25595d083b7a3b658b7feec0c",
+  "deletions": 2,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "homeassistant/components/smtp/const.py"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "homeassistant/components/smtp/notify.py"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "homeassistant/components/smtp/services.py"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "homeassistant/components/smtp/services.yaml"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "homeassistant/components/smtp/strings.json"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tests/components/smtp/snapshots/test_notify.ambr"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tests/components/smtp/test_notify.py"
+    }
+  ],
+  "head_sha": "91162d5f2851cec8c1066b0c843cb666b6074f9b",
+  "issues": [],
+  "patch_sha256": "e8a08f1cf037f1415f920d1821a0f2d026d1cb10cf6b7e51006ad467873de6c8",
+  "pr_number": 180358,
+  "repo": "home-assistant/core",
+  "schema_version": 1,
+  "title": "Add support for priority to SMTP integration",
+  "url": "https://github.com/home-assistant/core/pull/180358"
+}

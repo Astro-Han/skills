@@ -196,6 +196,30 @@ class RealFixtureTests(unittest.TestCase):
                 fixture.verify_diverse_selection(candidates, policy, selection), 2
             )
 
+    def test_capability_selection_matches_frozen_pools_and_diversity_policy(self):
+        root = ROOT / "evals/pr-review/capability"
+
+        self.assertEqual(
+            fixture.verify_capability_selection(
+                sorted((root / "pools").glob("*.json")),
+                root / "selection-policy.json",
+                root / "selection.json",
+            ),
+            32,
+        )
+
+    def test_capability_cases_match_selection_and_metadata_pool_heads(self):
+        root = ROOT / "evals/pr-review/capability"
+
+        self.assertEqual(
+            fixture.verify_capability_cases(
+                root / "cases",
+                sorted((root / "pools").glob("*.json")),
+                root / "selection.json",
+            ),
+            32,
+        )
+
     def test_diverse_case_verifier_matches_frozen_repo_and_number(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

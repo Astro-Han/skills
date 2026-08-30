@@ -1,0 +1,573 @@
+{
+  "additions": 21,
+  "author": "jensholdgaard",
+  "base_sha": "eb4988dc2ecb85d2617971fbbabc84938c141bfd",
+  "body": "## Motivation\n\nFixes #8299: tokio 1.53.0 declares `rust-version = \"1.71\"` but uses `OnceLock::wait` \u2014 stabilized in Rust **1.86** \u2014 in the Windows console ctrl handler (`src/signal/windows/sys.rs`), so any `cargo check` of a Windows target with a toolchain in the declared-supported `1.71..1.86` range fails:\n\n```\nerror[E0599]: no method named `wait` found for struct `OnceLock` in the current scope\n```\n\nThis began breaking downstream MSRV CI on Windows the day 1.53.0 published (e.g. opentelemetry-rust's `msrv (windows-latest)` job \u2014 diagnosis in open-telemetry/opentelemetry-rust#3600).\n\n## Solution\n\nThe `wait()` existed only because `SetConsoleCtrlHandler` was called **inside** `REGISTRY`'s `get_or_init` closure \u2014 i.e. before the `OnceLock` was actually initialized \u2014 leaving a window where an invoked handler could observe an uninitialized `REGISTRY` (the comment in `handler` documented exactly that window).\n\nThis PR removes the window instead of blocking on it: initialize the registry first, then register the OS handler (exactly once, through a second `OnceLock` that also caches a registration failure so every subsequent `new()` reports the same error \u2014 identical semantics to before). The handler can then rely on plain `get()`: registration happens-after initialization, so an invoked handler always finds the registry. The defensive `else` arm is kept (returns 0, letting the OS run the next handler) with an updated comment.\n\nNo behavior change intended beyond restoring the MSRV: same one-time registration, same cached-failure semantics, same handler behavior; the existing tests in the module (which drive `handler` directly after creating signals through the public API) are unchanged and still compile for the Windows target.\n\nVerification (done from a non-Windows host \u2014 `cargo check` needs no linker):\n\n- `cargo +1.71 check -p tokio --features full --target x86_64-pc-windows-msvc` \u2014 **fails with the reported E0599 before this change, clean after** (1.71 = the declared MSRV).\n- `cargo check -p tokio --features full --target x86_64-pc-windows-msvc --all-targets` on stable \u2014 clean (includes the module's test targets).\n\nDisclosure: this fix was developed with AI assistance under my direction; I reviewed the change and the verification above was run as described.\n",
+  "captured_at": "2026-08-30T10:28:14+00:00",
+  "case_id": "tokio-rs-tokio-pr-8300",
+  "changed_files": 1,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio::runtime::spawn_blocking",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "minrust",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "triage",
+      "status": "COMPLETED",
+      "workflowName": "Pull Request Labeler"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Stress Test (simple_echo_tcp)",
+      "status": "COMPLETED",
+      "workflowName": "Stress Test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio::sync",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fmt",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom time driver",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom current-thread scheduler",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs (windows-latest, tracing)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs (ubuntu-latest, tracing,io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom multi-thread scheduler",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check README",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio-util",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-wasip2",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "get-latest-kernel-version",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "basic checks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "compile tests with parking lot send guards",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "valgrind",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (ubuntu-latest, io-uring)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable --taskdump (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check tokio full --internal-mt-counters (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-lib",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-doc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "asan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "semver",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (powerpc-unknown-linux-gnu)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (powerpc64-unknown-linux-gnu)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (arm-linux-androideabi)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check-tier3 (x86_64-unknown-haiku, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (i686-unknown-linux-gnu, ubuntu-latest, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (armv5te-unknown-linux-gnueabi, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (armv7-unknown-linux-gnueabihf, ubuntu-24.04-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (aarch64-unknown-linux-gnu, ubuntu-24.04-arm, io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (aarch64-pc-windows-msvc, windows-11-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (i686-unknown-linux-gnu, ubuntu-latest, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (armv5te-unknown-linux-gnueabi, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (armv7-unknown-linux-gnueabihf, ubuntu-24.04-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (aarch64-unknown-linux-gnu, ubuntu-24.04-arm, io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (aarch64-pc-windows-msvc, windows-11-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test tokio --all-features on i686-unknown-linux-gnu without AtomicU64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check tokio --feature-powerset --depth 2 on i686-unknown-linux-gnu without AtomicU64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude --unstable",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude --unstable io-uring,taskdump,schedule-latency",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "minimal-versions",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build loom tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build tokio for x86_64-fortanix-unknown-sgx",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build tokio for redox-os",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync rt)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync time rt)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm32-wasip1",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm32-wasip1-threads",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-external-types (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-external-types (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fuzzing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-spelling",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test io_uring on Linux 7.1.4 / build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test io_uring on Linux 4.19.325 / build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD docs",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD i686",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "*control",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Redirect rules - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "eb4988dc2ecb85d2617971fbbabc84938c141bfd",
+  "deletions": 10,
+  "files": [
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": "tokio/src/signal/windows/sys.rs"
+    }
+  ],
+  "head_sha": "ac09983cf50ed0d46678e7fef373143562ab9cdd",
+  "issues": [
+    {
+      "body": "**Version**\n\ntokio v1.53.0 (crates.io, published 2026-07-17)\n\n**Platform**\n\nWindows (x86_64-pc-windows-msvc) \u2014 the affected code is behind `cfg(windows)`; other platforms are unaffected.\n\n**Description**\n\ntokio 1.53.0 declares `rust-version = \"1.71\"` in its manifest, but `src/signal/windows/sys.rs:112` (at tag `tokio-1.53.0`) calls [`OnceLock::wait`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html#method.wait):\n\n```rust\nlet Ok(registry) = REGISTRY.wait().as_ref() else {\n```\n\n`OnceLock::wait` was stabilized in **Rust 1.86**, so any Windows build of tokio 1.53.0 with a toolchain in the declared-supported range `1.71..1.86` fails:\n\n```\nerror[E0599]: no method named `wait` found for struct `OnceLock` in the current scope\n   --> tokio-1.53.0/src/signal/windows/sys.rs:112:33\n    |\n112 |     let Ok(registry) = REGISTRY.wait().as_ref() else {\n    |                                 ^^^^ method not found in `OnceLock<Result<Registry, i32>>`\n```\n\nI expected `cargo check` with any toolchain \u2265 the declared `rust-version` to succeed; instead it fails on Windows for every toolchain below 1.86. Since the code path is `cfg(windows)`-gated, I suspect the MSRV CI job doesn't cover the Windows signal module.\n\nObserved in the wild: this began breaking downstream MSRV CI on Windows the day 1.53.0 published (e.g. open-telemetry/opentelemetry-rust's `msrv (windows-latest)` job, verifying an example against Rust 1.75 \u2014 [failing job](https://github.com/open-telemetry/opentelemetry-rust/actions/runs/29684156505/job/88185441506), diagnosis in [open-telemetry/opentelemetry-rust#3599 (comment)](https://github.com/open-telemetry/opentelemetry-rust/pull/3599#issuecomment-5015466054)).\n\n(Disclosure: this report was drafted with AI assistance; the source facts \u2014 the tag's manifest `rust-version`, the `sys.rs` call site, and the publish date \u2014 were verified directly against the `tokio-1.53.0` tag and crates.io.)\n",
+      "number": 8299,
+      "title": "tokio 1.53.0 breaks its declared MSRV (1.71) on Windows: OnceLock::wait (Rust 1.86) in signal/windows/sys.rs",
+      "url": "https://github.com/tokio-rs/tokio/issues/8299"
+    }
+  ],
+  "patch_sha256": "ecd5e5e0019258b9a80735f6a0f21e8bf38e02950697af320fc6f31eadb18fcb",
+  "pr_number": 8300,
+  "repo": "tokio-rs/tokio",
+  "schema_version": 1,
+  "title": "signal: restore MSRV by removing OnceLock::wait from the Windows handler",
+  "url": "https://github.com/tokio-rs/tokio/pull/8300"
+}

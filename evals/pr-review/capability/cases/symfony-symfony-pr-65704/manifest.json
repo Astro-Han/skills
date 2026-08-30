@@ -1,0 +1,137 @@
+{
+  "additions": 141,
+  "author": "nicolas-grekas",
+  "base_sha": "cce3166e8a8efbe5d44433a9dd9c4d293735e540",
+  "body": "| Q             | A\n| ------------- | ---\n| Branch?       | 5.4\n| Bug fix?      | yes\n| New feature?  | no\n| Deprecations? | no\n| Issues        | -\n| License       | MIT\n\nWhen a response redirects to another host, the redirect handling of every client drops the `Authorization` and `Cookie` headers before following it. It kept them when the host was the same but the scheme changed, so an `https://` request redirected to `http://` on the same host sent the credentials in clear text. Browsers and the Fetch standard strip these headers on any change of origin, and the scheme is part of the origin.\n\nThe scheme is now compared next to the host in the four places that make this decision: `CurlHttpClient`, `NativeHttpClient`, `AmpResponse` and `NoPrivateNetworkHttpClient`. Other custom headers keep following the redirect as before, and a redirect to the same scheme and host still carries the credentials.\n\nThe test starts a small server that serves TLS and plain HTTP on the same port, using the certificate already in the fixtures: a TLS request is redirected to the plain URL of the same host and port, and a plain request echoes the headers it received. The test runs for the curl, native, Amp and mock clients through `HttpClientTestCase`, and once more with `NoPrivateNetworkHttpClient`. With the fix reverted, the native, Amp and `NoPrivateNetwork` clients fail it with `Failed asserting that an array does not have the key 'authorization'`. The curl client passes it on both states: libcurl 8.5.0 drops the headers itself on a scheme change, so the change in `CurlHttpClient` aligns the code path for the libcurl versions that do not.\n\nNot covered: the port stays out of the comparison on this branch, as before (a redirect to another port of the same host keeps the credentials). Windows was not tested locally.\n\nThis targets 5.4 on purpose, as a hardening change: it fixes a credential leak that exists in the same shape on every maintained branch.\n\nChecks run: `./phpunit src/Symfony/Component/HttpClient` (804 tests, 26 skipped, no failures) and php-cs-fixer on the changed files.\n",
+  "captured_at": "2026-08-30T10:28:15+00:00",
+  "case_id": "symfony-symfony-pr-65704",
+  "changed_files": 8,
+  "checks": [
+    {
+      "conclusion": "FAILURE",
+      "name": "x86 / minimal-exts / lowest-php",
+      "status": "COMPLETED",
+      "workflowName": "Windows"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Integration (7.2)",
+      "status": "COMPLETED",
+      "workflowName": "Integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Psalm",
+      "status": "COMPLETED",
+      "workflowName": "Psalm"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (7.2)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify Packages",
+      "status": "COMPLETED",
+      "workflowName": "Verify Packages"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Integration (8.0)",
+      "status": "COMPLETED",
+      "workflowName": "Integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (7.4)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Unit Tests (8.2, high-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Unit Tests (8.2, low-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.3)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.4, amqp,apcu,igbinary,intl,mbstring,memcached,redis)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    }
+  ],
+  "comparison_base_sha": "565300eaad6e347918d2e8c478d30ceabe6088ab",
+  "deletions": 11,
+  "files": [
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "src/Symfony/Component/HttpClient/CurlHttpClient.php"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "src/Symfony/Component/HttpClient/NativeHttpClient.php"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "src/Symfony/Component/HttpClient/NoPrivateNetworkHttpClient.php"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "src/Symfony/Component/HttpClient/Response/AmpResponse.php"
+    },
+    {
+      "additions": 42,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/HttpClient/Tests/Fixtures/tls/redirect-server.php"
+    },
+    {
+      "additions": 22,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/HttpClient/Tests/HttpClientTestCase.php"
+    },
+    {
+      "additions": 23,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/HttpClient/Tests/NoPrivateNetworkHttpClientTest.php"
+    },
+    {
+      "additions": 40,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/HttpClient/Tests/TestRedirectServer.php"
+    }
+  ],
+  "head_sha": "d25fabf6e4f59f9a76f78c32651d5d2452eb92ac",
+  "issues": [],
+  "patch_sha256": "c0fa938d1c06e57fdbbca174f5c88c5f1fb38d583e5b81fc0230d4613face3b8",
+  "pr_number": 65704,
+  "repo": "symfony/symfony",
+  "schema_version": 1,
+  "title": "[HttpClient] Drop credentials when a redirect changes the scheme",
+  "url": "https://github.com/symfony/symfony/pull/65704"
+}

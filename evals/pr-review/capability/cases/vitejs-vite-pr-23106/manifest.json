@@ -1,0 +1,248 @@
+{
+  "additions": 111,
+  "author": "h-a-n-a",
+  "base_sha": "fa005d19af5d847931c6dbefc63841c137383e6c",
+  "body": "### Description\n\nIn bundled dev, when an HMR update has no boundary, the client reloads the page. Today it reloads immediately: the rebuilt bundle does not exist yet, so the browser lands on the \"Bundling in progress\" fallback page and reloads a second time when the bundle is ready. Two navigations, with a visible spinner page between them.\n\nAs discussed with @sapphi-red: the client now reports its decision to the server instead of navigating. The server rebuilds the bundle first, then answers with `full-reload`. One navigation, straight onto the fresh bundle, and the fallback page no longer appears in the HMR flow.\n\nConcrete example: edit an entry module that nothing accepts (`main.js`). The client walk finds no boundary and the flow is now:\n\n```mermaid\nsequenceDiagram\n  participant S as server\n  participant C as client\n  S->>C: push {changedIds, url, seq}\n  C->>C: walk finds no HMR boundary\n  C->>S: vite:bundled-dev:reload-needed (page stays up)\n  S->>S: rebuild bundle output\n  S->>C: full-reload (requesters only)\n  C->>C: one navigation onto the fresh bundle\n```\n\nHow it works:\n\n- **Client:** every reload decision funnels through `requestFullReload`. It now sends `vite:bundled-dev:reload-needed { reason }` once and stops applying further updates \u2014 the page is about to navigate. The navigation itself is the ordinary `full-reload` payload handling.\n- **Server:** a new handler records the requesting client and calls `ensureLatestBuildOutput()`. Once the output is stored, it sends `full-reload` to the requesters only. Tabs that hot-applied the same patch are not reloaded (the previous completion reload was a broadcast).\n- **Failed builds:** the request stays armed. Reloading during a failed build would navigate onto the last good bundle, and the change that triggered the reload would never arrive \u2014 the healing edit only ships a patch for its own files. Instead the error overlay stays on the still-open page, and the next successful build serves the reload.\n- **Terminal:** `bundling for page reload <reason>` at request time and `page reload` when it is sent, replacing the information the fallback page used to show in the browser.\n- The fallback page still exists where there is no page to keep showing: the initial build, and a manual refresh while output is stale.\n\nKnown limits:\n\n- An edit landing between \"reload sent\" and the browser's document request can still hit the fallback page. This race existed before and is much narrower now.\n- Not covered by e2e yet: the requester-only behavior with two tabs, and the failed-build path (it needs an output-stage failure, which playground fixtures cannot trigger deterministically).\n\n### Tests\n\n- New spec in `playground/hmr-full-bundle-mode`: one document load, no fallback document, and the server-side `bundling for page reload` log after a no-boundary edit. The log assertion is the discriminating check \u2014 on a small fixture the old flow can also finish rebuilding before the reload request arrives, so navigation counts alone pass on both behaviors. Verified to fail against the previous behavior and pass with this change.\n- `playground/hmr-full-bundle-mode`: 19 passed, 1 pre-existing skip.\n- Full `pnpm run test-serve-bundled`: 56 files / 333 tests passed.\n\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)\n",
+  "captured_at": "2026-08-30T10:28:11+00:00",
+  "case_id": "vitejs-vite-pr-23106",
+  "changed_files": 5,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "preview",
+      "status": "COMPLETED",
+      "workflowName": "Preview release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "preview",
+      "status": "COMPLETED",
+      "workflowName": "Preview release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "preview",
+      "status": "COMPLETED",
+      "workflowName": "Preview release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Get changed files",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Get changed files",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (actions)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Semantic Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "Semantic Pull Request"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "Zizmor"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-20, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-20, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-22, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-22, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Build&Test: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-24, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-26, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-26, ubuntu-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-24, macos-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-24, macos-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-24.15.0, windows-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build&Test: node-24.15.0, windows-latest",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build & Test Passed or Skipped",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build & Test Passed or Skipped",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build & Test Failed",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build & Test Failed",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Redirect rules - vite-docs-main",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Graphite / AI Reviews",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "fa005d19af5d847931c6dbefc63841c137383e6c",
+  "deletions": 5,
+  "files": [
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/vite/src/client/bundledDevClient.ts"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/vite/src/client/bundledDevHmrClient.ts"
+    },
+    {
+      "additions": 50,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/vite/src/node/server/bundledDev.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/vite/types/customEvent.d.ts"
+    },
+    {
+      "additions": 48,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "playground/hmr-full-bundle-mode/__tests__/hmr-full-bundle-mode.spec.ts"
+    }
+  ],
+  "head_sha": "159b9b9c635a586ad3c93f43473f62142ceecaf9",
+  "issues": [],
+  "patch_sha256": "c33fd27068be96fa16a386e07a327cd61e0a9730e4057cd09318747549fad8f3",
+  "pr_number": 23106,
+  "repo": "vitejs/vite",
+  "schema_version": 1,
+  "title": "feat(bundled-dev): reload once after rebuild instead of via the fallback page",
+  "url": "https://github.com/vitejs/vite/pull/23106"
+}

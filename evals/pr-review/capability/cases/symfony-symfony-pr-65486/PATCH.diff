@@ -1,0 +1,114 @@
+From a90082b9cff575a6a8f05b0583f82a90ebf6ef39 Mon Sep 17 00:00:00 2001
+From: Nicolas Grekas <nicolas.grekas@gmail.com>
+Date: Thu, 20 Aug 2026 18:59:43 +0200
+Subject: [PATCH] [Messenger] Remove the worker listeners when
+ messenger:consume ends
+
+---
+ .../Command/ConsumeMessagesCommand.php        | 17 +++++++--
+ .../Command/ConsumeMessagesCommandTest.php    | 37 +++++++++++++++++++
+ 2 files changed, 50 insertions(+), 4 deletions(-)
+
+diff --git a/src/Symfony/Component/Messenger/Command/ConsumeMessagesCommand.php b/src/Symfony/Component/Messenger/Command/ConsumeMessagesCommand.php
+index 9aa0705a40227..e32def6cbf93d 100644
+--- a/src/Symfony/Component/Messenger/Command/ConsumeMessagesCommand.php
++++ b/src/Symfony/Component/Messenger/Command/ConsumeMessagesCommand.php
+@@ -179,8 +179,9 @@ protected function execute(InputInterface $input, OutputInterface $output): int
+             }
+         }
+ 
++        $subscribers = [];
+         if (null !== $this->resetServicesListener && !$input->getOption('no-reset')) {
+-            $this->eventDispatcher->addSubscriber($this->resetServicesListener);
++            $subscribers[] = $this->resetServicesListener;
+         }
+ 
+         $stopsWhen = [];
+@@ -190,17 +191,17 @@ protected function execute(InputInterface $input, OutputInterface $output): int
+             }
+ 
+             $stopsWhen[] = "processed {$limit} messages";
+-            $this->eventDispatcher->addSubscriber(new StopWorkerOnMessageLimitListener($limit, $this->logger));
++            $subscribers[] = new StopWorkerOnMessageLimitListener($limit, $this->logger);
+         }
+ 
+         if ($failureLimit = $input->getOption('failure-limit')) {
+             $stopsWhen[] = "reached {$failureLimit} failed messages";
+-            $this->eventDispatcher->addSubscriber(new StopWorkerOnFailureLimitListener($failureLimit, $this->logger));
++            $subscribers[] = new StopWorkerOnFailureLimitListener($failureLimit, $this->logger);
+         }
+ 
+         if ($memoryLimit = $input->getOption('memory-limit')) {
+             $stopsWhen[] = "exceeded {$memoryLimit} of memory";
+-            $this->eventDispatcher->addSubscriber(new StopWorkerOnMemoryLimitListener($this->convertToBytes($memoryLimit), $this->logger));
++            $subscribers[] = new StopWorkerOnMemoryLimitListener($this->convertToBytes($memoryLimit), $this->logger);
+         }
+ 
+         if (null !== $timeLimit = $input->getOption('time-limit')) {
+@@ -240,10 +241,18 @@ protected function execute(InputInterface $input, OutputInterface $output): int
+             $options['queues'] = $queues;
+         }
+ 
++        foreach ($subscribers as $subscriber) {
++            $this->eventDispatcher->addSubscriber($subscriber);
++        }
++
+         try {
+             $this->worker->run($options);
+         } finally {
+             $this->worker = null;
++
++            foreach ($subscribers as $subscriber) {
++                $this->eventDispatcher->removeSubscriber($subscriber);
++            }
+         }
+ 
+         return 0;
+diff --git a/src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php b/src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php
+index aef6bcd441401..495881ffabf3a 100644
+--- a/src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php
++++ b/src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php
+@@ -153,6 +153,43 @@ public function testRunWithResetServicesOption(bool $shouldReset)
+         $this->assertStringContainsString('[OK] Consuming messages from transport "dummy-receiver"', $tester->getDisplay());
+     }
+ 
++    public function testRunTwiceInTheSameProcess()
++    {
++        $envelope = new Envelope(new \stdClass());
++
++        $receiver = $this->createStub(ReceiverInterface::class);
++        $receiver->method('get')->willReturn([$envelope]);
++
++        $receiverLocator = $this->createMock(ContainerInterface::class);
++        $receiverLocator->method('has')->with('dummy-receiver')->willReturn(true);
++        $receiverLocator->method('get')->with('dummy-receiver')->willReturn($receiver);
++
++        $handledMessages = 0;
++        $bus = $this->createMock(RoutableMessageBus::class);
++        $bus->method('dispatch')->willReturnCallback(static function (Envelope $envelope) use (&$handledMessages) {
++            ++$handledMessages;
++
++            return $envelope;
++        });
++
++        $eventDispatcher = new EventDispatcher();
++        $resetServicesListener = new ResetServicesListener(new ServicesResetter(new \ArrayIterator([]), []));
++        $command = new ConsumeMessagesCommand($bus, $receiverLocator, $eventDispatcher, null, [], $resetServicesListener);
++
++        $application = new Application();
++        $application->add($command);
++        $tester = new CommandTester($application->get('messenger:consume'));
++
++        $tester->execute(['receivers' => ['dummy-receiver'], '--limit' => 1]);
++
++        $this->assertSame(1, $handledMessages);
++        $this->assertSame([], $eventDispatcher->getListeners());
++
++        $tester->execute(['receivers' => ['dummy-receiver'], '--limit' => 2]);
++
++        $this->assertSame(3, $handledMessages);
++    }
++
+     /**
+      * @dataProvider getInvalidOptions
+      */

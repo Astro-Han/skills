@@ -1,0 +1,1013 @@
+From c2188543bcd7868d0c947203f227b055fa86a6c7 Mon Sep 17 00:00:00 2001
+From: BagToad <47394200+BagToad@users.noreply.github.com>
+Date: Mon, 24 Aug 2026 23:06:50 -0600
+Subject: [PATCH 1/2] Add attachment flag wrapper
+
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+---
+ internal/attachments/flags.go      | 32 ++++++++++++++++++++++++++++--
+ internal/attachments/flags_test.go | 25 ++++++++++++-----------
+ internal/attachments/test.go       |  4 ++--
+ 3 files changed, 45 insertions(+), 16 deletions(-)
+
+diff --git a/internal/attachments/flags.go b/internal/attachments/flags.go
+index e6e56161670..35f5df782a7 100644
+--- a/internal/attachments/flags.go
++++ b/internal/attachments/flags.go
+@@ -8,6 +8,7 @@ import (
+ 
+ 	"github.com/cli/cli/v2/pkg/cmdutil"
+ 	"github.com/spf13/cobra"
++	"github.com/spf13/pflag"
+ )
+ 
+ const flagName = "attach"
+@@ -16,10 +17,33 @@ const flagName = "attach"
+ // held nothing else or the empty value sat beside a real one.
+ var errEmptyPath = errors.New("cannot attach an empty path; --attach needs a file path")
+ 
++// Flag holds the repeatable attachment flag and the values it parsed.
++type Flag struct {
++	flag   *pflag.Flag
++	values []string
++}
++
+ // AddFlag registers the repeatable --attach flag on cmd.
+-func AddFlag(cmd *cobra.Command) {
++func AddFlag(cmd *cobra.Command) *Flag {
++	f := &Flag{}
+ 	// A string slice would split on commas, which are legal in filenames.
+-	cmd.Flags().StringArray(flagName, nil, "Attach an image or video `file`, in '<file>#<image alt text>' format")
++	cmd.Flags().StringArrayVar(&f.values, flagName, nil, "Attach an image or video `file`, in '<file>#<image alt text>' format")
++	f.flag = cmd.Flags().Lookup(flagName)
++	return f
++}
++
++// Changed reports whether the attachment flag was passed.
++func (f *Flag) Changed() bool {
++	return f.flag.Changed
++}
++
++// UserAssets validates the files named by the attachment flag, keeping them in
++// the order they were written. It returns nothing when the flag was not passed.
++func (f *Flag) UserAssets() ([]UserAsset, error) {
++	if !f.Changed() {
++		return nil, nil
++	}
++	return userAssetsFromArgs(f.values)
+ }
+ 
+ // FromFlagValues validates every file --attach named on cmd, keeping them in
+@@ -45,6 +69,10 @@ func FromFlagValues(cmd *cobra.Command) ([]UserAsset, error) {
+ 		return nil, err
+ 	}
+ 
++	return userAssetsFromArgs(args)
++}
++
++func userAssetsFromArgs(args []string) ([]UserAsset, error) {
+ 	// --attach "" is a user error.
+ 	if len(args) == 0 {
+ 		return nil, errEmptyPath
+diff --git a/internal/attachments/flags_test.go b/internal/attachments/flags_test.go
+index 2315d321059..dcd01a5d066 100644
+--- a/internal/attachments/flags_test.go
++++ b/internal/attachments/flags_test.go
+@@ -14,7 +14,7 @@ import (
+ 
+ // attachCmd builds a command shaped like the ones that take --attach.
+ // withAttach is false for a command that has not registered the flag.
+-func attachCmd(t *testing.T, withAttach bool, input string) *cobra.Command {
++func attachCmd(t *testing.T, withAttach bool, input string) (*cobra.Command, *Flag) {
+ 	t.Helper()
+ 
+ 	cmd := &cobra.Command{Use: "comment"}
+@@ -22,15 +22,16 @@ func attachCmd(t *testing.T, withAttach bool, input string) *cobra.Command {
+ 	cmd.Flags().Bool("delete-last", false, "")
+ 	cmd.Flags().Bool("dry-run", false, "")
+ 
++	var attachFlag *Flag
+ 	if withAttach {
+-		AddFlag(cmd)
++		attachFlag = AddFlag(cmd)
+ 	}
+ 
+ 	argv, err := shlex.Split(input)
+ 	require.NoError(t, err)
+ 	require.NoError(t, cmd.Flags().Parse(argv))
+ 
+-	return cmd
++	return cmd, attachFlag
+ }
+ 
+ // Resolved through the public entry point, so a fixture is built the way a
+@@ -39,7 +40,7 @@ func assetsFromArgs(t *testing.T, args ...string) ([]UserAsset, error) {
+ 	t.Helper()
+ 
+ 	cmd := &cobra.Command{}
+-	AddFlag(cmd)
++	attachFlag := AddFlag(cmd)
+ 
+ 	argv := make([]string, 0, len(args)*2)
+ 	for _, arg := range args {
+@@ -47,7 +48,7 @@ func assetsFromArgs(t *testing.T, args ...string) ([]UserAsset, error) {
+ 	}
+ 	require.NoError(t, cmd.Flags().Parse(argv))
+ 
+-	return FromFlagValues(cmd)
++	return attachFlag.UserAssets()
+ }
+ 
+ func TestAddFlag(t *testing.T) {
+@@ -80,15 +81,15 @@ func TestAddFlag(t *testing.T) {
+ 
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+-			cmd := attachCmd(t, true, tt.input)
++			cmd, attachFlag := attachCmd(t, true, tt.input)
+ 
+-			// Read the way FromFlagValues does, so this cannot pass while
+-			// the flag it describes reads differently.
+-			slice, ok := cmd.Flags().Lookup(flagName).Value.(pflag.SliceValue)
++			slice, ok := attachFlag.flag.Value.(pflag.SliceValue)
+ 			require.True(t, ok)
+ 			assert.Equal(t, tt.want, slice.GetSlice())
+-			assert.Empty(t, cmd.Flags().Lookup(flagName).Shorthand)
+-			assert.Equal(t, "Attach an image or video `file`, in '<file>#<image alt text>' format", cmd.Flags().Lookup(flagName).Usage)
++			assert.Equal(t, tt.input != "", attachFlag.Changed())
++			assert.Empty(t, attachFlag.flag.Shorthand)
++			assert.Equal(t, "Attach an image or video `file`, in '<file>#<image alt text>' format", attachFlag.flag.Usage)
++			assert.Same(t, attachFlag.flag, cmd.Flags().Lookup(flagName))
+ 		})
+ 	}
+ }
+@@ -314,7 +315,7 @@ func TestFromFlagValues(t *testing.T) {
+ 				tt.setup(t)
+ 			}
+ 
+-			cmd := attachCmd(t, tt.withAttach, tt.input)
++			cmd, _ := attachCmd(t, tt.withAttach, tt.input)
+ 
+ 			resolved, err := FromFlagValues(cmd)
+ 
+diff --git a/internal/attachments/test.go b/internal/attachments/test.go
+index c1f4363eaea..12106dbcd90 100644
+--- a/internal/attachments/test.go
++++ b/internal/attachments/test.go
+@@ -31,10 +31,10 @@ func NewTestAssets(t *testing.T, names ...string) []UserAsset {
+ 	}
+ 
+ 	cmd := &cobra.Command{}
+-	AddFlag(cmd)
++	attachFlag := AddFlag(cmd)
+ 	require.NoError(t, cmd.Flags().Parse(argv))
+ 
+-	assets, err := FromFlagValues(cmd)
++	assets, err := attachFlag.UserAssets()
+ 	require.NoError(t, err)
+ 	return assets
+ }
+
+From 9dc818dca2f0043147d71fef3584559bdf0ace6c Mon Sep 17 00:00:00 2001
+From: BagToad <47394200+BagToad@users.noreply.github.com>
+Date: Mon, 24 Aug 2026 23:17:19 -0600
+Subject: [PATCH 2/2] Move attachment policy into commands
+
+Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
+---
+ internal/attachments/doc.go           |   4 +-
+ internal/attachments/flags.go         |  45 ------
+ internal/attachments/flags_test.go    | 219 ++++++++------------------
+ pkg/cmd/issue/comment/comment.go      |   2 +-
+ pkg/cmd/issue/create/create.go        |  15 +-
+ pkg/cmd/issue/create/create_test.go   |   4 +-
+ pkg/cmd/issue/edit/edit.go            |   9 +-
+ pkg/cmd/pr/comment/comment.go         |   2 +-
+ pkg/cmd/pr/create/create.go           |  23 ++-
+ pkg/cmd/pr/create/create_test.go      |   4 +-
+ pkg/cmd/pr/edit/edit.go               |   9 +-
+ pkg/cmd/pr/shared/commentable.go      |  24 ++-
+ pkg/cmd/pr/shared/commentable_test.go |  80 +++-------
+ 13 files changed, 165 insertions(+), 275 deletions(-)
+
+diff --git a/internal/attachments/doc.go b/internal/attachments/doc.go
+index 15b443cefdc..f13473e77c9 100644
+--- a/internal/attachments/doc.go
++++ b/internal/attachments/doc.go
+@@ -12,7 +12,9 @@
+ // It must call UploadAndAttach after every possible prompt has been exercised,
+ // not before, because nothing that can cancel may follow an upload.
+ //
+-//	attachmentArgs, err := attachments.FromFlagValues(cmd)
++//	attachFlag := attachments.AddFlag(cmd)
++//	...
++//	attachmentArgs, err := attachFlag.UserAssets()
+ //	...
+ //
+ //	// repositoryID and viewerPermission come from the lookup the command
+diff --git a/internal/attachments/flags.go b/internal/attachments/flags.go
+index 35f5df782a7..fb6d2cdf7e9 100644
+--- a/internal/attachments/flags.go
++++ b/internal/attachments/flags.go
+@@ -6,7 +6,6 @@ import (
+ 	"os"
+ 	"strings"
+ 
+-	"github.com/cli/cli/v2/pkg/cmdutil"
+ 	"github.com/spf13/cobra"
+ 	"github.com/spf13/pflag"
+ )
+@@ -46,32 +45,6 @@ func (f *Flag) UserAssets() ([]UserAsset, error) {
+ 	return userAssetsFromArgs(f.values)
+ }
+ 
+-// FromFlagValues validates every file --attach named on cmd, keeping them in
+-// the order they were written. It returns nothing when the flag was passed no
+-// values, so a caller reads the length rather than asking a second question.
+-//
+-// A command that does not register --attach cannot have any, and asking for
+-// them is a mistake in the command rather than in what the user typed.
+-func FromFlagValues(cmd *cobra.Command) ([]UserAsset, error) {
+-	flag := cmd.Flags().Lookup(flagName)
+-	if flag == nil {
+-		return nil, fmt.Errorf("%s does not register --attach", cmd.Name())
+-	}
+-	if !flag.Changed {
+-		return nil, nil
+-	}
+-	if err := checkFlagConflicts(cmd); err != nil {
+-		return nil, err
+-	}
+-
+-	args, err := cmd.Flags().GetStringArray(flagName)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	return userAssetsFromArgs(args)
+-}
+-
+ func userAssetsFromArgs(args []string) ([]UserAsset, error) {
+ 	// --attach "" is a user error.
+ 	if len(args) == 0 {
+@@ -133,21 +106,3 @@ func parseArg(arg string) (path, alt string) {
+ 	}
+ 	return arg, ""
+ }
+-
+-// checkFlagConflicts rejects the modes an asset cannot be written in. Only
+-// FromFlagValues calls it, so --attach has been passed by the time it runs.
+-func checkFlagConflicts(cmd *cobra.Command) error {
+-	if web, _ := cmd.Flags().GetBool("web"); web {
+-		return cmdutil.FlagErrorf("`--attach` is not supported when using `--web`")
+-	}
+-
+-	if deleteLast, _ := cmd.Flags().GetBool("delete-last"); deleteLast {
+-		return cmdutil.FlagErrorf("`--attach` is not supported when using `--delete-last`")
+-	}
+-
+-	if dryRun, _ := cmd.Flags().GetBool("dry-run"); dryRun {
+-		return cmdutil.FlagErrorf("`--attach` is not supported when using `--dry-run`")
+-	}
+-
+-	return nil
+-}
+diff --git a/internal/attachments/flags_test.go b/internal/attachments/flags_test.go
+index dcd01a5d066..31b603424f0 100644
+--- a/internal/attachments/flags_test.go
++++ b/internal/attachments/flags_test.go
+@@ -13,19 +13,11 @@ import (
+ )
+ 
+ // attachCmd builds a command shaped like the ones that take --attach.
+-// withAttach is false for a command that has not registered the flag.
+-func attachCmd(t *testing.T, withAttach bool, input string) (*cobra.Command, *Flag) {
++func attachCmd(t *testing.T, input string) (*cobra.Command, *Flag) {
+ 	t.Helper()
+ 
+ 	cmd := &cobra.Command{Use: "comment"}
+-	cmd.Flags().Bool("web", false, "")
+-	cmd.Flags().Bool("delete-last", false, "")
+-	cmd.Flags().Bool("dry-run", false, "")
+-
+-	var attachFlag *Flag
+-	if withAttach {
+-		attachFlag = AddFlag(cmd)
+-	}
++	attachFlag := AddFlag(cmd)
+ 
+ 	argv, err := shlex.Split(input)
+ 	require.NoError(t, err)
+@@ -81,7 +73,7 @@ func TestAddFlag(t *testing.T) {
+ 
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+-			cmd, attachFlag := attachCmd(t, true, tt.input)
++			cmd, attachFlag := attachCmd(t, tt.input)
+ 
+ 			slice, ok := attachFlag.flag.Value.(pflag.SliceValue)
+ 			require.True(t, ok)
+@@ -94,172 +86,102 @@ func TestAddFlag(t *testing.T) {
+ 	}
+ }
+ 
+-func TestFromFlagValues(t *testing.T) {
++func TestFlagUserAssets(t *testing.T) {
+ 	tests := []struct {
+-		name       string
+-		withAttach bool
+-		setup      func(t *testing.T)
+-		input      string
+-		wantPaths  []string
+-		wantAlts   []string
+-		wantErr    string
++		name      string
++		setup     func(t *testing.T)
++		input     string
++		wantPaths []string
++		wantAlts  []string
++		wantErr   string
+ 		// wantErrIs covers an error whose text the operating system words
+ 		// differently, so the assertion cannot be on the message.
+ 		wantErrIs error
+ 	}{
+ 		{
+-			name:       "not registered",
+-			withAttach: false,
+-			wantErr:    "comment does not register --attach",
+-		},
+-		{
+-			name:       "registered but not passed",
+-			withAttach: true,
+-			input:      "",
++			name:  "not passed",
++			input: "",
+ 		},
+ 		{
+-			name:       "one file",
+-			withAttach: true,
+-			input:      "--attach ./shot.png",
+-			wantPaths:  []string{"./shot.png"},
++			name:      "one file",
++			input:     "--attach ./shot.png",
++			wantPaths: []string{"./shot.png"},
+ 		},
+ 		{
+-			name:       "a filename containing a hash stays whole",
+-			withAttach: true,
+-			input:      "--attach './shot#dark.png'",
+-			wantPaths:  []string{"./shot#dark.png"},
+-			wantAlts:   []string{"shot#dark"},
++			name:      "a filename containing a hash stays whole",
++			input:     "--attach './shot#dark.png'",
++			wantPaths: []string{"./shot#dark.png"},
++			wantAlts:  []string{"shot#dark"},
+ 		},
+ 		{
+-			name:       "alt text can contain a hash",
+-			withAttach: true,
+-			input:      "--attach './caption.png#first#second'",
+-			wantPaths:  []string{"./caption.png"},
+-			wantAlts:   []string{"first#second"},
++			name:      "alt text can contain a hash",
++			input:     "--attach './caption.png#first#second'",
++			wantPaths: []string{"./caption.png"},
++			wantAlts:  []string{"first#second"},
+ 		},
+ 		{
+-			name:       "the longest existing path wins",
+-			withAttach: true,
+-			input:      "--attach './shot#dark.png#first.png#second'",
+-			wantPaths:  []string{"./shot#dark.png#first.png"},
+-			wantAlts:   []string{"second"},
++			name:      "the longest existing path wins",
++			input:     "--attach './shot#dark.png#first.png#second'",
++			wantPaths: []string{"./shot#dark.png#first.png"},
++			wantAlts:  []string{"second"},
+ 		},
+ 		{
+-			name:       "a missing path falls back at the last hash",
+-			withAttach: true,
+-			input:      "--attach './gone.png#caption'",
+-			wantErr:    "./gone.png: ",
+-			wantErrIs:  fs.ErrNotExist,
++			name:      "a missing path falls back at the last hash",
++			input:     "--attach './gone.png#caption'",
++			wantErr:   "./gone.png: ",
++			wantErrIs: fs.ErrNotExist,
+ 		},
+ 		{
+-			name:       "several files, in the order written",
+-			withAttach: true,
+-			input:      "--attach ./b.png --attach ./a.png",
+-			wantPaths:  []string{"./b.png", "./a.png"},
++			name:      "several files, in the order written",
++			input:     "--attach ./b.png --attach ./a.png",
++			wantPaths: []string{"./b.png", "./a.png"},
+ 		},
+ 		{
+-			name:       "a file that does not exist",
+-			withAttach: true,
+-			input:      "--attach ./gone.png",
+-			wantErr:    "./gone.png: ",
+-			wantErrIs:  fs.ErrNotExist,
++			name:      "a file that does not exist",
++			input:     "--attach ./gone.png",
++			wantErr:   "./gone.png: ",
++			wantErrIs: fs.ErrNotExist,
+ 		},
+ 		{
+ 			// pflag reads this flag back as holding nothing at all, so
+ 			// without the length check the command would post with no
+ 			// attachment and no error.
+-			name:       "a lone empty value",
+-			withAttach: true,
+-			input:      `--attach ""`,
+-			wantErr:    "cannot attach an empty path; --attach needs a file path",
+-		},
+-		{
+-			name:       "an empty value beside a real one",
+-			withAttach: true,
+-			input:      `--attach ./shot.png --attach ""`,
+-			wantErr:    "cannot attach an empty path; --attach needs a file path",
+-		},
+-		{
+-			name:       "standard input",
+-			withAttach: true,
+-			input:      "--attach -",
+-			wantErr:    "cannot attach standard input; --attach needs a file path",
+-		},
+-		{
+-			name:       "a value holding a comma stays one path",
+-			withAttach: true,
+-			input:      `--attach ./before,after.png`,
+-			wantPaths:  []string{"./before,after.png"},
+-		},
+-		{
+-			name:       "web without attach",
+-			withAttach: true,
+-			input:      "--web",
+-		},
+-		{
+-			name:       "delete-last without attach",
+-			withAttach: true,
+-			input:      "--delete-last",
+-		},
+-		{
+-			name:       "dry-run without attach",
+-			withAttach: true,
+-			input:      "--dry-run",
+-		},
+-		{
+-			name:       "web on a command with no attach flag",
+-			withAttach: false,
+-			input:      "--web",
+-			wantErr:    "comment does not register --attach",
+-		},
+-		{
+-			name:       "attach with web",
+-			withAttach: true,
+-			input:      "--attach ./shot.png --web",
+-			wantErr:    "`--attach` is not supported when using `--web`",
++			name:    "a lone empty value",
++			input:   `--attach ""`,
++			wantErr: "cannot attach an empty path; --attach needs a file path",
+ 		},
+ 		{
+-			name:       "attach with delete-last",
+-			withAttach: true,
+-			input:      "--attach ./shot.png --delete-last",
+-			wantErr:    "`--attach` is not supported when using `--delete-last`",
++			name:    "an empty value beside a real one",
++			input:   `--attach ./shot.png --attach ""`,
++			wantErr: "cannot attach an empty path; --attach needs a file path",
+ 		},
+ 		{
+-			name:       "attach with dry-run",
+-			withAttach: true,
+-			input:      "--attach ./shot.png --dry-run",
+-			wantErr:    "`--attach` is not supported when using `--dry-run`",
++			name:    "standard input",
++			input:   "--attach -",
++			wantErr: "cannot attach standard input; --attach needs a file path",
+ 		},
+ 		{
+-			// The conflict is checked before the paths are read, so a caller
+-			// cannot reach the disk in a mode the asset could never be written
+-			// in.
+-			name:       "a flag conflict is reported before a missing file",
+-			withAttach: true,
+-			input:      "--attach ./gone.png --web",
+-			wantErr:    "`--attach` is not supported when using `--web`",
++			name:      "a value holding a comma stays one path",
++			input:     `--attach ./before,after.png`,
++			wantPaths: []string{"./before,after.png"},
+ 		},
+ 		{
+-			name:       "keeps the order the arguments were written in",
+-			withAttach: true,
+-			input:      "--attach './b.png#Second' --attach ./a.png --attach ./c.mp4",
+-			wantPaths:  []string{"./b.png", "./a.png", "./c.mp4"},
++			name:      "keeps the order the arguments were written in",
++			input:     "--attach './b.png#Second' --attach ./a.png --attach ./c.mp4",
++			wantPaths: []string{"./b.png", "./a.png", "./c.mp4"},
+ 		},
+ 		{
+-			name:       "the same file twice",
+-			withAttach: true,
+-			input:      "--attach ./a.png --attach './a.png#Another caption'",
+-			wantErr:    "./a.png and ./a.png are the same file; attached files must be unique",
++			name:    "the same file twice",
++			input:   "--attach ./a.png --attach './a.png#Another caption'",
++			wantErr: "./a.png and ./a.png are the same file; attached files must be unique",
+ 		},
+ 		{
+-			name:       "the same file under two different paths",
+-			withAttach: true,
+-			input:      "--attach ./a.png --attach a.png",
+-			wantErr:    "./a.png and a.png are the same file; attached files must be unique",
++			name:    "the same file under two different paths",
++			input:   "--attach ./a.png --attach a.png",
++			wantErr: "./a.png and a.png are the same file; attached files must be unique",
+ 		},
+ 		{
+-			name:       "a symlink and the file it points at",
+-			withAttach: true,
++			name: "a symlink and the file it points at",
+ 			setup: func(t *testing.T) {
+ 				// Creating one needs a privilege Windows does not grant by
+ 				// default, so a machine that cannot make a symlink cannot run
+@@ -272,8 +194,7 @@ func TestFromFlagValues(t *testing.T) {
+ 			wantErr: "./a.png and ./link.png are the same file; attached files must be unique",
+ 		},
+ 		{
+-			name:       "a hard link and the file it shares",
+-			withAttach: true,
++			name: "a hard link and the file it shares",
+ 			setup: func(t *testing.T) {
+ 				require.NoError(t, os.Link("a.png", "hard.png"))
+ 			},
+@@ -282,16 +203,14 @@ func TestFromFlagValues(t *testing.T) {
+ 		},
+ 		{
+ 			// GitHub gives each its own asset URL.
+-			name:       "two separate files with identical contents",
+-			withAttach: true,
+-			input:      "--attach ./a.png --attach ./b.png",
+-			wantPaths:  []string{"./a.png", "./b.png"},
++			name:      "two separate files with identical contents",
++			input:     "--attach ./a.png --attach ./b.png",
++			wantPaths: []string{"./a.png", "./b.png"},
+ 		},
+ 		{
+-			name:       "reports the first invalid file",
+-			withAttach: true,
+-			input:      "--attach ./a.png --attach ./notes.txt",
+-			wantErr:    "./notes.txt is not a supported file type (supported: png, jpg, jpeg, gif, webp, svg, mp4, mov, webm)",
++			name:    "reports the first invalid file",
++			input:   "--attach ./a.png --attach ./notes.txt",
++			wantErr: "./notes.txt is not a supported file type (supported: png, jpg, jpeg, gif, webp, svg, mp4, mov, webm)",
+ 		},
+ 	}
+ 
+@@ -315,9 +234,9 @@ func TestFromFlagValues(t *testing.T) {
+ 				tt.setup(t)
+ 			}
+ 
+-			cmd, _ := attachCmd(t, tt.withAttach, tt.input)
++			_, attachFlag := attachCmd(t, tt.input)
+ 
+-			resolved, err := FromFlagValues(cmd)
++			resolved, err := attachFlag.UserAssets()
+ 
+ 			if tt.wantErrIs != nil {
+ 				require.ErrorIs(t, err, tt.wantErrIs)
+diff --git a/pkg/cmd/issue/comment/comment.go b/pkg/cmd/issue/comment/comment.go
+index e36dde219e6..c6e74daabfa 100644
+--- a/pkg/cmd/issue/comment/comment.go
++++ b/pkg/cmd/issue/comment/comment.go
+@@ -131,7 +131,7 @@ func NewCmdComment(f *cmdutil.Factory, runF func(*prShared.CommentableOptions) e
+ 	cmd.Flags().BoolVar(&opts.DeleteLast, "delete-last", false, "Delete the last comment of the current user")
+ 	cmd.Flags().BoolVar(&opts.DeleteLastConfirmed, "yes", false, "Skip the delete confirmation prompt when --delete-last is provided")
+ 	cmd.Flags().BoolVar(&opts.CreateIfNone, "create-if-none", false, "Create a new comment if no comments are found. Can be used only with --edit-last")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	return cmd
+ }
+diff --git a/pkg/cmd/issue/create/create.go b/pkg/cmd/issue/create/create.go
+index f1761cd9ce8..ee30985a321 100644
+--- a/pkg/cmd/issue/create/create.go
++++ b/pkg/cmd/issue/create/create.go
+@@ -57,7 +57,8 @@ type CreateOptions struct {
+ 	BlockedBy   []string
+ 	Blocking    []string
+ 
+-	Assets []attachments.UserAsset
++	AttachFlag *attachments.Flag
++	Assets     []attachments.UserAsset
+ }
+ 
+ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Command {
+@@ -153,7 +154,15 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
+ 				return cmdutil.FlagErrorf("must provide `--title` and `--body` when not running interactively")
+ 			}
+ 
+-			opts.Assets, err = attachments.FromFlagValues(cmd)
++			if err := cmdutil.MutuallyExclusive(
++				"`--attach` is not supported when using `--web`",
++				opts.AttachFlag.Changed(),
++				opts.WebMode,
++			); err != nil {
++				return err
++			}
++
++			opts.Assets, err = opts.AttachFlag.UserAssets()
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -180,7 +189,7 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
+ 	cmd.Flags().StringVar(&opts.Parent, "parent", "", "Add the new issue as a sub-issue of the specified parent `number` or URL")
+ 	cmd.Flags().StringSliceVar(&opts.BlockedBy, "blocked-by", nil, "Mark the new issue as blocked by these issue `numbers` or URLs")
+ 	cmd.Flags().StringSliceVar(&opts.Blocking, "blocking", nil, "Mark the new issue as blocking these issue `numbers` or URLs")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	return cmd
+ }
+diff --git a/pkg/cmd/issue/create/create_test.go b/pkg/cmd/issue/create/create_test.go
+index 632db991d7b..be64a19e7b6 100644
+--- a/pkg/cmd/issue/create/create_test.go
++++ b/pkg/cmd/issue/create/create_test.go
+@@ -275,9 +275,9 @@ func TestNewCmdCreate(t *testing.T) {
+ 			wantAssetPaths: []string{tmpImage},
+ 		},
+ 		{
+-			name:        "attach flag with web",
++			name:        "attach conflict is reported before a missing file",
+ 			tty:         false,
+-			cli:         fmt.Sprintf(`-t mytitle -b mybody --web --attach '%s'`, tmpImage),
++			cli:         `-t mytitle -b mybody --web --attach ./nope.png`,
+ 			wantsErr:    true,
+ 			wantsErrMsg: "`--attach` is not supported when using `--web`",
+ 		},
+diff --git a/pkg/cmd/issue/edit/edit.go b/pkg/cmd/issue/edit/edit.go
+index 0f1813ed884..ff5c66cf1ed 100644
+--- a/pkg/cmd/issue/edit/edit.go
++++ b/pkg/cmd/issue/edit/edit.go
+@@ -50,8 +50,9 @@ type EditOptions struct {
+ 	AddBlocking     []string
+ 	RemoveBlocking  []string
+ 
+-	Assets []attachments.UserAsset
+-	Config func() (gh.Config, error)
++	AttachFlag *attachments.Flag
++	Assets     []attachments.UserAsset
++	Config     func() (gh.Config, error)
+ 
+ 	prShared.Editable
+ }
+@@ -208,7 +209,7 @@ func NewCmdEdit(f *cmdutil.Factory, runF func(*EditOptions) error) *cobra.Comman
+ 				opts.Editable.IssueType.Edited = true
+ 			}
+ 
+-			resolved, err := attachments.FromFlagValues(cmd)
++			resolved, err := opts.AttachFlag.UserAssets()
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -268,7 +269,7 @@ func NewCmdEdit(f *cmdutil.Factory, runF func(*EditOptions) error) *cobra.Comman
+ 	cmd.Flags().StringSliceVar(&opts.RemoveBlockedBy, "remove-blocked-by", nil, "Remove 'blocked by' relationships by issue `number` or URL")
+ 	cmd.Flags().StringSliceVar(&opts.AddBlocking, "add-blocking", nil, "Add 'blocking' relationships by issue `number` or URL")
+ 	cmd.Flags().StringSliceVar(&opts.RemoveBlocking, "remove-blocking", nil, "Remove 'blocking' relationships by issue `number` or URL")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	return cmd
+ }
+diff --git a/pkg/cmd/pr/comment/comment.go b/pkg/cmd/pr/comment/comment.go
+index 507b02117c4..bde2b7cbd68 100644
+--- a/pkg/cmd/pr/comment/comment.go
++++ b/pkg/cmd/pr/comment/comment.go
+@@ -110,7 +110,7 @@ func NewCmdComment(f *cmdutil.Factory, runF func(*shared.CommentableOptions) err
+ 	cmd.Flags().BoolVar(&opts.DeleteLast, "delete-last", false, "Delete the last comment of the current user")
+ 	cmd.Flags().BoolVar(&opts.DeleteLastConfirmed, "yes", false, "Skip the delete confirmation prompt when --delete-last is provided")
+ 	cmd.Flags().BoolVar(&opts.CreateIfNone, "create-if-none", false, "Create a new comment if no comments are found. Can be used only with --edit-last")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	return cmd
+ }
+diff --git a/pkg/cmd/pr/create/create.go b/pkg/cmd/pr/create/create.go
+index 266f9d6a097..67ddf76d989 100644
+--- a/pkg/cmd/pr/create/create.go
++++ b/pkg/cmd/pr/create/create.go
+@@ -76,7 +76,8 @@ type CreateOptions struct {
+ 
+ 	DryRun bool
+ 
+-	Assets []attachments.UserAsset
++	AttachFlag *attachments.Flag
++	Assets     []attachments.UserAsset
+ }
+ 
+ // creationRefs is an interface that provides the necessary information for creating a pull request in the API.
+@@ -349,7 +350,23 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
+ 				return cmdutil.FlagErrorf("`--dry-run` is not supported when using `--web`")
+ 			}
+ 
+-			opts.Assets, err = attachments.FromFlagValues(cmd)
++			if err := cmdutil.MutuallyExclusive(
++				"`--attach` is not supported when using `--web`",
++				opts.AttachFlag.Changed(),
++				opts.WebMode,
++			); err != nil {
++				return err
++			}
++
++			if err := cmdutil.MutuallyExclusive(
++				"`--attach` is not supported when using `--dry-run`",
++				opts.AttachFlag.Changed(),
++				opts.DryRun,
++			); err != nil {
++				return err
++			}
++
++			opts.Assets, err = opts.AttachFlag.UserAssets()
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -382,7 +399,7 @@ func NewCmdCreate(f *cmdutil.Factory, runF func(*CreateOptions) error) *cobra.Co
+ 	fl.StringVar(&opts.RecoverFile, "recover", "", "Recover input from a failed run of create")
+ 	fl.StringVarP(&opts.Template, "template", "T", "", "Template `file` to use as starting body text")
+ 	fl.BoolVar(&opts.DryRun, "dry-run", false, "Print details instead of creating the PR. May still push git changes.")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	_ = cmdutil.RegisterBranchCompletionFlags(f.GitClient, cmd, "base", "head")
+ 
+diff --git a/pkg/cmd/pr/create/create_test.go b/pkg/cmd/pr/create/create_test.go
+index 981bb76fd9b..414c05f154c 100644
+--- a/pkg/cmd/pr/create/create_test.go
++++ b/pkg/cmd/pr/create/create_test.go
+@@ -302,8 +302,8 @@ func TestNewCmdCreate(t *testing.T) {
+ 			wantErrIsNotExist: true,
+ 		},
+ 		{
+-			name:        "attach is not supported with web",
+-			cli:         fmt.Sprintf("--web --attach '%s'", tmpImage),
++			name:        "attach conflict is reported before a missing file",
++			cli:         "--web --attach ./nope.png",
+ 			wantsErr:    true,
+ 			wantsErrMsg: "`--attach` is not supported when using `--web`",
+ 		},
+diff --git a/pkg/cmd/pr/edit/edit.go b/pkg/cmd/pr/edit/edit.go
+index 82ab1e1e37d..5482c002fdc 100644
+--- a/pkg/cmd/pr/edit/edit.go
++++ b/pkg/cmd/pr/edit/edit.go
+@@ -39,8 +39,9 @@ type EditOptions struct {
+ 	SelectorArg string
+ 	Interactive bool
+ 
+-	Assets []attachments.UserAsset
+-	Config func() (gh.Config, error)
++	AttachFlag *attachments.Flag
++	Assets     []attachments.UserAsset
++	Config     func() (gh.Config, error)
+ 
+ 	shared.Editable
+ }
+@@ -216,7 +217,7 @@ func NewCmdEdit(f *cmdutil.Factory, runF func(*EditOptions) error) *cobra.Comman
+ 				// see the `Editable.MilestoneId` method.
+ 			}
+ 
+-			resolved, err := attachments.FromFlagValues(cmd)
++			resolved, err := opts.AttachFlag.UserAssets()
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -252,7 +253,7 @@ func NewCmdEdit(f *cmdutil.Factory, runF func(*EditOptions) error) *cobra.Comman
+ 	cmd.Flags().StringSliceVar(&opts.Editable.Projects.Remove, "remove-project", nil, "Remove the pull request from projects by `title`")
+ 	cmd.Flags().StringVarP(&opts.Editable.Milestone.Value, "milestone", "m", "", "Edit the milestone the pull request belongs to by `name`")
+ 	cmd.Flags().BoolVar(&removeMilestone, "remove-milestone", false, "Remove the milestone association from the pull request")
+-	attachments.AddFlag(cmd)
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	_ = cmdutil.RegisterBranchCompletionFlags(f.GitClient, cmd, "base")
+ 
+diff --git a/pkg/cmd/pr/shared/commentable.go b/pkg/cmd/pr/shared/commentable.go
+index a202f3412bb..db241e5e064 100644
+--- a/pkg/cmd/pr/shared/commentable.go
++++ b/pkg/cmd/pr/shared/commentable.go
+@@ -60,6 +60,7 @@ type CommentableOptions struct {
+ 
+ 	BodyProvided     bool
+ 	KeepExistingBody bool
++	AttachFlag       *attachments.Flag
+ 	Assets           []attachments.UserAsset
+ 	Config           func() (gh.Config, error)
+ }
+@@ -76,7 +77,8 @@ func CommentablePreRun(cmd *cobra.Command, opts *CommentableOptions) error {
+ 		opts.BodyProvided = true
+ 		inputFlags++
+ 	}
+-	if web, _ := cmd.Flags().GetBool("web"); web {
++	web, _ := cmd.Flags().GetBool("web")
++	if web {
+ 		opts.InputType = InputTypeWeb
+ 		inputFlags++
+ 	}
+@@ -85,9 +87,23 @@ func CommentablePreRun(cmd *cobra.Command, opts *CommentableOptions) error {
+ 		inputFlags++
+ 	}
+ 
+-	// Resolved in shared code so a command that registers --attach cannot
+-	// forget to.
+-	resolved, err := attachments.FromFlagValues(cmd)
++	if err := cmdutil.MutuallyExclusive(
++		"`--attach` is not supported when using `--web`",
++		opts.AttachFlag.Changed(),
++		web,
++	); err != nil {
++		return err
++	}
++
++	if err := cmdutil.MutuallyExclusive(
++		"`--attach` is not supported when using `--delete-last`",
++		opts.AttachFlag.Changed(),
++		opts.DeleteLast,
++	); err != nil {
++		return err
++	}
++
++	resolved, err := opts.AttachFlag.UserAssets()
+ 	if err != nil {
+ 		return err
+ 	}
+diff --git a/pkg/cmd/pr/shared/commentable_test.go b/pkg/cmd/pr/shared/commentable_test.go
+index 943546bf3e9..1aef320f339 100644
+--- a/pkg/cmd/pr/shared/commentable_test.go
++++ b/pkg/cmd/pr/shared/commentable_test.go
+@@ -24,9 +24,7 @@ import (
+ 
+ // commentableCmd builds the flag set the comment commands share, so that
+ // CommentablePreRun sees the same command shape it does in production.
+-// withAttach is false for a command that has not registered --attach, which
+-// shared code still has to run on.
+-func commentableCmd(t *testing.T, opts *CommentableOptions, withAttach bool, input string) *cobra.Command {
++func commentableCmd(t *testing.T, opts *CommentableOptions, input string) *cobra.Command {
+ 	t.Helper()
+ 
+ 	cmd := &cobra.Command{Use: "comment"}
+@@ -38,9 +36,7 @@ func commentableCmd(t *testing.T, opts *CommentableOptions, withAttach bool, inp
+ 	cmd.Flags().BoolVar(&opts.DeleteLast, "delete-last", false, "")
+ 	cmd.Flags().BoolVar(&opts.DeleteLastConfirmed, "yes", false, "")
+ 	cmd.Flags().BoolVar(&opts.CreateIfNone, "create-if-none", false, "")
+-	if withAttach {
+-		attachments.AddFlag(cmd)
+-	}
++	opts.AttachFlag = attachments.AddFlag(cmd)
+ 
+ 	argv, err := shlex.Split(input)
+ 	require.NoError(t, err)
+@@ -51,11 +47,10 @@ func commentableCmd(t *testing.T, opts *CommentableOptions, withAttach bool, inp
+ 
+ func TestCommentablePreRun(t *testing.T) {
+ 	tests := []struct {
+-		name       string
+-		input      string
+-		withAttach bool
+-		canPrompt  bool
+-		wantErr    string
++		name      string
++		input     string
++		canPrompt bool
++		wantErr   string
+ 		// wantErrIsNotExist covers an error whose text the operating system
+ 		// words differently, so the assertion cannot be on the message.
+ 		wantErrIsNotExist bool
+@@ -69,14 +64,12 @@ func TestCommentablePreRun(t *testing.T) {
+ 			// fails here, since this row asserts both from one run.
+ 			name:           "attach alone is a body input and is resolved",
+ 			input:          "--attach ./shot.png",
+-			withAttach:     true,
+ 			wantInputType:  InputTypeInline,
+ 			wantAssetPaths: []string{"./shot.png"},
+ 		},
+ 		{
+ 			name:             "attach with body is still resolved",
+ 			input:            "--attach ./shot.png --body 'see below'",
+-			withAttach:       true,
+ 			wantInputType:    InputTypeInline,
+ 			wantBodyProvided: true,
+ 			wantAssetPaths:   []string{"./shot.png"},
+@@ -84,7 +77,6 @@ func TestCommentablePreRun(t *testing.T) {
+ 		{
+ 			name:              "a file that does not exist stops the command",
+ 			input:             "--attach ./gone.png",
+-			withAttach:        true,
+ 			wantErr:           "./gone.png: ",
+ 			wantErrIsNotExist: true,
+ 		},
+@@ -93,7 +85,6 @@ func TestCommentablePreRun(t *testing.T) {
+ 			// say so.
+ 			name:             "attach with an empty body",
+ 			input:            "--attach ./shot.png --body ''",
+-			withAttach:       true,
+ 			wantInputType:    InputTypeInline,
+ 			wantBodyProvided: true,
+ 			wantAssetPaths:   []string{"./shot.png"},
+@@ -101,7 +92,6 @@ func TestCommentablePreRun(t *testing.T) {
+ 		{
+ 			name:             "attach with body-file",
+ 			input:            "--attach ./shot.png --body-file ./body.md",
+-			withAttach:       true,
+ 			wantInputType:    InputTypeInline,
+ 			wantBodyProvided: true,
+ 			wantAssetPaths:   []string{"./shot.png"},
+@@ -109,58 +99,38 @@ func TestCommentablePreRun(t *testing.T) {
+ 		{
+ 			name:           "attach with editor",
+ 			input:          "--attach ./shot.png --editor",
+-			withAttach:     true,
+ 			wantInputType:  InputTypeEditor,
+ 			wantAssetPaths: []string{"./shot.png"},
+ 		},
+ 		{
+-			name:       "attach with web",
+-			input:      "--attach ./shot.png --web",
+-			withAttach: true,
+-			wantErr:    "`--attach` is not supported when using `--web`",
+-		},
+-		{
+-			name:       "a flag conflict is reported before a missing file",
+-			input:      "--attach ./gone.png --web",
+-			withAttach: true,
+-			wantErr:    "`--attach` is not supported when using `--web`",
+-		},
+-		{
+-			name:       "attach with delete-last",
+-			input:      "--attach ./shot.png --delete-last --yes",
+-			withAttach: true,
+-			wantErr:    "`--attach` is not supported when using `--delete-last`",
++			name:    "attach with web",
++			input:   "--attach ./shot.png --web",
++			wantErr: "`--attach` is not supported when using `--web`",
+ 		},
+ 		{
+-			// Reaching shared code without registering --attach is a missing
+-			// AddFlag call rather than a bad invocation.
+-			name:      "attach not registered",
+-			input:     "",
+-			canPrompt: true,
+-			wantErr:   "comment does not register --attach",
++			name:    "a flag conflict is reported before a missing file",
++			input:   "--attach ./gone.png --web",
++			wantErr: "`--attach` is not supported when using `--web`",
+ 		},
+ 		{
+-			name:    "attach not registered and body passed",
+-			input:   "--body 'hello'",
+-			wantErr: "comment does not register --attach",
++			name:    "attach with delete-last",
++			input:   "--attach ./shot.png --delete-last --yes",
++			wantErr: "`--attach` is not supported when using `--delete-last`",
+ 		},
+ 		{
+-			name:       "attach registered but not passed",
+-			input:      "",
+-			withAttach: true,
+-			wantErr:    "flags required when not running interactively",
++			name:    "attach not passed",
++			input:   "",
++			wantErr: "flags required when not running interactively",
+ 		},
+ 		{
+-			name:       "body and editor still conflict",
+-			input:      "--attach ./shot.png --body hello --editor",
+-			withAttach: true,
+-			wantErr:    "specify only one of `--body`, `--body-file`, `--editor`, or `--web`",
++			name:    "body and editor still conflict",
++			input:   "--attach ./shot.png --body hello --editor",
++			wantErr: "specify only one of `--body`, `--body-file`, `--editor`, or `--web`",
+ 		},
+ 		{
+-			name:       "delete-last with a body",
+-			input:      "--delete-last --yes --body hello",
+-			withAttach: true,
+-			wantErr:    "should not provide comment body when using `--delete-last`",
++			name:    "delete-last with a body",
++			input:   "--delete-last --yes --body hello",
++			wantErr: "should not provide comment body when using `--delete-last`",
+ 		},
+ 	}
+ 
+@@ -175,7 +145,7 @@ func TestCommentablePreRun(t *testing.T) {
+ 			ios.SetStderrTTY(tt.canPrompt)
+ 
+ 			opts := &CommentableOptions{IO: ios}
+-			cmd := commentableCmd(t, opts, tt.withAttach, tt.input)
++			cmd := commentableCmd(t, opts, tt.input)
+ 
+ 			err := CommentablePreRun(cmd, opts)
+ 

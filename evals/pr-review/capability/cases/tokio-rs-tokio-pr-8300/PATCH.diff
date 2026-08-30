@@ -1,0 +1,119 @@
+From 72a1785f6180a8f7943ac6d5a1a1516f5f3fa032 Mon Sep 17 00:00:00 2001
+From: Jens Holdgaard Pedersen <jens@holdgaard.org>
+Date: Sun, 19 Jul 2026 13:56:48 +0200
+Subject: [PATCH 1/2] signal: restore MSRV by removing OnceLock::wait from the
+ Windows handler
+
+OnceLock::wait was stabilized in Rust 1.86, so its use in the Windows
+console ctrl handler broke tokio's declared rust-version of 1.71 on
+windows targets in 1.53.0 (any cargo check with a 1.71..1.86 toolchain
+fails with E0599).
+
+The wait existed only because SetConsoleCtrlHandler was called inside
+REGISTRY's get_or_init closure, i.e. before the OnceLock was actually
+initialized, leaving a window where an invoked handler could observe an
+uninitialized REGISTRY. Initialize the registry first and register the
+OS handler afterwards (exactly once, through a second OnceLock that
+also caches a registration failure so every subsequent call reports the
+same error, matching the previous behavior). The handler can then rely
+on plain get(): registration happens-after initialization, so an
+invoked handler always finds the registry.
+
+Verified with cargo +1.71 check -p tokio --features full
+--target x86_64-pc-windows-msvc (fails with the reported E0599 before
+this change, clean after) and --all-targets on stable for the same
+target.
+
+Fixes #8299
+---
+ tokio/src/signal/windows/sys.rs | 33 +++++++++++++++++++++++----------
+ 1 file changed, 23 insertions(+), 10 deletions(-)
+
+diff --git a/tokio/src/signal/windows/sys.rs b/tokio/src/signal/windows/sys.rs
+index 1968f530477..316e1ad631d 100644
+--- a/tokio/src/signal/windows/sys.rs
++++ b/tokio/src/signal/windows/sys.rs
+@@ -57,15 +57,22 @@ pub(super) fn ctrl_shutdown() -> io::Result<RxFuture> {
+ }
+ 
+ fn new(signal: SignalKind) -> io::Result<RxFuture> {
+-    let registry = REGISTRY
++    // Initialize the registry BEFORE registering the OS handler: the
++    // handler thread can then always observe an initialized `REGISTRY`
++    // (`SetConsoleCtrlHandler` happens-after the initialization below),
++    // so it needs no blocking wait. Registration itself still happens
++    // exactly once, and a failure is cached so every subsequent call
++    // reports the same error, matching the previous behavior.
++    let registry = REGISTRY.get_or_init(Registry::default);
++
++    HANDLER_RESULT
+         .get_or_init(
+             || match unsafe { console::SetConsoleCtrlHandler(Some(handler), 1) } {
+                 0 => Err(Error::last_os_error().raw_os_error().expect("unreachable")),
+-                _ => Ok(Registry::default()),
++                _ => Ok(()),
+             },
+         )
+-        .as_ref()
+-        .map_err(|&code| Error::from_raw_os_error(code))?;
++        .map_err(Error::from_raw_os_error)?;
+ 
+     let rx = registry[signal].subscribe();
+     Ok(RxFuture::new(rx))
+@@ -94,7 +101,11 @@ impl Index<SignalKind> for Registry {
+     }
+ }
+ 
+-static REGISTRY: OnceLock<Result<Registry, i32>> = OnceLock::new();
++static REGISTRY: OnceLock<Registry> = OnceLock::new();
++
++/// Whether `SetConsoleCtrlHandler` succeeded, initialized (once) only
++/// after `REGISTRY` — see `new` for the ordering argument.
++static HANDLER_RESULT: OnceLock<Result<(), i32>> = OnceLock::new();
+ 
+ unsafe extern "system" fn handler(ty: u32) -> BOOL {
+     let signal = match ty {
+@@ -107,11 +118,13 @@ unsafe extern "system" fn handler(ty: u32) -> BOOL {
+         _ => return 0,
+     };
+ 
+-    // Note that `OnceLock::get` does not handle the small window between calling
+-    // `SetConsoleCtrlHandler` and `REGISTRY` being initialized.
+-    let Ok(registry) = REGISTRY.wait().as_ref() else {
+-        // Technically unreachable since `handler` is only called if
+-        // `SetConsoleCtrlHandler` succeeded.
++    // `new` initializes `REGISTRY` before it registers this handler with
++    // the OS, so an invoked handler always finds it initialized —
++    // `get()` suffices and no blocking wait is needed (using `get`
++    // also keeps the crate's MSRV: `OnceLock::wait` needs Rust 1.86).
++    let Some(registry) = REGISTRY.get() else {
++        // Unreachable by the ordering above; kept as a defensive
++        // fallback that lets the OS run the next handler.
+         return 0;
+     };
+ 
+
+From d5dcd776d7a85d3a1ce4f06e6362c1e04f8f83ab Mon Sep 17 00:00:00 2001
+From: ADD-SP <add_sp@outlook.com>
+Date: Mon, 20 Jul 2026 19:07:07 +0800
+Subject: [PATCH 2/2] Update tokio/src/signal/windows/sys.rs
+
+---
+ tokio/src/signal/windows/sys.rs | 4 +---
+ 1 file changed, 1 insertion(+), 3 deletions(-)
+
+diff --git a/tokio/src/signal/windows/sys.rs b/tokio/src/signal/windows/sys.rs
+index 316e1ad631d..0a472d5a4e0 100644
+--- a/tokio/src/signal/windows/sys.rs
++++ b/tokio/src/signal/windows/sys.rs
+@@ -60,9 +60,7 @@ fn new(signal: SignalKind) -> io::Result<RxFuture> {
+     // Initialize the registry BEFORE registering the OS handler: the
+     // handler thread can then always observe an initialized `REGISTRY`
+     // (`SetConsoleCtrlHandler` happens-after the initialization below),
+-    // so it needs no blocking wait. Registration itself still happens
+-    // exactly once, and a failure is cached so every subsequent call
+-    // reports the same error, matching the previous behavior.
++    // so it needs no blocking wait.
+     let registry = REGISTRY.get_or_init(Registry::default);
+ 
+     HANDLER_RESULT

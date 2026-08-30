@@ -1,0 +1,804 @@
+From 96d7a47a9c11404de8b56978f9dcaa66ab1c756b Mon Sep 17 00:00:00 2001
+From: Nic <162764842+Nic-Polumeyv@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 13:21:18 -0400
+Subject: [PATCH 1/6] fix: keep the current selection of a `<select>` when its
+ `defaultValue` is applied
+
+---
+ .changeset/quiet-select-defaults.md           |  5 ++
+ .../client/visitors/RegularElement.js         |  9 +++-
+ .../client/dom/elements/attributes.js         |  4 +-
+ .../client/dom/elements/bindings/select.js    | 50 +++++++++++++------
+ .../_config.js                                | 29 +++++++++++
+ .../main.svelte                               | 25 ++++++++++
+ .../_config.js                                | 29 +++++++++++
+ .../main.svelte                               |  8 +++
+ 8 files changed, 141 insertions(+), 18 deletions(-)
+ create mode 100644 .changeset/quiet-select-defaults.md
+ create mode 100644 packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+ create mode 100644 packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
+ create mode 100644 packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
+ create mode 100644 packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
+
+diff --git a/.changeset/quiet-select-defaults.md b/.changeset/quiet-select-defaults.md
+new file mode 100644
+index 000000000000..31e546124d11
+--- /dev/null
++++ b/.changeset/quiet-select-defaults.md
+@@ -0,0 +1,5 @@
++---
++'svelte': patch
++---
++
++fix: keep the current selection of a `<select>` when its `defaultValue` is applied
+diff --git a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+index 401891b41b7c..a5352f15228e 100644
+--- a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
++++ b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+@@ -529,7 +529,14 @@ export function RegularElement(node, context) {
+ 				const update = b.stmt(b.call('$.set_default_select_value', node_id, value));
+ 
+ 				(has_state ? context.state.update : context.state.init).push(update);
+-				if (!bindings.has('value')) {
++				const value_attribute = lookup.get('value');
++				// `build_element_special_value_attribute` already emits `$.init_select` for a dynamic `value`
++				const has_observer =
++					bindings.has('value') ||
++					(value_attribute !== undefined &&
++						value_attribute.value !== true &&
++						!is_text_attribute(value_attribute));
++				if (!has_observer) {
+ 					context.state.init.push(b.stmt(b.call('$.init_select', node_id)));
+ 				}
+ 				break;
+diff --git a/packages/svelte/src/internal/client/dom/elements/attributes.js b/packages/svelte/src/internal/client/dom/elements/attributes.js
+index 7439db56e905..0fe1b8b2d3f9 100644
+--- a/packages/svelte/src/internal/client/dom/elements/attributes.js
++++ b/packages/svelte/src/internal/client/dom/elements/attributes.js
+@@ -525,7 +525,7 @@ export function attribute_effect(
+ 				var select = /** @type {HTMLSelectElement} */ (element);
+ 
+ 				if ('defaultValue' in next) {
+-					set_default_select_value(select, next.defaultValue, false);
++					set_default_select_value(select, next.defaultValue);
+ 				}
+ 
+ 				if ('value' in next) {
+@@ -558,7 +558,7 @@ export function attribute_effect(
+ 				var attrs = /** @type {Record<string | symbol, any>} */ (prev);
+ 
+ 				if ('defaultValue' in attrs) {
+-					set_default_select_value(select, attrs.defaultValue, true);
++					set_default_select_value(select, attrs.defaultValue);
+ 				}
+ 
+ 				select_option(select, attrs.value, true);
+diff --git a/packages/svelte/src/internal/client/dom/elements/bindings/select.js b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+index fd1ebb92b8ad..226d126636df 100644
+--- a/packages/svelte/src/internal/client/dom/elements/bindings/select.js
++++ b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+@@ -21,32 +21,52 @@ export function set_selected(option, selected) {
+ 
+ /**
+  * Sets the options a form reset should restore without changing the current selection.
+- * The initial call is allowed to establish the current selection when no value exists.
++ * The initial call establishes the current selection when no value exists yet.
+  * @param {HTMLSelectElement} select
+  * @param {any} value
+- * @param {boolean} [mounting]
+  */
+-export function set_default_select_value(select, value, mounting = !('__defaultValue' in select)) {
+-	// The DOM cannot recover unmatched, object or multiple defaults from selected options.
+-	// Keep the requested value so option mutations can reapply it; property presence also
+-	// distinguishes the initial application from later updates when the value is undefined.
++export function set_default_select_value(select, value) {
++	var mounting = !('__defaultValue' in select);
++	// @ts-expect-error
++	if (!mounting && select.__defaultValue === value) return;
+ 	// @ts-expect-error
+ 	select.__defaultValue = value;
+-	var values = select.multiple ? (value == null ? [] : value) : null;
++	apply_default_select_value(select, !mounting || '__value' in select);
++}
++
++/**
++ * Marks the options matching `__defaultValue` as default-selected
++ * @param {HTMLSelectElement} select
++ * @param {boolean} preserve whether the current selection must survive
++ */
++function apply_default_select_value(select, preserve) {
++	// @ts-expect-error
++	var value = select.__defaultValue;
++	var multiple = select.multiple;
++	var values = multiple ? value ?? [] : null;
++
++	if (multiple && !is_array(values)) return;
+ 
+-	if (select.multiple && !is_array(values)) return;
+-	var selected = !mounting || '__value' in select ? new Set(select.selectedOptions) : null;
++	var index = select.selectedIndex;
++	var selected = preserve && multiple ? new Set(select.selectedOptions) : null;
+ 
+ 	for (var option of select.options) {
+ 		var option_value = get_option_value(option);
+-		var is_selected = select.multiple
+-			? /** @type {any[]} */ (values).includes(option_value)
+-			: is(option_value, value);
+-		set_selected(option, is_selected);
++		set_selected(
++			option,
++			multiple ? /** @type {any[]} */ (values).includes(option_value) : is(option_value, value)
++		);
+ 	}
+ 
++	if (!preserve) return;
++
+ 	if (selected !== null) {
+-		for (option of select.options) option.selected = selected.has(option);
++		for (option of select.options) {
++			var was_selected = selected.has(option);
++			if (option.selected !== was_selected) option.selected = was_selected;
++		}
++	} else if (select.selectedIndex !== index) {
++		select.selectedIndex = index;
+ 	}
+ }
+ 
+@@ -107,7 +127,7 @@ export function init_select(select) {
+ 		if (entries.every(is_selectedcontent_mutation)) return;
+ 
+ 		if ('__defaultValue' in select) {
+-			set_default_select_value(select, select.__defaultValue, false);
++			apply_default_select_value(select, true);
+ 		}
+ 
+ 		if ('__value' in select) {
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+new file mode 100644
+index 000000000000..a25ab8f0a372
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+@@ -0,0 +1,29 @@
++import { flushSync } from 'svelte';
++import { ok, test } from '../../test';
++
++export default test({
++	test({ assert, target }) {
++		const [nothing, unmatched, spread] = target.querySelectorAll('select');
++		const p = target.querySelector('p');
++		const [change_default, change_spread] = target.querySelectorAll('button');
++		ok(p);
++
++		assert.equal(nothing.selectedIndex, -1);
++		assert.equal(unmatched.selectedIndex, -1);
++		assert.equal(spread.selectedIndex, -1);
++
++		change_default.click();
++		change_spread.click();
++		flushSync();
++
++		assert.equal(nothing.selectedIndex, -1);
++		assert.equal(unmatched.selectedIndex, -1);
++		assert.equal(spread.selectedIndex, -1);
++		assert.equal(spread.className, 'two');
++		assert.htmlEqual(p.innerHTML, 'zzz null');
++		assert.deepEqual(
++			[...nothing.options].map((option) => option.defaultSelected),
++			[true, false]
++		);
++	}
++});
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
+new file mode 100644
+index 000000000000..0cce5fab987d
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
+@@ -0,0 +1,25 @@
++<script>
++	let unmatched = $state('zzz');
++	let nothing = $state(null);
++	let defaultValue = $state('b');
++	let props = $state({ defaultValue: 'b', class: 'one' });
++</script>
++
++<select value={null} {defaultValue}>
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
++
++<select bind:value={unmatched} {defaultValue}>
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
++
++<select {...props} bind:value={nothing}>
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
++
++<button onclick={() => (defaultValue = 'a')}>change default</button>
++<button onclick={() => (props.class = 'two')}>change class</button>
++<p>{unmatched} {String(nothing)}</p>
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
+new file mode 100644
+index 000000000000..a0160acf9ea4
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
+@@ -0,0 +1,29 @@
++import { ok, test } from '../../test';
++
++let observers = 0;
++const MutationObserver = globalThis.MutationObserver;
++
++export default test({
++	before_test() {
++		observers = 0;
++		globalThis.MutationObserver = class extends MutationObserver {
++			/** @param {MutationCallback} callback */
++			constructor(callback) {
++				super(callback);
++				observers++;
++			}
++		};
++	},
++
++	after_test() {
++		globalThis.MutationObserver = MutationObserver;
++	},
++
++	test({ assert, target }) {
++		const select = target.querySelector('select');
++		ok(select);
++		assert.equal(select.selectedIndex, 0);
++		assert.equal(select.options[1].defaultSelected, true);
++		assert.equal(observers, 1);
++	}
++});
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
+new file mode 100644
+index 000000000000..5fe86637f118
+--- /dev/null
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
+@@ -0,0 +1,8 @@
++<script>
++	let value = $state('a');
++</script>
++
++<select {value} defaultValue="b">
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
+
+From db92b9948d487286960d0fda8e85c6dda47f19b7 Mon Sep 17 00:00:00 2001
+From: Nic <162764842+Nic-Polumeyv@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 13:45:11 -0400
+Subject: [PATCH 2/6] chore: retrigger ci
+
+
+From 241890730ca5e1635df4c77420b91cce85c130b3 Mon Sep 17 00:00:00 2001
+From: Nic <162764842+Nic-Polumeyv@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 14:04:59 -0400
+Subject: [PATCH 3/6] fix: apply `<select defaultValue>` to late options and
+ track user selection instead of the compiler tracking observers
+
+---
+ .changeset/quiet-select-defaults.md           |  2 +-
+ .../client/visitors/RegularElement.js         | 46 +++++++++----------
+ .../client/dom/elements/bindings/select.js    | 38 +++++++++------
+ .../form-default-value-select/_config.js      |  2 +-
+ .../_config.js                                | 29 ++++++++++--
+ .../main.svelte                               | 12 +++++
+ .../_config.js                                | 13 +++---
+ .../main.svelte                               | 13 ++++++
+ 8 files changed, 107 insertions(+), 48 deletions(-)
+
+diff --git a/.changeset/quiet-select-defaults.md b/.changeset/quiet-select-defaults.md
+index 31e546124d11..66e1db80f369 100644
+--- a/.changeset/quiet-select-defaults.md
++++ b/.changeset/quiet-select-defaults.md
+@@ -2,4 +2,4 @@
+ 'svelte': patch
+ ---
+ 
+-fix: keep the current selection of a `<select>` when its `defaultValue` is applied
++fix: apply `<select defaultValue>` to options that arrive later, and keep a chosen selection when it is reapplied
+diff --git a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+index a5352f15228e..4209d1428cab 100644
+--- a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
++++ b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+@@ -520,27 +520,29 @@ export function RegularElement(node, context) {
+ 	// deferred from the attribute loop above, so that the options it selects from
+ 	// have been created and had their values assigned
+ 	if (!has_spread && name === 'select') {
+-		for (const attribute of /** @type {AST.Attribute[]} */ (attributes)) {
+-			if (get_attribute_name(node, attribute) === 'defaultValue') {
+-				const { value, has_state } = build_attribute_value(attribute.value, context, (v, m) =>
+-					context.state.memoizer.add(v, m)
+-				);
++		const default_value = /** @type {AST.Attribute[]} */ (attributes).find(
++			(attribute) => get_attribute_name(node, attribute) === 'defaultValue'
++		);
+ 
+-				const update = b.stmt(b.call('$.set_default_select_value', node_id, value));
+-
+-				(has_state ? context.state.update : context.state.init).push(update);
+-				const value_attribute = lookup.get('value');
+-				// `build_element_special_value_attribute` already emits `$.init_select` for a dynamic `value`
+-				const has_observer =
+-					bindings.has('value') ||
+-					(value_attribute !== undefined &&
+-						value_attribute.value !== true &&
+-						!is_text_attribute(value_attribute));
+-				if (!has_observer) {
+-					context.state.init.push(b.stmt(b.call('$.init_select', node_id)));
+-				}
+-				break;
+-			}
++		if (default_value) {
++			const { value, has_state } = build_attribute_value(default_value.value, context, (v, m) =>
++				context.state.memoizer.add(v, m)
++			);
++
++			(has_state ? context.state.update : context.state.init).push(
++				b.stmt(b.call('$.set_default_select_value', node_id, value))
++			);
++		}
++
++		const value_attribute = lookup.get('value');
++		const dynamic_value =
++			value_attribute !== undefined &&
++			value_attribute.value !== true &&
++			!is_text_attribute(value_attribute);
++
++		// `bind:value` sets up its own observer
++		if ((default_value || dynamic_value) && !bindings.has('value')) {
++			context.state.init.push(b.stmt(b.call('$.init_select', node_id)));
+ 		}
+ 	}
+ 
+@@ -779,10 +781,6 @@ function build_element_special_value_attribute(
+ 	} else {
+ 		state.init.push(build_update(value));
+ 	}
+-
+-	if (is_select_with_value) {
+-		state.init.push(b.stmt(b.call('$.init_select', node_id)));
+-	}
+ }
+ 
+ /**
+diff --git a/packages/svelte/src/internal/client/dom/elements/bindings/select.js b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+index 226d126636df..f4c4af805437 100644
+--- a/packages/svelte/src/internal/client/dom/elements/bindings/select.js
++++ b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+@@ -20,26 +20,20 @@ export function set_selected(option, selected) {
+ }
+ 
+ /**
+- * Sets the options a form reset should restore without changing the current selection.
+- * The initial call establishes the current selection when no value exists yet.
++ * Sets the options a form reset should restore. Only changes the current
++ * selection while nothing has chosen one yet (no `value`, no user change).
+  * @param {HTMLSelectElement} select
+  * @param {any} value
+  */
+ export function set_default_select_value(select, value) {
+-	var mounting = !('__defaultValue' in select);
+-	// @ts-expect-error
+-	if (!mounting && select.__defaultValue === value) return;
++	if ('__defaultValue' in select && select.__defaultValue === value) return;
+ 	// @ts-expect-error
+ 	select.__defaultValue = value;
+-	apply_default_select_value(select, !mounting || '__value' in select);
++	apply_default_select_value(select);
+ }
+ 
+-/**
+- * Marks the options matching `__defaultValue` as default-selected
+- * @param {HTMLSelectElement} select
+- * @param {boolean} preserve whether the current selection must survive
+- */
+-function apply_default_select_value(select, preserve) {
++/** @param {HTMLSelectElement} select */
++function apply_default_select_value(select) {
+ 	// @ts-expect-error
+ 	var value = select.__defaultValue;
+ 	var multiple = select.multiple;
+@@ -47,6 +41,8 @@ function apply_default_select_value(select, preserve) {
+ 
+ 	if (multiple && !is_array(values)) return;
+ 
++	// @ts-expect-error
++	var preserve = '__value' in select || select.__touched === true;
+ 	var index = select.selectedIndex;
+ 	var selected = preserve && multiple ? new Set(select.selectedOptions) : null;
+ 
+@@ -119,6 +115,8 @@ export function select_option(select, value, mounting = false) {
+  * @param {HTMLSelectElement} select
+  */
+ export function init_select(select) {
++	if ('__observer' in select) return;
++
+ 	var observer = new MutationObserver((entries) => {
+ 		// Mutations related to `<selectedcontent>` can never affect the option list.
+ 		// Reacting to them could revert a user-initiated selection change, because the
+@@ -127,7 +125,7 @@ export function init_select(select) {
+ 		if (entries.every(is_selectedcontent_mutation)) return;
+ 
+ 		if ('__defaultValue' in select) {
+-			apply_default_select_value(select, true);
++			apply_default_select_value(select);
+ 		}
+ 
+ 		if ('__value' in select) {
+@@ -148,8 +146,22 @@ export function init_select(select) {
+ 		attributeFilter: ['value']
+ 	});
+ 
++	// @ts-expect-error
++	select.__observer = observer;
++
++	listen_to_event_and_reset_event(
++		select,
++		'change',
++		// @ts-expect-error
++		() => (select.__touched = true),
++		// @ts-expect-error
++		() => (select.__touched = false)
++	);
++
+ 	teardown(() => {
+ 		observer.disconnect();
++		// @ts-expect-error
++		delete select.__observer;
+ 	});
+ }
+ 
+diff --git a/packages/svelte/tests/runtime-runes/samples/form-default-value-select/_config.js b/packages/svelte/tests/runtime-runes/samples/form-default-value-select/_config.js
+index 5d0c964969a3..784d20a0ce1b 100644
+--- a/packages/svelte/tests/runtime-runes/samples/form-default-value-select/_config.js
++++ b/packages/svelte/tests/runtime-runes/samples/form-default-value-select/_config.js
+@@ -62,7 +62,7 @@ export default test({
+ 		button('add').click();
+ 		flushSync();
+ 		await Promise.resolve();
+-		check(selects[3], [true, false]);
++		check(selects[3], [false, true]);
+ 		assert.equal(selects[3].options[1].defaultSelected, true);
+ 
+ 		reset.click();
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+index a25ab8f0a372..a37b4750f3af 100644
+--- a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+@@ -2,15 +2,17 @@ import { flushSync } from 'svelte';
+ import { ok, test } from '../../test';
+ 
+ export default test({
+-	test({ assert, target }) {
+-		const [nothing, unmatched, spread] = target.querySelectorAll('select');
++	async test({ assert, target }) {
++		const [nothing, unmatched, spread, late, touched] = target.querySelectorAll('select');
++		const [change_default, change_spread, load, add] = target.querySelectorAll('button');
+ 		const p = target.querySelector('p');
+-		const [change_default, change_spread] = target.querySelectorAll('button');
+ 		ok(p);
+ 
+ 		assert.equal(nothing.selectedIndex, -1);
+ 		assert.equal(unmatched.selectedIndex, -1);
+ 		assert.equal(spread.selectedIndex, -1);
++		assert.equal(late.selectedIndex, -1);
++		assert.equal(touched.value, 'b');
+ 
+ 		change_default.click();
+ 		change_spread.click();
+@@ -25,5 +27,26 @@ export default test({
+ 			[...nothing.options].map((option) => option.defaultSelected),
+ 			[true, false]
+ 		);
++
++		// nothing has chosen a selection yet, so the untouched select follows the new default
++		assert.equal(touched.value, 'a');
++
++		// a default whose option arrives later selects it
++		load.click();
++		flushSync();
++		await Promise.resolve();
++		assert.equal(late.value, 'b');
++
++		// a user selection survives option mutations and default changes
++		touched.options[2].selected = true;
++		touched.dispatchEvent(new Event('change', { bubbles: true }));
++		add.click();
++		flushSync();
++		await Promise.resolve();
++		assert.equal(touched.value, 'c');
++		assert.deepEqual(
++			[...touched.options].map((option) => option.defaultSelected),
++			[true, false, false, false]
++		);
+ 	}
+ });
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
+index 0cce5fab987d..c7fdea482cd1 100644
+--- a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/main.svelte
+@@ -3,6 +3,8 @@
+ 	let nothing = $state(null);
+ 	let defaultValue = $state('b');
+ 	let props = $state({ defaultValue: 'b', class: 'one' });
++	let late = $state([]);
++	let options = $state(['a', 'b', 'c']);
+ </script>
+ 
+ <select value={null} {defaultValue}>
+@@ -20,6 +22,16 @@
+ 	<option value="b">B</option>
+ </select>
+ 
++<select defaultValue="b">
++	{#each late as option}<option value={option}>{option}</option>{/each}
++</select>
++
++<select {defaultValue}>
++	{#each options as option}<option value={option}>{option}</option>{/each}
++</select>
++
+ <button onclick={() => (defaultValue = 'a')}>change default</button>
+ <button onclick={() => (props.class = 'two')}>change class</button>
++<button onclick={() => (late = ['a', 'b', 'c'])}>load options</button>
++<button onclick={() => options.push('d')}>add option</button>
+ <p>{unmatched} {String(nothing)}</p>
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
+index a0160acf9ea4..411a7868f752 100644
+--- a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/_config.js
+@@ -1,4 +1,4 @@
+-import { ok, test } from '../../test';
++import { test } from '../../test';
+ 
+ let observers = 0;
+ const MutationObserver = globalThis.MutationObserver;
+@@ -20,10 +20,11 @@ export default test({
+ 	},
+ 
+ 	test({ assert, target }) {
+-		const select = target.querySelector('select');
+-		ok(select);
+-		assert.equal(select.selectedIndex, 0);
+-		assert.equal(select.options[1].defaultSelected, true);
+-		assert.equal(observers, 1);
++		const selects = target.querySelectorAll('select');
++		for (const select of selects) {
++			assert.equal(select.selectedIndex, 0);
++			assert.equal(select.options[1].defaultSelected, true);
++		}
++		assert.equal(observers, selects.length);
+ 	}
+ });
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
+index 5fe86637f118..7754b3c6fd76 100644
+--- a/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-single-observer/main.svelte
+@@ -1,8 +1,21 @@
+ <script>
+ 	let value = $state('a');
++	let bound = $state('a');
++	let spread = $state('a');
++	let props = { defaultValue: 'b' };
+ </script>
+ 
+ <select {value} defaultValue="b">
+ 	<option value="a">A</option>
+ 	<option value="b">B</option>
+ </select>
++
++<select bind:value={bound} defaultValue="b">
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
++
++<select {...props} bind:value={spread}>
++	<option value="a">A</option>
++	<option value="b">B</option>
++</select>
+
+From 20a790091cec7b18500cbaf1cce6cbc2e61d5ebc Mon Sep 17 00:00:00 2001
+From: Nic <162764842+Nic-Polumeyv@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 18:08:33 -0400
+Subject: [PATCH 4/6] chore: let the compiler own `init_select` for
+ `bind:value` so no path needs a guard
+
+---
+ .../client/visitors/RegularElement.js          |  3 +--
+ .../client/dom/elements/bindings/select.js     | 18 ++++--------------
+ 2 files changed, 5 insertions(+), 16 deletions(-)
+
+diff --git a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+index 4209d1428cab..adc9ec72dd18 100644
+--- a/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
++++ b/packages/svelte/src/compiler/phases/3-transform/client/visitors/RegularElement.js
+@@ -540,8 +540,7 @@ export function RegularElement(node, context) {
+ 			value_attribute.value !== true &&
+ 			!is_text_attribute(value_attribute);
+ 
+-		// `bind:value` sets up its own observer
+-		if ((default_value || dynamic_value) && !bindings.has('value')) {
++		if (default_value || dynamic_value || bindings.has('value')) {
+ 			context.state.init.push(b.stmt(b.call('$.init_select', node_id)));
+ 		}
+ 	}
+diff --git a/packages/svelte/src/internal/client/dom/elements/bindings/select.js b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+index f4c4af805437..b7f1d49e8707 100644
+--- a/packages/svelte/src/internal/client/dom/elements/bindings/select.js
++++ b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+@@ -107,16 +107,13 @@ export function select_option(select, value, mounting = false) {
+ }
+ 
+ /**
+- * Selects the correct option(s) if `value` is given,
+- * and then sets up a mutation observer to sync the
+- * current selection to the dom when it changes. Such
+- * changes could for example occur when options are
+- * inside an `#each` block.
++ * Sets up a mutation observer to sync the current selection
++ * and default to the dom when the options change, for example
++ * when they are inside an `#each` block. Called once per `<select>`,
++ * by the compiled output or by `attribute_effect` for spreads.
+  * @param {HTMLSelectElement} select
+  */
+ export function init_select(select) {
+-	if ('__observer' in select) return;
+-
+ 	var observer = new MutationObserver((entries) => {
+ 		// Mutations related to `<selectedcontent>` can never affect the option list.
+ 		// Reacting to them could revert a user-initiated selection change, because the
+@@ -146,9 +143,6 @@ export function init_select(select) {
+ 		attributeFilter: ['value']
+ 	});
+ 
+-	// @ts-expect-error
+-	select.__observer = observer;
+-
+ 	listen_to_event_and_reset_event(
+ 		select,
+ 		'change',
+@@ -160,8 +154,6 @@ export function init_select(select) {
+ 
+ 	teardown(() => {
+ 		observer.disconnect();
+-		// @ts-expect-error
+-		delete select.__observer;
+ 	});
+ }
+ 
+@@ -236,8 +228,6 @@ export function bind_select_value(select, get, set = get) {
+ 		select.__value = value;
+ 		mounting = false;
+ 	});
+-
+-	init_select(select);
+ }
+ 
+ /** @param {HTMLOptionElement} option */
+
+From f543ba7184c29bce5662612ca409b5c10b058d07 Mon Sep 17 00:00:00 2001
+From: Nic <162764842+Nic-Polumeyv@users.noreply.github.com>
+Date: Tue, 25 Aug 2026 18:35:07 -0400
+Subject: [PATCH 5/6] chore: a default change never moves the current
+ selection, drop the touched flag
+
+---
+ .../client/dom/elements/bindings/select.js    | 32 ++++++++-----------
+ .../_config.js                                |  4 +--
+ 2 files changed, 16 insertions(+), 20 deletions(-)
+
+diff --git a/packages/svelte/src/internal/client/dom/elements/bindings/select.js b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+index b7f1d49e8707..cac7531ed2d7 100644
+--- a/packages/svelte/src/internal/client/dom/elements/bindings/select.js
++++ b/packages/svelte/src/internal/client/dom/elements/bindings/select.js
+@@ -20,20 +20,27 @@ export function set_selected(option, selected) {
+ }
+ 
+ /**
+- * Sets the options a form reset should restore. Only changes the current
+- * selection while nothing has chosen one yet (no `value`, no user change).
++ * Sets the options a form reset should restore. The first call selects
++ * them if nothing has set a value, later calls leave the current selection alone.
+  * @param {HTMLSelectElement} select
+  * @param {any} value
+  */
+ export function set_default_select_value(select, value) {
+-	if ('__defaultValue' in select && select.__defaultValue === value) return;
++	var mounting = !('__defaultValue' in select);
++	// @ts-expect-error
++	if (!mounting && select.__defaultValue === value) return;
+ 	// @ts-expect-error
+ 	select.__defaultValue = value;
+-	apply_default_select_value(select);
++	apply_default_select_value(select, !mounting || '__value' in select);
+ }
+ 
+-/** @param {HTMLSelectElement} select */
+-function apply_default_select_value(select) {
++/**
++ * Marks the options matching `__defaultValue` as selected. Without `preserve`
++ * a newly matching option gets selected, as an inserted `<option selected>` would.
++ * @param {HTMLSelectElement} select
++ * @param {boolean} preserve
++ */
++function apply_default_select_value(select, preserve) {
+ 	// @ts-expect-error
+ 	var value = select.__defaultValue;
+ 	var multiple = select.multiple;
+@@ -41,8 +48,6 @@ function apply_default_select_value(select) {
+ 
+ 	if (multiple && !is_array(values)) return;
+ 
+-	// @ts-expect-error
+-	var preserve = '__value' in select || select.__touched === true;
+ 	var index = select.selectedIndex;
+ 	var selected = preserve && multiple ? new Set(select.selectedOptions) : null;
+ 
+@@ -122,7 +127,7 @@ export function init_select(select) {
+ 		if (entries.every(is_selectedcontent_mutation)) return;
+ 
+ 		if ('__defaultValue' in select) {
+-			apply_default_select_value(select);
++			apply_default_select_value(select, false);
+ 		}
+ 
+ 		if ('__value' in select) {
+@@ -143,15 +148,6 @@ export function init_select(select) {
+ 		attributeFilter: ['value']
+ 	});
+ 
+-	listen_to_event_and_reset_event(
+-		select,
+-		'change',
+-		// @ts-expect-error
+-		() => (select.__touched = true),
+-		// @ts-expect-error
+-		() => (select.__touched = false)
+-	);
+-
+ 	teardown(() => {
+ 		observer.disconnect();
+ 	});
+diff --git a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+index a37b4750f3af..d409732ab80f 100644
+--- a/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
++++ b/packages/svelte/tests/runtime-runes/samples/select-default-value-preserve-selection/_config.js
+@@ -28,8 +28,8 @@ export default test({
+ 			[true, false]
+ 		);
+ 
+-		// nothing has chosen a selection yet, so the untouched select follows the new default
+-		assert.equal(touched.value, 'a');
++		// a default change never moves the current selection
++		assert.equal(touched.value, 'b');
+ 
+ 		// a default whose option arrives later selects it
+ 		load.click();
+
+From cd3f5474d28e199f5080dc91ee30718c24bdbddd Mon Sep 17 00:00:00 2001
+From: Simon Holthausen <simon.holthausen@vercel.com>
+Date: Wed, 26 Aug 2026 10:10:07 +0200
+Subject: [PATCH 6/6] changeset unnecessary, not released yet
+
+---
+ .changeset/quiet-select-defaults.md | 5 -----
+ 1 file changed, 5 deletions(-)
+ delete mode 100644 .changeset/quiet-select-defaults.md
+
+diff --git a/.changeset/quiet-select-defaults.md b/.changeset/quiet-select-defaults.md
+deleted file mode 100644
+index 66e1db80f369..000000000000
+--- a/.changeset/quiet-select-defaults.md
++++ /dev/null
+@@ -1,5 +0,0 @@
+----
+-'svelte': patch
+----
+-
+-fix: apply `<select defaultValue>` to options that arrive later, and keep a chosen selection when it is reapplied

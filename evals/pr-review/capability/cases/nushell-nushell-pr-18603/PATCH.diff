@@ -1,0 +1,613 @@
+From 18fa73d2b3b12c9b702e7bafad1505242d57c39c Mon Sep 17 00:00:00 2001
+From: Darren Schroeder <343840+fdncred@users.noreply.github.com>
+Date: Tue, 14 Jul 2026 06:21:01 -0500
+Subject: [PATCH] fix: stop `run` from trying to parse big non-text files
+
+---
+ crates/nu-command/src/misc/run.rs            |  36 +++-
+ crates/nu-command/tests/commands/run.rs      | 123 +++++++++++++-
+ crates/nu-parser/src/parse_source.rs         | 135 +++++++++------
+ crates/nu-protocol/src/errors/parse_error.rs |  30 ++++
+ crates/nu-protocol/src/parser_path.rs        | 165 +++++++++++++++++++
+ 5 files changed, 437 insertions(+), 52 deletions(-)
+
+diff --git a/crates/nu-command/src/misc/run.rs b/crates/nu-command/src/misc/run.rs
+index 719b2ba9c10f4..8f7d67a67a5bd 100644
+--- a/crates/nu-command/src/misc/run.rs
++++ b/crates/nu-command/src/misc/run.rs
+@@ -7,6 +7,7 @@ use nu_protocol::{
+     BlockId, Value,
+     ast::Block,
+     engine::{CommandType, StateWorkingSet},
++    parser_path::{MAX_RUN_SCRIPT_BYTES, ScriptLoadError, read_run_script_file},
+     shell_error::{generic::GenericError, io::IoError},
+ };
+ use std::sync::Arc;
+@@ -232,8 +233,39 @@ fn parse_run_script_fresh(
+     file_path: &std::path::Path,
+     call_head: Span,
+ ) -> Result<(EngineState, Arc<Block>, Option<BlockId>), ShellError> {
+-    let contents = std::fs::read(file_path)
+-        .map_err(|err| IoError::new(err, call_head, file_path.to_path_buf()))?;
++    let display_path = file_path.display().to_string();
++    let contents = match read_run_script_file(file_path, MAX_RUN_SCRIPT_BYTES) {
++        Ok(contents) => contents,
++        Err(ScriptLoadError::TooLarge { size, max_size }) => {
++            return Err(GenericError::new(
++                "Script file is too large to load",
++                format!(
++                    "Refusing to load files larger than {max_size} bytes for `run` (file is {size} bytes): {display_path}"
++                ),
++                call_head,
++            )
++            .into());
++        }
++        Err(ScriptLoadError::NotText) => {
++            return Err(GenericError::new(
++                "Script file does not appear to be text",
++                format!(
++                    "The file does not look like UTF-8 text and cannot be loaded by `run`: {display_path}"
++                ),
++                call_head,
++            )
++            .into());
++        }
++        Err(ScriptLoadError::Unreadable) => {
++            return Err(GenericError::new(
++                "Failed to read script",
++                format!("Could not read script file: {display_path}"),
++                call_head,
++            )
++            .into());
++        }
++    };
++
+     let mut full_reparse_engine_state = engine_state.clone();
+     let mut working_set = StateWorkingSet::new(&full_reparse_engine_state);
+     working_set
+diff --git a/crates/nu-command/tests/commands/run.rs b/crates/nu-command/tests/commands/run.rs
+index 0812bf2e2fe20..867368a042c46 100644
+--- a/crates/nu-command/tests/commands/run.rs
++++ b/crates/nu-command/tests/commands/run.rs
+@@ -1,5 +1,6 @@
+-use nu_protocol::ShellError;
++use nu_protocol::{ParseError, ShellError, parser_path::MAX_RUN_SCRIPT_BYTES};
+ use nu_test_support::{fs::Stub::FileWithContentToBeTrimmed, prelude::*};
++use std::io::Write;
+ 
+ #[test]
+ fn run_script_without_main_in_pipeline() {
+@@ -654,3 +655,123 @@ fn run_script_binds_switch_by_name_without_shifting_positional() -> Result {
+         },
+     )
+ }
++
++/// Oversized paths must not be loaded by `run` (REPL hang / multi-GiB RAM; #18597).
++#[test]
++fn run_oversized_file_errors_without_loading() -> Result {
++    Playground::setup("run_oversized_file_errors_without_loading", |dirs, _| {
++        let path = dirs.test().join("huge.bin");
++        let file = std::fs::File::create(&path).expect("create huge.bin");
++        // Sparse size only — do not write MAX_RUN_SCRIPT_BYTES of data.
++        file.set_len(MAX_RUN_SCRIPT_BYTES + 1)
++            .expect("set oversized length");
++
++        let err = test()
++            .cwd(dirs.test())
++            .run("run huge.bin")
++            .expect_parse_error()?;
++        assert!(
++            matches!(
++                err,
++                ParseError::ScriptFileTooLarge {
++                    size,
++                    max_size,
++                    ..
++                } if size == MAX_RUN_SCRIPT_BYTES + 1 && max_size == MAX_RUN_SCRIPT_BYTES
++            ),
++            "expected ScriptFileTooLarge, got: {err:?}"
++        );
++        Ok(())
++    })
++}
++
++/// Binary files must be rejected before the Nu parser runs (#18597).
++#[test]
++fn run_binary_file_with_nul_errors_without_parsing() -> Result {
++    Playground::setup(
++        "run_binary_file_with_nul_errors_without_parsing",
++        |dirs, _| {
++            let path = dirs.test().join("binary.bin");
++            let mut file = std::fs::File::create(&path).expect("create binary.bin");
++            file.write_all(b"not\0a\0script")
++                .expect("write binary content");
++
++            let err = test()
++                .cwd(dirs.test())
++                .run("run binary.bin")
++                .expect_parse_error()?;
++            assert!(
++                matches!(err, ParseError::ScriptFileNotText { .. }),
++                "expected ScriptFileNotText, got: {err:?}"
++            );
++            Ok(())
++        },
++    )
++}
++
++/// Invalid UTF-8 (no NULs) must also be rejected as non-text for `run`.
++#[test]
++fn run_invalid_utf8_file_errors_without_parsing() -> Result {
++    Playground::setup("run_invalid_utf8_file_errors_without_parsing", |dirs, _| {
++        let path = dirs.test().join("bad_utf8.bin");
++        // Lone continuation bytes: invalid UTF-8, no NULs.
++        std::fs::write(&path, [0x80, 0x81, 0x82, 0x83, 0xFF]).expect("write invalid utf-8");
++
++        let err = test()
++            .cwd(dirs.test())
++            .run("run bad_utf8.bin")
++            .expect_parse_error()?;
++        assert!(
++            matches!(err, ParseError::ScriptFileNotText { .. }),
++            "expected ScriptFileNotText, got: {err:?}"
++        );
++        Ok(())
++    })
++}
++
++/// Dense C0 control characters (no NULs, valid UTF-8 bytes) look like binary to `run`.
++#[test]
++fn run_control_heavy_file_errors_without_parsing() -> Result {
++    Playground::setup(
++        "run_control_heavy_file_errors_without_parsing",
++        |dirs, _| {
++            let path = dirs.test().join("controls.bin");
++            // Mostly BEL/SOH-style controls; still valid UTF-8 single bytes, no NULs.
++            let mut bytes = vec![0x01u8; 100];
++            bytes.extend_from_slice(b"\n");
++            std::fs::write(&path, bytes).expect("write control-heavy file");
++
++            let err = test()
++                .cwd(dirs.test())
++                .run("run controls.bin")
++                .expect_parse_error()?;
++            assert!(
++                matches!(err, ParseError::ScriptFileNotText { .. }),
++                "expected ScriptFileNotText, got: {err:?}"
++            );
++            Ok(())
++        },
++    )
++}
++
++/// `--full-reparse` skips parse-time load, so oversized files must still be rejected at runtime.
++#[test]
++fn run_full_reparse_oversized_file_errors() -> Result {
++    Playground::setup("run_full_reparse_oversized_file_errors", |dirs, _| {
++        let path = dirs.test().join("huge.bin");
++        let file = std::fs::File::create(&path).expect("create huge.bin");
++        file.set_len(MAX_RUN_SCRIPT_BYTES + 1)
++            .expect("set oversized length");
++
++        let err = test()
++            .cwd(dirs.test())
++            .run("run --full-reparse huge.bin")
++            .expect_shell_error()?;
++        let msg = err.to_string();
++        assert!(
++            msg.contains("too large") || msg.contains("Script file is too large"),
++            "expected too-large shell error, got: {msg}"
++        );
++        Ok(())
++    })
++}
+diff --git a/crates/nu-parser/src/parse_source.rs b/crates/nu-parser/src/parse_source.rs
+index a1b6208a60b9e..7811f1bf90af4 100644
+--- a/crates/nu-parser/src/parse_source.rs
++++ b/crates/nu-parser/src/parse_source.rs
+@@ -18,7 +18,7 @@ use nu_protocol::{
+     ast::{Block, Expr, Expression, Pipeline, PipelineElement},
+     engine::StateWorkingSet,
+     eval_const::eval_constant,
+-    parser_path::ParserPath,
++    parser_path::{MAX_RUN_SCRIPT_BYTES, ParserPath, ScriptLoadError},
+ };
+ use std::{
+     path::{Path, PathBuf},
+@@ -29,6 +29,33 @@ pub const LIB_DIRS_VAR: &str = "NU_LIB_DIRS";
+ #[cfg(feature = "plugin")]
+ pub const PLUGIN_DIRS_VAR: &str = "NU_PLUGIN_DIRS";
+ 
++/// Load a path for the `run` command at parse time, refusing oversized or non-text files.
++///
++/// Only used by `parse_run` / `parse_run_expr` — `source` and modules keep unbounded `path.read`.
++fn read_run_script_for_parse(
++    path: &ParserPath,
++    working_set: &StateWorkingSet,
++    span: Span,
++) -> Result<Vec<u8>, ParseError> {
++    let display_path = path.path().display().to_string();
++    match path.read_run_script(working_set, MAX_RUN_SCRIPT_BYTES) {
++        Ok(contents) => Ok(contents),
++        Err(ScriptLoadError::TooLarge { size, max_size }) => Err(ParseError::ScriptFileTooLarge {
++            path: display_path,
++            size,
++            max_size,
++            span,
++        }),
++        Err(ScriptLoadError::NotText) => Err(ParseError::ScriptFileNotText {
++            path: display_path,
++            span,
++        }),
++        Err(ScriptLoadError::Unreadable) => {
++            Err(ParseError::SourcedFileNotFound(display_path, span))
++        }
++    }
++}
++
+ pub fn parse_source(working_set: &mut StateWorkingSet, lite_command: &LiteCommand) -> Pipeline {
+     trace!("parsing source");
+     let spans = &lite_command.parts;
+@@ -315,69 +342,79 @@ fn parse_run_expr_internal(
+                         );
+                     }
+ 
+-                    if let Some(contents) = path.read(working_set) {
+-                        if let Err(e) = working_set.files.push(path.clone().path_buf(), spans[1]) {
+-                            working_set.error(e);
+-                            return garbage(working_set, Span::concat(spans));
++                    let contents = match read_run_script_for_parse(&path, working_set, spans[1]) {
++                        Ok(contents) => contents,
++                        Err(err) => {
++                            working_set.error(err);
++                            return Expression::new(
++                                working_set,
++                                Expr::Call(call),
++                                Span::concat(spans),
++                                Type::Any,
++                            );
+                         }
++                    };
+ 
+-                        let mut block = parse(
+-                            working_set,
+-                            Some(&path.path().to_string_lossy()),
+-                            &contents,
+-                            false,
+-                        );
+-                        if block.ir_block.is_none() {
+-                            let block_mut = Arc::make_mut(&mut block);
+-                            compile_block(working_set, block_mut);
+-                        }
++                    if let Err(e) = working_set.files.push(path.clone().path_buf(), spans[1]) {
++                        working_set.error(e);
++                        return garbage(working_set, Span::concat(spans));
++                    }
+ 
+-                        working_set.files.pop();
++                    let mut block = parse(
++                        working_set,
++                        Some(&path.path().to_string_lossy()),
++                        &contents,
++                        false,
++                    );
++                    if block.ir_block.is_none() {
++                        let block_mut = Arc::make_mut(&mut block);
++                        compile_block(working_set, block_mut);
++                    }
+ 
+-                        let script_main_block_id =
+-                            find_main_block_id_in_script(working_set, &block);
++                    working_set.files.pop();
+ 
+-                        let block_id = working_set.add_block(block);
++                    let script_main_block_id = find_main_block_id_in_script(working_set, &block);
+ 
+-                        let mut call_with_block = call;
++                    let block_id = working_set.add_block(block);
+ 
+-                        call_with_block.set_parser_info(
+-                            "block_id".to_string(),
+-                            Expression::new(
+-                                working_set,
+-                                Expr::Int(block_id.get() as i64),
+-                                spans[1],
+-                                Type::Any,
+-                            ),
+-                        );
++                    let mut call_with_block = call;
+ 
++                    call_with_block.set_parser_info(
++                        "block_id".to_string(),
++                        Expression::new(
++                            working_set,
++                            Expr::Int(block_id.get() as i64),
++                            spans[1],
++                            Type::Any,
++                        ),
++                    );
++
++                    call_with_block.set_parser_info(
++                        "block_id_name".to_string(),
++                        Expression::new(
++                            working_set,
++                            Expr::Filepath(path.path_buf().display().to_string(), false),
++                            spans[1],
++                            Type::String,
++                        ),
++                    );
++                    if let Some(main_block_id) = script_main_block_id {
+                         call_with_block.set_parser_info(
+-                            "block_id_name".to_string(),
++                            "main_block_id".to_string(),
+                             Expression::new(
+                                 working_set,
+-                                Expr::Filepath(path.path_buf().display().to_string(), false),
++                                Expr::Int(main_block_id.get() as i64),
+                                 spans[1],
+-                                Type::String,
++                                Type::Any,
+                             ),
+                         );
+-                        if let Some(main_block_id) = script_main_block_id {
+-                            call_with_block.set_parser_info(
+-                                "main_block_id".to_string(),
+-                                Expression::new(
+-                                    working_set,
+-                                    Expr::Int(main_block_id.get() as i64),
+-                                    spans[1],
+-                                    Type::Any,
+-                                ),
+-                            );
+-                        }
+-                        return Expression::new(
+-                            working_set,
+-                            Expr::Call(call_with_block),
+-                            Span::concat(spans),
+-                            Type::Any,
+-                        );
+                     }
++                    return Expression::new(
++                        working_set,
++                        Expr::Call(call_with_block),
++                        Span::concat(spans),
++                        Type::Any,
++                    );
+                 } else {
+                     working_set.error(ParseError::SourcedFileNotFound(filename, spans[1]));
+                 }
+diff --git a/crates/nu-protocol/src/errors/parse_error.rs b/crates/nu-protocol/src/errors/parse_error.rs
+index d3ee6cda779ee..82d7cf6ab6f4e 100644
+--- a/crates/nu-protocol/src/errors/parse_error.rs
++++ b/crates/nu-protocol/src/errors/parse_error.rs
+@@ -480,6 +480,34 @@ pub enum ParseError {
+     )]
+     SourcedFileNotFound(String, #[label("File not found: {0}")] Span),
+ 
++    #[error("Script file is too large to load with `run`")]
++    #[diagnostic(
++        code(nu::parser::script_file_too_large),
++        help(
++            "The `run` command refuses files larger than {max_size} bytes at parse time (file is {size} bytes). Use a smaller script, or invoke large scripts with `nu path/to/script.nu`."
++        )
++    )]
++    ScriptFileTooLarge {
++        path: String,
++        size: u64,
++        max_size: u64,
++        #[label("file too large for `run`: {path}")]
++        span: Span,
++    },
++
++    #[error("Script file does not appear to be text")]
++    #[diagnostic(
++        code(nu::parser::script_file_not_text),
++        help(
++            "The `run` command only loads UTF-8 text scripts. Binary data (NUL bytes, invalid UTF-8, or dense control characters) is rejected."
++        )
++    )]
++    ScriptFileNotText {
++        path: String,
++        #[label("not a text script for `run`: {path}")]
++        span: Span,
++    },
++
+     #[error("File not found")]
+     #[diagnostic(
+         code(nu::parser::registered_file_not_found),
+@@ -644,6 +672,8 @@ impl ParseError {
+             ParseError::WrongImportPattern(_, s) => *s,
+             ParseError::ExportNotFound(s) => *s,
+             ParseError::SourcedFileNotFound(_, s) => *s,
++            ParseError::ScriptFileTooLarge { span, .. } => *span,
++            ParseError::ScriptFileNotText { span, .. } => *span,
+             ParseError::RegisteredFileNotFound(_, s) => *s,
+             ParseError::FileNotFound(_, s) => *s,
+             ParseError::PluginNotFound { name_span, .. } => *name_span,
+diff --git a/crates/nu-protocol/src/parser_path.rs b/crates/nu-protocol/src/parser_path.rs
+index b230e4e6e2238..30452ae56bb37 100644
+--- a/crates/nu-protocol/src/parser_path.rs
++++ b/crates/nu-protocol/src/parser_path.rs
+@@ -7,6 +7,91 @@ use std::{
+     path::{Path, PathBuf},
+ };
+ 
++/// Maximum size of a script file the `run` command will load for parsing.
++///
++/// `run` is a parser keyword: interactive re-parse (syntax highlight, completion, validation)
++/// reloads the argument path on every keystroke / Tab. Without a bound, a large path is fully
++/// loaded and force-fed through the Nu parser, which can hang the REPL and use multi‑GiB of RAM.
++///
++/// 1 MiB is large enough for typical scripts while keeping interactive parse responsive.
++///
++/// This limit is intentionally **only** applied to `run`, not `source` / modules.
++pub const MAX_RUN_SCRIPT_BYTES: u64 = 1_048_576;
++
++/// Bytes sampled from the start of a file when deciding whether it looks like text.
++const TEXT_PROBE_BYTES: usize = 8192;
++
++/// Failure modes when loading a file as a Nu script for `run`.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum ScriptLoadError {
++    /// File length exceeds [`MAX_RUN_SCRIPT_BYTES`] (or a custom limit).
++    TooLarge { size: u64, max_size: u64 },
++    /// Contents do not look like UTF-8 text suitable for a Nu script.
++    NotText,
++    /// Open/read failed or path is not a readable file.
++    Unreadable,
++}
++
++/// Heuristic: does `bytes` look like UTF-8 text a Nu script could be?
++///
++/// Inspects up to the first [`TEXT_PROBE_BYTES`] bytes. Rejects when:
++/// - a NUL byte is present (classic binary marker used by git/`file`)
++/// - the sample is not valid UTF-8 (Nu source is UTF-8)
++/// - more than 30% of bytes are C0 control characters other than tab/LF/CR
++///
++/// Empty input is treated as text (empty script).
++pub fn looks_like_text(bytes: &[u8]) -> bool {
++    let sample = if bytes.len() > TEXT_PROBE_BYTES {
++        &bytes[..TEXT_PROBE_BYTES]
++    } else {
++        bytes
++    };
++
++    if sample.is_empty() {
++        return true;
++    }
++
++    // Strong binary signal — archives, executables, compressed data often contain NULs early.
++    if sample.contains(&0) {
++        return false;
++    }
++
++    // Nu scripts are UTF-8; invalid sequences are almost always binary.
++    if std::str::from_utf8(sample).is_err() {
++        return false;
++    }
++
++    // High density of C0 controls (excluding common whitespace) is typical of binary formats
++    // that happen to avoid NULs in the first few KiB.
++    let suspicious_controls = sample
++        .iter()
++        .filter(|&&b| b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r'))
++        .count();
++    // More than 30% suspicious controls → treat as non-text.
++    let mostly_controls = suspicious_controls.saturating_mul(10) > sample.len().saturating_mul(3);
++    !mostly_controls
++}
++
++/// Read a real filesystem path for `run`, applying size and text checks.
++///
++/// Size is checked via metadata before any body read so oversized files never enter memory.
++pub fn read_run_script_file(path: &Path, max_bytes: u64) -> Result<Vec<u8>, ScriptLoadError> {
++    let size = std::fs::metadata(path)
++        .map(|m| m.len())
++        .map_err(|_| ScriptLoadError::Unreadable)?;
++    if size > max_bytes {
++        return Err(ScriptLoadError::TooLarge {
++            size,
++            max_size: max_bytes,
++        });
++    }
++    let contents = std::fs::read(path).map_err(|_| ScriptLoadError::Unreadable)?;
++    if !looks_like_text(&contents) {
++        return Err(ScriptLoadError::NotText);
++    }
++    Ok(contents)
++}
++
+ /// An abstraction over a PathBuf that can have virtual paths (files and directories). Virtual
+ /// paths always exist and represent a way to ship Nushell code inside the binary without requiring
+ /// paths to be present in the file system.
+@@ -133,6 +218,48 @@ impl ParserPath {
+             .ok()
+     }
+ 
++    /// File length in bytes when available, without reading the body for real paths.
++    pub fn len(&self, working_set: &StateWorkingSet) -> Option<u64> {
++        match self {
++            ParserPath::RealPath(p) => std::fs::metadata(p).ok().map(|m| m.len()),
++            ParserPath::VirtualFile(_, file_id) => working_set
++                .get_contents_of_file(FileId::new(*file_id))
++                .map(|bytes| bytes.len() as u64),
++            ParserPath::VirtualDir(..) => None,
++        }
++    }
++
++    /// Read file contents for the `run` command, refusing oversized or non-text files.
++    ///
++    /// Size is checked before reading real paths so interactive parse of `run <path>` cannot hang
++    /// on large binaries completed via Tab. Not used by `source` / module loading.
++    pub fn read_run_script(
++        &self,
++        working_set: &StateWorkingSet,
++        max_bytes: u64,
++    ) -> Result<Vec<u8>, ScriptLoadError> {
++        match self {
++            ParserPath::RealPath(p) => read_run_script_file(p, max_bytes),
++            ParserPath::VirtualFile(_, file_id) => {
++                let contents = working_set
++                    .get_contents_of_file(FileId::new(*file_id))
++                    .ok_or(ScriptLoadError::Unreadable)?;
++                let size = contents.len() as u64;
++                if size > max_bytes {
++                    return Err(ScriptLoadError::TooLarge {
++                        size,
++                        max_size: max_bytes,
++                    });
++                }
++                if !looks_like_text(contents) {
++                    return Err(ScriptLoadError::NotText);
++                }
++                Ok(contents.to_vec())
++            }
++            ParserPath::VirtualDir(..) => Err(ScriptLoadError::Unreadable),
++        }
++    }
++
+     pub fn from_virtual_path(
+         working_set: &StateWorkingSet,
+         name: &str,
+@@ -202,3 +329,41 @@ impl ParserPath {
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn looks_like_text_accepts_empty_and_normal_scripts() {
++        assert!(looks_like_text(b""));
++        assert!(looks_like_text(b"def main [] { 'hi' }\n"));
++        assert!(looks_like_text(b"let x = 1\t# tab and comment\r\n"));
++        // Multi-byte UTF-8 is fine
++        assert!(looks_like_text("print '你好'\n".as_bytes()));
++    }
++
++    #[test]
++    fn looks_like_text_rejects_nul() {
++        assert!(!looks_like_text(b"abc\0def"));
++    }
++
++    #[test]
++    fn looks_like_text_rejects_invalid_utf8() {
++        assert!(!looks_like_text(&[0x80, 0x81, 0xFF]));
++    }
++
++    #[test]
++    fn looks_like_text_rejects_dense_controls() {
++        let dense = vec![0x01u8; 50];
++        assert!(!looks_like_text(&dense));
++    }
++
++    #[test]
++    fn looks_like_text_allows_sparse_controls() {
++        // A few BEL characters in mostly normal text should still count as text.
++        let mut bytes = b"print 'hello'\n".to_vec();
++        bytes.push(0x07);
++        assert!(looks_like_text(&bytes));
++    }
++}

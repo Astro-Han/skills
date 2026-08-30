@@ -1,0 +1,156 @@
+{
+  "additions": 437,
+  "author": "fdncred",
+  "base_sha": "e3dcf2d9bb5dd585e3bc96ca0fdab4f90ab6eff8",
+  "body": "<!--\r\nThanks for contributing to Nushell!\r\n\r\nBefore submitting, please read the contributing guide:\r\nhttps://github.com/nushell/nushell/blob/main/CONTRIBUTING.md\r\n\r\nThis template helps reviewers understand your changes and allows us to generate high-quality release notes.\r\n-->\r\n\r\n## Description\r\nThis PR stops the `run` command from trying to parse non-text files nor files that are big. There's a heuristic that determines non-text by looking at the first 8192 bytes of a file and big is currently set at 1_048_576 bytes.\r\n\r\n<!--\r\nExplain what this PR does and why.\r\n\r\nThis section is intentionally flexible:\r\n- Describe the problem\r\n- Explain your approach\r\n- Include technical details if relevant\r\n\r\nGood examples:\r\n- \"In this PR, I fixed...\"\r\n- \"In this PR, I added support for...\"\r\n- \"This change improves X by...\"\r\n\r\nWrite as much or as little as needed for reviewers to understand your changes.\r\n-->\r\n\r\n## User-facing changes (Release notes)\r\nStop `run` from hanging by not parsing files over 1MB or non-text.\r\n\r\n<!--\r\nThis section is used (mostly as-is) for https://www.nushell.sh/blog/\r\n\r\nDescribe how Nushell behavior changes from a user's perspective.\r\nDo NOT describe internal Rust changes here.\r\n\r\nWrite in a release note style, for example:\r\n- \"Added support for...\"\r\n- \"Fixed an issue where...\"\r\n- \"Nushell now supports...\"\r\n- \"Improved performance of...\"\r\n\r\nIf your changes do NOT affect users (internal refactors, cleanup, etc.),\r\njust write:\r\n- \"n/a\"\r\n- \"nan\"\r\n- or similar\r\n\r\nThis tells us the change should not appear in the changelog.\r\n\r\nTips:\r\n- Focus on observable behavior\r\n- Include examples if helpful\r\n- Keep it concise\r\n\r\nYou can:\r\n- Write a short paragraph (will appear as a bullet point), OR\r\n- Use headings (###) if your change needs more structure\r\n\r\nAvoid writing things like:\r\n- \"In this PR, I refactored...\"\r\n- \"This updates internal code...\"\r\n\r\nYou may leave this blank until the PR is ready.\r\n-->\r\n\r\n## Additional notes\r\ncloses https://github.com/nushell/nushell/issues/18597\r\n<!--\r\nOptional.\r\n\r\nExamples:\r\n- fixes #123\r\n- closes #456\r\n- related #789\r\n\r\nAnything else reviewers should know.\r\nRemove this section if not needed.\r\n-->",
+  "captured_at": "2026-08-30T10:28:40+00:00",
+  "case_id": "nushell-nushell-pr-18603",
+  "changed_files": 5,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "triage",
+      "status": "COMPLETED",
+      "workflowName": "Label PRs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Milestone Update",
+      "status": "COMPLETED",
+      "workflowName": "Milestone Action"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Spell Check with Typos",
+      "status": "COMPLETED",
+      "workflowName": "Typos"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (WASM)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (ubuntu-22.04, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (macos-latest, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (windows-latest, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    }
+  ],
+  "comparison_base_sha": "35f2c1015383c154d5c2d3a930700fc4bce612b0",
+  "deletions": 52,
+  "files": [
+    {
+      "additions": 34,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "crates/nu-command/src/misc/run.rs"
+    },
+    {
+      "additions": 122,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "crates/nu-command/tests/commands/run.rs"
+    },
+    {
+      "additions": 86,
+      "changeType": "MODIFIED",
+      "deletions": 49,
+      "path": "crates/nu-parser/src/parse_source.rs"
+    },
+    {
+      "additions": 30,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/nu-protocol/src/errors/parse_error.rs"
+    },
+    {
+      "additions": 165,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/nu-protocol/src/parser_path.rs"
+    }
+  ],
+  "head_sha": "18fa73d2b3b12c9b702e7bafad1505242d57c39c",
+  "issues": [
+    {
+      "body": "### Bug report form\n\n- [x] I have done a basic search of the issue tracker to find any existing issues that are similar.\n- [x] I have checked that my version is at least the latest stable release available via my installation method.\n\n### Describe the bug\n\nIt seems that `run` arguments (files) are read then parsed before the command is even executed.\nIf a file is \"big enough\", `nu` will hang and use `>1Go` or RAM.\n\n### How to reproduce\n\n1. Go to an empty directory\n1. Put a file with with at last 50Mo\n1. Type `run <Tab>` (the word \"run\", the `space` key then the `tab` key)\n\nHere is a minimal code:\n**WARNING** your shell might hang\n\n```nu\ncd (mktemp -d)\n\n# Add a file big enough to trigger the freezing ...but not too big\nhttp get https://github.com/nushell/nushell/releases/download/0.114.1/nu-0.114.1-x86_64-unknown-linux-musl.tar.gz\n| save --progress nu-0.114.1-x86_64-unknown-linux-musl.tar.gz\n\nrun <Tab>\n\n```\n\n### Expected behavior\n\n1. No hang\n1. No excessive RAM usage\n\n### Configuration\n\n| key                  | value                                                                                                                                            |\n| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |\n| version              | 0.114.1                                                                                                                                          |\n| major                | 0                                                                                                                                                |\n| minor                | 114                                                                                                                                              |\n| patch                | 1                                                                                                                                                |\n| branch               |                                                                                                                                                  |\n| commit_hash          | 0df4ca222cc713e79b6b1684ad8ccaec584ce4ac                                                                                                         |\n| build_os             | linux-x86_64                                                                                                                                     |\n| build_target         | x86_64-unknown-linux-musl                                                                                                                        |\n| rust_version         | rustc 1.95.0 (59807616e 2026-04-14)                                                                                                              |\n| rust_channel         | 1.95.0-x86_64-unknown-linux-gnu                                                                                                                  |\n| cargo_version        | cargo 1.95.0 (f2d3ce0bd 2026-03-21)                                                                                                              |\n| build_time           | 2026-07-11 16:18:14 +00:00                                                                                                                       |\n| build_rust_channel   | release                                                                                                                                          |\n| allocator            | standard                                                                                                                                         |\n| features             | default, lsp, mcp, network, plugin, rustls-tls, sqlite, static-link-openssl, trash-support                                                       |\n| installed_plugins    |                                                                                                                                                  |\n| experimental_options | example=false, dc-glob=false, reorder-cell-paths=true, pipefail=true, enforce-runtime-annotations=true, native-clip=false, cell-path-types=false |",
+      "number": 18597,
+      "title": "The new `run` command (`0.114.0`) hangs depending on its argument",
+      "url": "https://github.com/nushell/nushell/issues/18597"
+    }
+  ],
+  "patch_sha256": "ec862a5f97e202fd4f001572869976ad31c8a60dd3777db913c58a4121130c15",
+  "pr_number": 18603,
+  "repo": "nushell/nushell",
+  "schema_version": 1,
+  "title": "fix: stop `run` from trying to parse big non-text files",
+  "url": "https://github.com/nushell/nushell/pull/18603"
+}

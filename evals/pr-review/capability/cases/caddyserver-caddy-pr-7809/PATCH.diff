@@ -1,0 +1,1093 @@
+From ee1e6e6607d1278cc65a5f103bd9901d205039d7 Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Mon, 8 Jun 2026 00:52:56 +0300
+Subject: [PATCH 1/6] caddyhttp: restore allow_underscore_in_headers server
+ option (#7808)
+
+---
+ caddyconfig/httpcaddyfile/serveroptions.go | 50 +++++++++++++---------
+ modules/caddyhttp/server.go                | 21 ++++++---
+ 2 files changed, 45 insertions(+), 26 deletions(-)
+
+diff --git a/caddyconfig/httpcaddyfile/serveroptions.go b/caddyconfig/httpcaddyfile/serveroptions.go
+index 1febf40974c..15c90ba77af 100644
+--- a/caddyconfig/httpcaddyfile/serveroptions.go
++++ b/caddyconfig/httpcaddyfile/serveroptions.go
+@@ -36,27 +36,28 @@ type serverOptions struct {
+ 	ListenerAddress string
+ 
+ 	// These will all map 1:1 to the caddyhttp.Server struct
+-	Name                  string
+-	ListenerWrappersRaw   []json.RawMessage
+-	PacketConnWrappersRaw []json.RawMessage
+-	ReadTimeout           caddy.Duration
+-	ReadHeaderTimeout     caddy.Duration
+-	WriteTimeout          caddy.Duration
+-	IdleTimeout           caddy.Duration
+-	KeepAliveInterval     caddy.Duration
+-	KeepAliveIdle         caddy.Duration
+-	KeepAliveCount        int
+-	MaxHeaderBytes        int
+-	EnableFullDuplex      bool
+-	Protocols             []string
+-	StrictSNIHost         *bool
+-	TrustedProxiesRaw     json.RawMessage
+-	TrustedProxiesStrict  int
+-	TrustedProxiesUnix    bool
+-	ClientIPHeaders       []string
+-	ShouldLogCredentials  bool
+-	Metrics               *caddyhttp.Metrics
+-	Trace                 bool // TODO: EXPERIMENTAL
++	Name                             string
++	ListenerWrappersRaw              []json.RawMessage
++	PacketConnWrappersRaw            []json.RawMessage
++	ReadTimeout                      caddy.Duration
++	ReadHeaderTimeout                caddy.Duration
++	WriteTimeout                     caddy.Duration
++	IdleTimeout                      caddy.Duration
++	KeepAliveInterval                caddy.Duration
++	KeepAliveIdle                    caddy.Duration
++	KeepAliveCount                   int
++	MaxHeaderBytes                   int
++	EnableFullDuplex                 bool
++	InsecureAllowUnderscoreInHeaders bool
++	Protocols                        []string
++	StrictSNIHost                    *bool
++	TrustedProxiesRaw                json.RawMessage
++	TrustedProxiesStrict             int
++	TrustedProxiesUnix               bool
++	ClientIPHeaders                  []string
++	ShouldLogCredentials             bool
++	Metrics                          *caddyhttp.Metrics
++	Trace                            bool // TODO: EXPERIMENTAL
+ 	// If set, overrides whether QUIC listeners allow 0-RTT (early data).
+ 	// If nil, the default behavior is used (currently allowed).
+ 	Allow0RTT *bool
+@@ -218,6 +219,12 @@ func unmarshalCaddyfileServerOptions(d *caddyfile.Dispenser) (any, error) {
+ 			}
+ 			serverOpts.EnableFullDuplex = true
+ 
++		case "insecure_allow_underscore_in_headers":
++			if d.NextArg() {
++				return nil, d.ArgErr()
++			}
++			serverOpts.InsecureAllowUnderscoreInHeaders = true
++
+ 		case "log_credentials":
+ 			if d.NextArg() {
+ 				return nil, d.ArgErr()
+@@ -380,6 +387,7 @@ func applyServerOptions(
+ 		server.KeepAliveCount = opts.KeepAliveCount
+ 		server.MaxHeaderBytes = opts.MaxHeaderBytes
+ 		server.EnableFullDuplex = opts.EnableFullDuplex
++		server.InsecureAllowUnderscoreInHeaders = opts.InsecureAllowUnderscoreInHeaders
+ 		server.Protocols = opts.Protocols
+ 		server.StrictSNIHost = opts.StrictSNIHost
+ 		server.TrustedProxiesRaw = opts.TrustedProxiesRaw
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+index 0479af83daa..02a43d5f812 100644
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -124,6 +124,15 @@ type Server struct {
+ 	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+ 	EnableFullDuplex bool `json:"enable_full_duplex,omitempty"`
+ 
++	// If true, incoming HTTP request headers containing underscores
++	// in their names are preserved instead of being dropped. By
++	// default, Caddy drops these headers to prevent ambiguity with
++	// CGI/FastCGI backends that map hyphens to underscores
++	// (GHSA-f59h-q822-g45g). Enable this only if your backends
++	// require underscore-named headers and you understand the
++	// associated security implications.
++	InsecureAllowUnderscoreInHeaders bool `json:"insecure_allow_underscore_in_headers,omitempty"`
++
+ 	// Routes describes how this server will handle requests.
+ 	// Routes are executed sequentially. First a route's matchers
+ 	// are evaluated, then its grouping. If it matches and has
+@@ -497,12 +506,14 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+ 	// Drop headers whose names contain `_`: once FastCGI/CGI/FrankenPHP etc. rewrites `-` to
+ 	// `_`, an underscore alias collides with the legitimate hyphenated header
+ 	// and can bypass `forward_auth copy_headers` (GHSA-f59h-q822-g45g).
+-	for k := range r.Header {
+-		if strings.ContainsRune(k, '_') {
+-			delete(r.Header, k)
++	if !s.InsecureAllowUnderscoreInHeaders {
++		for k := range r.Header {
++			if strings.ContainsRune(k, '_') {
++				delete(r.Header, k)
+ 
+-			if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing underscore"); c != nil {
+-				c.Write(zap.String("header", k))
++				if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing underscore"); c != nil {
++					c.Write(zap.String("header", k))
++				}
+ 			}
+ 		}
+ 	}
+
+From 134ed77870267adfa27b5830f96c094d4db002fe Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Tue, 9 Jun 2026 15:57:11 +0300
+Subject: [PATCH 2/6] caddyhttp: mark insecure_allow_underscore_in_headers as
+ EXPERIMENTAL
+
+---
+ modules/caddyhttp/server.go | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+index 02a43d5f812..22e745985bd 100644
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -131,6 +131,8 @@ type Server struct {
+ 	// (GHSA-f59h-q822-g45g). Enable this only if your backends
+ 	// require underscore-named headers and you understand the
+ 	// associated security implications.
++	//
++	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+ 	InsecureAllowUnderscoreInHeaders bool `json:"insecure_allow_underscore_in_headers,omitempty"`
+ 
+ 	// Routes describes how this server will handle requests.
+
+From 1b519c023a23602704c41bc0ccabcbe5e826c9fa Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Wed, 10 Jun 2026 14:50:29 +0300
+Subject: [PATCH 3/6] caddyhttp: replace underscore bool with
+ expected_underscore_headers allowlist
+
+---
+ caddyconfig/httpcaddyfile/serveroptions.go |  11 +-
+ modules/caddyhttp/app.go                   |   5 +
+ modules/caddyhttp/server.go                | 134 +++++++-
+ modules/caddyhttp/server_test.go           | 336 +++++++++++++++++++++
+ 4 files changed, 473 insertions(+), 13 deletions(-)
+
+diff --git a/caddyconfig/httpcaddyfile/serveroptions.go b/caddyconfig/httpcaddyfile/serveroptions.go
+index 15c90ba77af..f4f7a0fa9ec 100644
+--- a/caddyconfig/httpcaddyfile/serveroptions.go
++++ b/caddyconfig/httpcaddyfile/serveroptions.go
+@@ -48,7 +48,7 @@ type serverOptions struct {
+ 	KeepAliveCount                   int
+ 	MaxHeaderBytes                   int
+ 	EnableFullDuplex                 bool
+-	InsecureAllowUnderscoreInHeaders bool
++	ExpectedUnderscoreHeaders        []string
+ 	Protocols                        []string
+ 	StrictSNIHost                    *bool
+ 	TrustedProxiesRaw                json.RawMessage
+@@ -219,11 +219,12 @@ func unmarshalCaddyfileServerOptions(d *caddyfile.Dispenser) (any, error) {
+ 			}
+ 			serverOpts.EnableFullDuplex = true
+ 
+-		case "insecure_allow_underscore_in_headers":
+-			if d.NextArg() {
++		case "expected_underscore_headers":
++			args := d.RemainingArgs()
++			if len(args) == 0 {
+ 				return nil, d.ArgErr()
+ 			}
+-			serverOpts.InsecureAllowUnderscoreInHeaders = true
++			serverOpts.ExpectedUnderscoreHeaders = args
+ 
+ 		case "log_credentials":
+ 			if d.NextArg() {
+@@ -387,7 +388,7 @@ func applyServerOptions(
+ 		server.KeepAliveCount = opts.KeepAliveCount
+ 		server.MaxHeaderBytes = opts.MaxHeaderBytes
+ 		server.EnableFullDuplex = opts.EnableFullDuplex
+-		server.InsecureAllowUnderscoreInHeaders = opts.InsecureAllowUnderscoreInHeaders
++		server.ExpectedUnderscoreHeaders = opts.ExpectedUnderscoreHeaders
+ 		server.Protocols = opts.Protocols
+ 		server.StrictSNIHost = opts.StrictSNIHost
+ 		server.TrustedProxiesRaw = opts.TrustedProxiesRaw
+diff --git a/modules/caddyhttp/app.go b/modules/caddyhttp/app.go
+index 79fd5f41419..a9144b8fc38 100644
+--- a/modules/caddyhttp/app.go
++++ b/modules/caddyhttp/app.go
+@@ -287,6 +287,11 @@ func (app *App) Provision(ctx caddy.Context) error {
+ 			srv.ClientIPHeaders = []string{"X-Forwarded-For"}
+ 		}
+ 
++		// precompute underscore header allowlist rules
++		if err := srv.provisionUnderscoreHeaders(); err != nil {
++			return fmt.Errorf("server %s: %v", srvName, err)
++		}
++
+ 		// process each listener address
+ 		for i := range srv.Listen {
+ 			lnOut, err := repl.ReplaceOrErr(srv.Listen[i], true, true)
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+index 22e745985bd..9dad2dbdade 100644
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -124,16 +124,19 @@ type Server struct {
+ 	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+ 	EnableFullDuplex bool `json:"enable_full_duplex,omitempty"`
+ 
+-	// If true, incoming HTTP request headers containing underscores
+-	// in their names are preserved instead of being dropped. By
+-	// default, Caddy drops these headers to prevent ambiguity with
++	// A list of header field names containing underscores that should
++	// be preserved instead of being dropped. By default, Caddy drops
++	// ALL headers with underscores to prevent ambiguity with
+ 	// CGI/FastCGI backends that map hyphens to underscores
+-	// (GHSA-f59h-q822-g45g). Enable this only if your backends
+-	// require underscore-named headers and you understand the
+-	// associated security implications.
++	// (GHSA-f59h-q822-g45g). When this list is configured, only the
++	// specified headers are kept; their hyphenated variants are
++	// actively dropped to prevent confusion. Entries are
++	// case-insensitive. A trailing "*" acts as a prefix glob
++	// (e.g., "webhook_*" matches any header starting with
++	// "webhook_").
+ 	//
+ 	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+-	InsecureAllowUnderscoreInHeaders bool `json:"insecure_allow_underscore_in_headers,omitempty"`
++	ExpectedUnderscoreHeaders []string `json:"expected_underscore_headers,omitempty"`
+ 
+ 	// Routes describes how this server will handle requests.
+ 	// Routes are executed sequentially. First a route's matchers
+@@ -304,6 +307,11 @@ type Server struct {
+ 
+ 	shutdownAt atomic.Pointer[time.Time]
+ 
++	// precomputed underscore header allowlist (built during provisioning)
++	underscoreExactAllow  map[string]struct{}
++	underscoreExactDrop   map[string]struct{}
++	underscorePrefixRules []underscoreRule
++
+ 	// registered callback functions
+ 	connStateFuncs   []func(net.Conn, http.ConnState)
+ 	connContextFuncs []func(ctx context.Context, c net.Conn) context.Context
+@@ -311,6 +319,95 @@ type Server struct {
+ 	onStopFuncs      []func(context.Context) error // TODO: Experimental (Nov. 2023)
+ }
+ 
++// underscoreRule pairs a canonical underscore prefix with its hyphenated
++// counterpart. Used for prefix-glob matching in the allowlist.
++type underscoreRule struct {
++	allow string // canonical underscore form, e.g. "Webhook_"
++	drop  string // canonical hyphenated form, e.g. "Webhook-"
++}
++
++// provisionUnderscoreHeaders validates the ExpectedUnderscoreHeaders
++// entries and builds the precomputed maps and prefix rules used by
++// the hot-path filter in serveHTTP.
++func (s *Server) provisionUnderscoreHeaders() error {
++	if len(s.ExpectedUnderscoreHeaders) == 0 {
++		return nil
++	}
++
++	s.underscoreExactAllow = make(map[string]struct{}, len(s.ExpectedUnderscoreHeaders))
++	s.underscoreExactDrop = make(map[string]struct{}, len(s.ExpectedUnderscoreHeaders))
++
++	for _, entry := range s.ExpectedUnderscoreHeaders {
++		// Reject non-ASCII bytes: Go's HTTP parser returns 400 for
++		// non-ASCII header names, so such entries can never match.
++		for i := 0; i < len(entry); i++ {
++			if entry[i] >= 0x80 {
++				return fmt.Errorf("expected_underscore_headers: entry %q contains non-ASCII characters", entry)
++			}
++		}
++
++		isGlob := strings.HasSuffix(entry, "*")
++		name := entry
++		if isGlob {
++			name = strings.TrimSuffix(entry, "*")
++		}
++
++		// Reject entries with '*' not at the trailing position.
++		if strings.ContainsRune(name, '*') {
++			return fmt.Errorf("expected_underscore_headers: entry %q has '*' in an invalid position (only a trailing '*' is allowed)", entry)
++		}
++
++		// The name (without trailing '*') must contain at least one underscore.
++		if !strings.ContainsRune(name, '_') {
++			return fmt.Errorf("expected_underscore_headers: entry %q does not contain an underscore", entry)
++		}
++
++		canonAllow := http.CanonicalHeaderKey(name)
++		canonDrop := http.CanonicalHeaderKey(strings.ReplaceAll(name, "_", "-"))
++
++		if isGlob {
++			s.underscorePrefixRules = append(s.underscorePrefixRules, underscoreRule{
++				allow: canonAllow,
++				drop:  canonDrop,
++			})
++		} else {
++			s.underscoreExactAllow[canonAllow] = struct{}{}
++			s.underscoreExactDrop[canonDrop] = struct{}{}
++		}
++	}
++
++	return nil
++}
++
++// isAllowedUnderscoreHeader reports whether key (a canonical header
++// name containing an underscore) is permitted by the allowlist.
++func (s *Server) isAllowedUnderscoreHeader(key string) bool {
++	if _, ok := s.underscoreExactAllow[key]; ok {
++		return true
++	}
++	for _, rule := range s.underscorePrefixRules {
++		if strings.HasPrefix(key, rule.allow) {
++			return true
++		}
++	}
++	return false
++}
++
++// isHyphenatedVariant reports whether key (a canonical header name
++// without underscores) is the hyphenated variant of an allowlisted
++// underscore header and should therefore be dropped.
++func (s *Server) isHyphenatedVariant(key string) bool {
++	if _, ok := s.underscoreExactDrop[key]; ok {
++		return true
++	}
++	for _, rule := range s.underscorePrefixRules {
++		if strings.HasPrefix(key, rule.drop) {
++			return true
++		}
++	}
++	return false
++}
++
+ var defaultProtocols = []string{"h1", "h2", "h3"}
+ 
+ var (
+@@ -508,7 +605,10 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+ 	// Drop headers whose names contain `_`: once FastCGI/CGI/FrankenPHP etc. rewrites `-` to
+ 	// `_`, an underscore alias collides with the legitimate hyphenated header
+ 	// and can bypass `forward_auth copy_headers` (GHSA-f59h-q822-g45g).
+-	if !s.InsecureAllowUnderscoreInHeaders {
++	//
++	// When an allowlist is configured, only the listed headers are kept and
++	// their hyphenated variants are actively dropped to prevent ambiguity.
++	if len(s.ExpectedUnderscoreHeaders) == 0 {
+ 		for k := range r.Header {
+ 			if strings.ContainsRune(k, '_') {
+ 				delete(r.Header, k)
+@@ -518,6 +618,24 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+ 				}
+ 			}
+ 		}
++	} else {
++		for k := range r.Header {
++			if strings.ContainsRune(k, '_') {
++				if !s.isAllowedUnderscoreHeader(k) {
++					delete(r.Header, k)
++
++					if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing underscore"); c != nil {
++						c.Write(zap.String("header", k))
++					}
++				}
++			} else if s.isHyphenatedVariant(k) {
++				delete(r.Header, k)
++
++				if c := s.logger.Check(zapcore.DebugLevel, "dropping hyphenated variant of expected underscore header"); c != nil {
++					c.Write(zap.String("header", k))
++				}
++			}
++		}
+ 	}
+ 
+ 	// execute the primary handler chain
+diff --git a/modules/caddyhttp/server_test.go b/modules/caddyhttp/server_test.go
+index fb6b2d49ce4..966b74f4443 100644
+--- a/modules/caddyhttp/server_test.go
++++ b/modules/caddyhttp/server_test.go
+@@ -527,6 +527,342 @@ func TestServer_serveHTTP_LogsDroppedUnderscoreHeader(t *testing.T) {
+ 	assert.Contains(t, buf.String(), `"header":"Remote_user"`)
+ }
+ 
++// --- Allowlist: exact match ---
++
++func TestServer_serveHTTP_AllowlistKeepsExactMatch(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "zeus", got.Get("User_id"))
++}
++
++func TestServer_serveHTTP_AllowlistDropsHyphenatedVariant(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus"}
++	req.Header.Set("User-Id", "attacker")
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "zeus", got.Get("User_id"))
++	assert.NotContains(t, *got, "User-Id")
++}
++
++func TestServer_serveHTTP_AllowlistDropsUnlisted(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus"}
++	req.Header["Remote_user"] = []string{"attacker"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "zeus", got.Get("User_id"))
++	assert.NotContains(t, *got, "Remote_user")
++}
++
++func TestServer_serveHTTP_AllowlistPassesThroughNormalHeaders(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header.Set("X-Real-Header", "ok")
++	req.Header.Set("Content-Type", "text/plain")
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "ok", got.Get("X-Real-Header"))
++	assert.Equal(t, "text/plain", got.Get("Content-Type"))
++}
++
++// --- Allowlist: mixed underscore/hyphen entry ---
++
++func TestServer_serveHTTP_MixedEntryKeepsOriginal(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"__user-id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["__user-Id"] = []string{"zeus"} // canonical form of __user-id
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "zeus", got.Get("__user-Id"))
++}
++
++func TestServer_serveHTTP_MixedEntryDropsFullyHyphenated(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"__user-id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["--User-Id"] = []string{"attacker"} // fully hyphenated variant
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "--User-Id")
++}
++
++func TestServer_serveHTTP_MixedEntryDropsPartialVariants(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"__user-id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	// All partial variants still contain underscores and don't match
++	// the allowlist, so they are dropped by the normal underscore filter.
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["-_user-Id"] = []string{"attacker1"} // canonical of -_user-id
++	req.Header["_-User-Id"] = []string{"attacker2"} // canonical of _-user-id
++	req.Header["__user_id"] = []string{"attacker3"} // all underscores variant
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "-_user-Id")
++	assert.NotContains(t, *got, "_-User-Id")
++	assert.NotContains(t, *got, "__user_id")
++}
++
++// --- Allowlist: prefix glob ---
++
++func TestServer_serveHTTP_PrefixGlobKeepsMatch(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["Webhook_event"] = []string{"push"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "push", got.Get("Webhook_event"))
++}
++
++func TestServer_serveHTTP_PrefixGlobDropsHyphenatedVariant(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header.Set("Webhook-Event", "push")
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "Webhook-Event")
++}
++
++func TestServer_serveHTTP_PrefixGlobDropsNonMatching(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["Other_header"] = []string{"val"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "Other_header")
++}
++
++func TestServer_serveHTTP_PrefixGlobDropsMixedVariant(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	// "Webhook-Event_type" has underscores but starts with "Webhook-Event_",
++	// which does NOT match the allow prefix "Webhook_", so it is dropped.
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["Webhook-Event_type"] = []string{"push"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "Webhook-Event_type")
++}
++
++func TestServer_serveHTTP_LiteralAsteriskInHeader(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	// A header literally named "Webhook_*" matches the prefix rule
++	// because "Webhook_" is a prefix of "Webhook_*".
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["Webhook_*"] = []string{"val"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "val", got.Get("Webhook_*"))
++}
++
++// --- Combined allowlist ---
++
++func TestServer_serveHTTP_ExactAndPrefixCoexist(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                   zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id", "webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus"}             // exact match → keep
++	req.Header["Webhook_event"] = []string{"push"}        // prefix match → keep
++	req.Header["Other_field"] = []string{"bad"}           // unlisted → drop
++	req.Header.Set("User-Id", "attacker")                 // hyphenated exact → drop
++	req.Header.Set("Webhook-Event", "attacker")           // hyphenated prefix → drop
++	req.Header.Set("X-Normal-Header", "ok")               // no underscore, not a variant → pass through
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Equal(t, "zeus", got.Get("User_id"))
++	assert.Equal(t, "push", got.Get("Webhook_event"))
++	assert.Equal(t, "ok", got.Get("X-Normal-Header"))
++	assert.NotContains(t, *got, "Other_field")
++	assert.NotContains(t, *got, "User-Id")
++	assert.NotContains(t, *got, "Webhook-Event")
++}
++
++// --- Validation ---
++
++func TestServer_provisionUnderscoreHeaders_EmptyListIsNoOp(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{}}
++	// Empty slice is treated as "no allowlist" — provisionUnderscoreHeaders
++	// returns nil (no error) because len == 0 is a no-op.
++	assert.NoError(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_RejectsNoUnderscore(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"content-type"}}
++	assert.Error(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_RejectsBareWildcard(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"*"}}
++	assert.Error(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_RejectsMidGlob(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"f*oo_bar"}}
++	assert.Error(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_RejectsLeadingGlob(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"*_foo"}}
++	assert.Error(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_RejectsNonASCII(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"uşer_id"}}
++	assert.Error(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_ValidExact(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"user_id"}}
++	assert.NoError(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_ValidGlob(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"webhook_*"}}
++	assert.NoError(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_ValidMixed(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"__user-id"}}
++	assert.NoError(t, s.provisionUnderscoreHeaders())
++}
++
++func TestServer_provisionUnderscoreHeaders_DeduplicatesSilently(t *testing.T) {
++	s := &Server{ExpectedUnderscoreHeaders: []string{"user_id", "user_id"}}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++	assert.Len(t, s.underscoreExactAllow, 1)
++}
++
+ // TestServer_SpaceInHeaderNameReturnsBadRequest documents why the underscore
+ // filter does not also strip space-named headers: Go's HTTP parser rejects a
+ // space in a field name with 400 before any handler runs, so such a request
+
+From 175173a6e77a615cc5de1bf93499da5e3753e024 Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Wed, 10 Jun 2026 18:07:27 +0300
+Subject: [PATCH 4/6] fix gofmt alignment in serveroptions.go
+
+---
+ caddyconfig/httpcaddyfile/serveroptions.go | 44 +++++++++++-----------
+ 1 file changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/caddyconfig/httpcaddyfile/serveroptions.go b/caddyconfig/httpcaddyfile/serveroptions.go
+index f4f7a0fa9ec..005cf81d35f 100644
+--- a/caddyconfig/httpcaddyfile/serveroptions.go
++++ b/caddyconfig/httpcaddyfile/serveroptions.go
+@@ -36,28 +36,28 @@ type serverOptions struct {
+ 	ListenerAddress string
+ 
+ 	// These will all map 1:1 to the caddyhttp.Server struct
+-	Name                             string
+-	ListenerWrappersRaw              []json.RawMessage
+-	PacketConnWrappersRaw            []json.RawMessage
+-	ReadTimeout                      caddy.Duration
+-	ReadHeaderTimeout                caddy.Duration
+-	WriteTimeout                     caddy.Duration
+-	IdleTimeout                      caddy.Duration
+-	KeepAliveInterval                caddy.Duration
+-	KeepAliveIdle                    caddy.Duration
+-	KeepAliveCount                   int
+-	MaxHeaderBytes                   int
+-	EnableFullDuplex                 bool
+-	ExpectedUnderscoreHeaders        []string
+-	Protocols                        []string
+-	StrictSNIHost                    *bool
+-	TrustedProxiesRaw                json.RawMessage
+-	TrustedProxiesStrict             int
+-	TrustedProxiesUnix               bool
+-	ClientIPHeaders                  []string
+-	ShouldLogCredentials             bool
+-	Metrics                          *caddyhttp.Metrics
+-	Trace                            bool // TODO: EXPERIMENTAL
++	Name                      string
++	ListenerWrappersRaw       []json.RawMessage
++	PacketConnWrappersRaw     []json.RawMessage
++	ReadTimeout               caddy.Duration
++	ReadHeaderTimeout         caddy.Duration
++	WriteTimeout              caddy.Duration
++	IdleTimeout               caddy.Duration
++	KeepAliveInterval         caddy.Duration
++	KeepAliveIdle             caddy.Duration
++	KeepAliveCount            int
++	MaxHeaderBytes            int
++	EnableFullDuplex          bool
++	ExpectedUnderscoreHeaders []string
++	Protocols                 []string
++	StrictSNIHost             *bool
++	TrustedProxiesRaw         json.RawMessage
++	TrustedProxiesStrict      int
++	TrustedProxiesUnix        bool
++	ClientIPHeaders           []string
++	ShouldLogCredentials      bool
++	Metrics                   *caddyhttp.Metrics
++	Trace                     bool // TODO: EXPERIMENTAL
+ 	// If set, overrides whether QUIC listeners allow 0-RTT (early data).
+ 	// If nil, the default behavior is used (currently allowed).
+ 	Allow0RTT *bool
+
+From cd0e51fdc1949afe4dc850d36c31f4ac5c9e613f Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Thu, 11 Jun 2026 15:40:06 +0300
+Subject: [PATCH 5/6] caddyhttp: drop repeated allowlisted underscore headers
+
+---
+ modules/caddyhttp/server.go | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/modules/caddyhttp/server.go b/modules/caddyhttp/server.go
+index 9dad2dbdade..11609953e6e 100644
+--- a/modules/caddyhttp/server.go
++++ b/modules/caddyhttp/server.go
+@@ -133,7 +133,9 @@ type Server struct {
+ 	// actively dropped to prevent confusion. Entries are
+ 	// case-insensitive. A trailing "*" acts as a prefix glob
+ 	// (e.g., "webhook_*" matches any header starting with
+-	// "webhook_").
++	// "webhook_"). If an allowlisted header arrives with
++	// multiple values (repeated field), all values are dropped
++	// as a safeguard against header injection.
+ 	//
+ 	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
+ 	ExpectedUnderscoreHeaders []string `json:"expected_underscore_headers,omitempty"`
+@@ -627,6 +629,12 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) error {
+ 					if c := s.logger.Check(zapcore.DebugLevel, "dropping header containing underscore"); c != nil {
+ 						c.Write(zap.String("header", k))
+ 					}
++				} else if n := len(r.Header[k]); n > 1 {
++					delete(r.Header, k)
++
++					if c := s.logger.Check(zapcore.WarnLevel, "dropping allowlisted underscore header with repeated values (possible spoofing)"); c != nil {
++						c.Write(zap.String("header", k), zap.Int("count", n))
++					}
+ 				}
+ 			} else if s.isHyphenatedVariant(k) {
+ 				delete(r.Header, k)
+
+From 7f2024df34402501bd2ec1a617becc44cded6faf Mon Sep 17 00:00:00 2001
+From: Bluegate Studio <144131259+bluegate-studio@users.noreply.github.com>
+Date: Fri, 12 Jun 2026 03:57:43 +0300
+Subject: [PATCH 6/6] caddyhttp: add tests for repeated-value drop and
+ variant-drop logging
+
+---
+ modules/caddyhttp/server_test.go | 129 ++++++++++++++++++++++++++-----
+ 1 file changed, 110 insertions(+), 19 deletions(-)
+
+diff --git a/modules/caddyhttp/server_test.go b/modules/caddyhttp/server_test.go
+index 966b74f4443..454794a84fe 100644
+--- a/modules/caddyhttp/server_test.go
++++ b/modules/caddyhttp/server_test.go
+@@ -532,7 +532,7 @@ func TestServer_serveHTTP_LogsDroppedUnderscoreHeader(t *testing.T) {
+ func TestServer_serveHTTP_AllowlistKeepsExactMatch(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"user_id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -551,7 +551,7 @@ func TestServer_serveHTTP_AllowlistKeepsExactMatch(t *testing.T) {
+ func TestServer_serveHTTP_AllowlistDropsHyphenatedVariant(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"user_id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -572,7 +572,7 @@ func TestServer_serveHTTP_AllowlistDropsHyphenatedVariant(t *testing.T) {
+ func TestServer_serveHTTP_AllowlistDropsUnlisted(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"user_id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -593,7 +593,7 @@ func TestServer_serveHTTP_AllowlistDropsUnlisted(t *testing.T) {
+ func TestServer_serveHTTP_AllowlistPassesThroughNormalHeaders(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"user_id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -616,7 +616,7 @@ func TestServer_serveHTTP_AllowlistPassesThroughNormalHeaders(t *testing.T) {
+ func TestServer_serveHTTP_MixedEntryKeepsOriginal(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"__user-id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -635,7 +635,7 @@ func TestServer_serveHTTP_MixedEntryKeepsOriginal(t *testing.T) {
+ func TestServer_serveHTTP_MixedEntryDropsFullyHyphenated(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"__user-id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -654,7 +654,7 @@ func TestServer_serveHTTP_MixedEntryDropsFullyHyphenated(t *testing.T) {
+ func TestServer_serveHTTP_MixedEntryDropsPartialVariants(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"__user-id"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -681,7 +681,7 @@ func TestServer_serveHTTP_MixedEntryDropsPartialVariants(t *testing.T) {
+ func TestServer_serveHTTP_PrefixGlobKeepsMatch(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -700,7 +700,7 @@ func TestServer_serveHTTP_PrefixGlobKeepsMatch(t *testing.T) {
+ func TestServer_serveHTTP_PrefixGlobDropsHyphenatedVariant(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -719,7 +719,7 @@ func TestServer_serveHTTP_PrefixGlobDropsHyphenatedVariant(t *testing.T) {
+ func TestServer_serveHTTP_PrefixGlobDropsNonMatching(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -738,7 +738,7 @@ func TestServer_serveHTTP_PrefixGlobDropsNonMatching(t *testing.T) {
+ func TestServer_serveHTTP_PrefixGlobDropsMixedVariant(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -759,7 +759,7 @@ func TestServer_serveHTTP_PrefixGlobDropsMixedVariant(t *testing.T) {
+ func TestServer_serveHTTP_LiteralAsteriskInHeader(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -782,7 +782,7 @@ func TestServer_serveHTTP_LiteralAsteriskInHeader(t *testing.T) {
+ func TestServer_serveHTTP_ExactAndPrefixCoexist(t *testing.T) {
+ 	got := &http.Header{}
+ 	s := &Server{
+-		logger:                   zap.NewNop(),
++		logger:                    zap.NewNop(),
+ 		ExpectedUnderscoreHeaders: []string{"user_id", "webhook_*"},
+ 		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+ 			*got = r.Header.Clone()
+@@ -792,12 +792,12 @@ func TestServer_serveHTTP_ExactAndPrefixCoexist(t *testing.T) {
+ 	require.NoError(t, s.provisionUnderscoreHeaders())
+ 
+ 	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+-	req.Header["User_id"] = []string{"zeus"}             // exact match → keep
+-	req.Header["Webhook_event"] = []string{"push"}        // prefix match → keep
+-	req.Header["Other_field"] = []string{"bad"}           // unlisted → drop
+-	req.Header.Set("User-Id", "attacker")                 // hyphenated exact → drop
+-	req.Header.Set("Webhook-Event", "attacker")           // hyphenated prefix → drop
+-	req.Header.Set("X-Normal-Header", "ok")               // no underscore, not a variant → pass through
++	req.Header["User_id"] = []string{"zeus"}       // exact match → keep
++	req.Header["Webhook_event"] = []string{"push"} // prefix match → keep
++	req.Header["Other_field"] = []string{"bad"}    // unlisted → drop
++	req.Header.Set("User-Id", "attacker")          // hyphenated exact → drop
++	req.Header.Set("Webhook-Event", "attacker")    // hyphenated prefix → drop
++	req.Header.Set("X-Normal-Header", "ok")        // no underscore, not a variant → pass through
+ 
+ 	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
+ 	assert.Equal(t, "zeus", got.Get("User_id"))
+@@ -808,6 +808,97 @@ func TestServer_serveHTTP_ExactAndPrefixCoexist(t *testing.T) {
+ 	assert.NotContains(t, *got, "Webhook-Event")
+ }
+ 
++// --- Allowlist: repeated values ---
++
++// TestServer_serveHTTP_AllowlistDropsRepeatedExact verifies that an
++// allowlisted header arriving with multiple values (repeated field)
++// is dropped entirely as a safeguard against header injection.
++func TestServer_serveHTTP_AllowlistDropsRepeatedExact(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                    zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus", "injected"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "User_id")
++}
++
++// TestServer_serveHTTP_AllowlistDropsRepeatedPrefixGlob verifies that a
++// glob-matched header arriving with multiple values is dropped entirely.
++func TestServer_serveHTTP_AllowlistDropsRepeatedPrefixGlob(t *testing.T) {
++	got := &http.Header{}
++	s := &Server{
++		logger:                    zap.NewNop(),
++		ExpectedUnderscoreHeaders: []string{"webhook_*"},
++		primaryHandlerChain: HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
++			*got = r.Header.Clone()
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["Webhook_event"] = []string{"push", "injected"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.NotContains(t, *got, "Webhook_event")
++}
++
++// TestServer_serveHTTP_LogsRepeatedValueDrop verifies that dropping an
++// allowlisted header with repeated values emits a warn-level log with
++// the header name and value count.
++func TestServer_serveHTTP_LogsRepeatedValueDrop(t *testing.T) {
++	var buf bytes.Buffer
++	s := &Server{
++		logger:                    testLogger(buf.Write),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(http.ResponseWriter, *http.Request) error {
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header["User_id"] = []string{"zeus", "injected"}
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Contains(t, buf.String(), `"level":"warn"`)
++	assert.Contains(t, buf.String(), `"msg":"dropping allowlisted underscore header with repeated values (possible spoofing)"`)
++	assert.Contains(t, buf.String(), `"header":"User_id"`)
++	assert.Contains(t, buf.String(), `"count":2`)
++}
++
++// TestServer_serveHTTP_LogsHyphenatedVariantDrop verifies that dropping a
++// hyphenated variant of an allowlisted header emits a debug-level log.
++func TestServer_serveHTTP_LogsHyphenatedVariantDrop(t *testing.T) {
++	var buf bytes.Buffer
++	s := &Server{
++		logger:                    testLogger(buf.Write),
++		ExpectedUnderscoreHeaders: []string{"user_id"},
++		primaryHandlerChain: HandlerFunc(func(http.ResponseWriter, *http.Request) error {
++			return nil
++		}),
++	}
++	require.NoError(t, s.provisionUnderscoreHeaders())
++
++	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
++	req.Header.Set("User-Id", "attacker")
++
++	require.NoError(t, s.serveHTTP(httptest.NewRecorder(), req))
++	assert.Contains(t, buf.String(), `"level":"debug"`)
++	assert.Contains(t, buf.String(), `"msg":"dropping hyphenated variant of expected underscore header"`)
++	assert.Contains(t, buf.String(), `"header":"User-Id"`)
++}
++
+ // --- Validation ---
+ 
+ func TestServer_provisionUnderscoreHeaders_EmptyListIsNoOp(t *testing.T) {

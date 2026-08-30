@@ -1,0 +1,230 @@
+{
+  "schema_version": 1,
+  "selection_stage": "metadata_only",
+  "cases": [
+    {
+      "repo": "prometheus/prometheus",
+      "number": 19461,
+      "title": "tsdb: stabilize the XOR2 float chunk encoding",
+      "url": "https://github.com/prometheus/prometheus/pull/19461",
+      "change_type": "representation-transformation-serialization"
+    },
+    {
+      "repo": "docker/compose",
+      "number": 13949,
+      "title": "fix(build): use platform image-manifest digest, not attested index",
+      "url": "https://github.com/docker/compose/pull/13949",
+      "change_type": "representation-transformation-serialization"
+    },
+    {
+      "repo": "nushell/nushell",
+      "number": 18603,
+      "title": "fix: stop `run` from trying to parse big non-text files",
+      "url": "https://github.com/nushell/nushell/pull/18603",
+      "change_type": "representation-transformation-serialization"
+    },
+    {
+      "repo": "sveltejs/svelte",
+      "number": 18720,
+      "title": "fix: render `selected` options for `<select multiple>` with an array `value` on the server",
+      "url": "https://github.com/sveltejs/svelte/pull/18720",
+      "change_type": "representation-transformation-serialization"
+    },
+    {
+      "repo": "microsoft/vscode",
+      "number": 332826,
+      "title": "agentHost: move chat draft and title restore into chat contributions",
+      "url": "https://github.com/microsoft/vscode/pull/332826",
+      "change_type": "ownership-composition-launch"
+    },
+    {
+      "repo": "docker/compose",
+      "number": 14062,
+      "title": "refactor: one handler per container event in monitor.Start, add tests",
+      "url": "https://github.com/docker/compose/pull/14062",
+      "change_type": "ownership-composition-launch"
+    },
+    {
+      "repo": "cli/cli",
+      "number": 14255,
+      "title": "Make commands own attachment flag policy",
+      "url": "https://github.com/cli/cli/pull/14255",
+      "change_type": "ownership-composition-launch"
+    },
+    {
+      "repo": "apache/maka",
+      "number": 3813,
+      "title": "refactor(runtime-host): unify local deployment handoffs",
+      "url": "https://github.com/apache/maka/pull/3813",
+      "change_type": "ownership-composition-launch"
+    },
+    {
+      "repo": "caddyserver/caddy",
+      "number": 7826,
+      "title": "tracing: fix BatchSpanProcessor goroutine leak on config reload",
+      "url": "https://github.com/caddyserver/caddy/pull/7826",
+      "change_type": "lifecycle-concurrency-recovery"
+    },
+    {
+      "repo": "symfony/symfony",
+      "number": 65486,
+      "title": "[Messenger] Remove the worker listeners when messenger:consume ends",
+      "url": "https://github.com/symfony/symfony/pull/65486",
+      "change_type": "lifecycle-concurrency-recovery"
+    },
+    {
+      "repo": "vitejs/vite",
+      "number": 23106,
+      "title": "feat(bundled-dev): reload once after rebuild instead of via the fallback page",
+      "url": "https://github.com/vitejs/vite/pull/23106",
+      "change_type": "lifecycle-concurrency-recovery"
+    },
+    {
+      "repo": "home-assistant/core",
+      "number": 180405,
+      "title": "Fix timeout of endpoint does not crash Portainer update",
+      "url": "https://github.com/home-assistant/core/pull/180405",
+      "change_type": "lifecycle-concurrency-recovery"
+    },
+    {
+      "repo": "microsoft/vscode",
+      "number": 333247,
+      "title": "Fix chat customization migration dependency cycle",
+      "url": "https://github.com/microsoft/vscode/pull/333247",
+      "change_type": "migration-compatibility-rollback"
+    },
+    {
+      "repo": "home-assistant/core",
+      "number": 180627,
+      "title": "Migrate the Lyngdorf number platform to the lyngdorf 2.0 API",
+      "url": "https://github.com/home-assistant/core/pull/180627",
+      "change_type": "migration-compatibility-rollback"
+    },
+    {
+      "repo": "tokio-rs/tokio",
+      "number": 8300,
+      "title": "signal: restore MSRV by removing OnceLock::wait from the Windows handler",
+      "url": "https://github.com/tokio-rs/tokio/pull/8300",
+      "change_type": "migration-compatibility-rollback"
+    },
+    {
+      "repo": "caddyserver/caddy",
+      "number": 7809,
+      "title": "caddyhttp: restore allow_underscore_in_headers server option",
+      "url": "https://github.com/caddyserver/caddy/pull/7809",
+      "change_type": "migration-compatibility-rollback"
+    },
+    {
+      "repo": "caddyserver/caddy",
+      "number": 7941,
+      "title": "caddyhttp: fix url_pattern authorization bypass via encoded-slash traversal",
+      "url": "https://github.com/caddyserver/caddy/pull/7941",
+      "change_type": "trust-boundary-validation-permissions"
+    },
+    {
+      "repo": "microsoft/vscode",
+      "number": 332789,
+      "title": "mcp: match allowed server URLs to the fetch destination",
+      "url": "https://github.com/microsoft/vscode/pull/332789",
+      "change_type": "trust-boundary-validation-permissions"
+    },
+    {
+      "repo": "symfony/symfony",
+      "number": 65704,
+      "title": "[HttpClient] Drop credentials when a redirect changes the scheme",
+      "url": "https://github.com/symfony/symfony/pull/65704",
+      "change_type": "trust-boundary-validation-permissions"
+    },
+    {
+      "repo": "vercel/next.js",
+      "number": 97902,
+      "title": "Guard filesystem reads against unresolved symlinks",
+      "url": "https://github.com/vercel/next.js/pull/97902",
+      "change_type": "trust-boundary-validation-permissions"
+    },
+    {
+      "repo": "rust-lang/rust",
+      "number": 161617,
+      "title": "Add custom allocators to `(try_)map` on `Box`, `Rc`, `Arc`",
+      "url": "https://github.com/rust-lang/rust/pull/161617",
+      "change_type": "dependency-api-version-contract"
+    },
+    {
+      "repo": "home-assistant/core",
+      "number": 180358,
+      "title": "Add support for priority to SMTP integration",
+      "url": "https://github.com/home-assistant/core/pull/180358",
+      "change_type": "dependency-api-version-contract"
+    },
+    {
+      "repo": "tokio-rs/tokio",
+      "number": 8282,
+      "title": "runtime: expose schedule latency in TaskMeta / Task Hooks",
+      "url": "https://github.com/tokio-rs/tokio/pull/8282",
+      "change_type": "dependency-api-version-contract"
+    },
+    {
+      "repo": "llvm/llvm-project",
+      "number": 219348,
+      "title": "[Clang][RISCV] Add packed widening add/sub intrinsics",
+      "url": "https://github.com/llvm/llvm-project/pull/219348",
+      "change_type": "dependency-api-version-contract"
+    },
+    {
+      "repo": "apache/maka",
+      "number": 4155,
+      "title": "fix(desktop): truncate long file paths in the changes panel",
+      "url": "https://github.com/apache/maka/pull/4155",
+      "change_type": "ui-ux-user-interaction"
+    },
+    {
+      "repo": "apache/maka",
+      "number": 4024,
+      "title": "feat(ui): add UI and terminal font size settings to Appearance",
+      "url": "https://github.com/apache/maka/pull/4024",
+      "change_type": "ui-ux-user-interaction"
+    },
+    {
+      "repo": "sveltejs/svelte",
+      "number": 18719,
+      "title": "fix: keep the current selection of a `<select>` when its `defaultValue` is applied",
+      "url": "https://github.com/sveltejs/svelte/pull/18719",
+      "change_type": "ui-ux-user-interaction"
+    },
+    {
+      "repo": "prometheus/prometheus",
+      "number": 19384,
+      "title": "ui: show effective scrape pool configuration",
+      "url": "https://github.com/prometheus/prometheus/pull/19384",
+      "change_type": "ui-ux-user-interaction"
+    },
+    {
+      "repo": "sveltejs/svelte",
+      "number": 18580,
+      "title": "chore: deduplicate client/server context helpers",
+      "url": "https://github.com/sveltejs/svelte/pull/18580",
+      "change_type": "local-fix-refactor-simplification"
+    },
+    {
+      "repo": "vitejs/vite",
+      "number": 23172,
+      "title": "refactor: remove HmrUrl concept",
+      "url": "https://github.com/vitejs/vite/pull/23172",
+      "change_type": "local-fix-refactor-simplification"
+    },
+    {
+      "repo": "rust-lang/rust",
+      "number": 161796,
+      "title": "Remove dead parse error recovery (underscores in expressions)",
+      "url": "https://github.com/rust-lang/rust/pull/161796",
+      "change_type": "local-fix-refactor-simplification"
+    },
+    {
+      "repo": "symfony/symfony",
+      "number": 65527,
+      "title": "[Mailer] Fix emails reported twice when they are queued and sent in the same process",
+      "url": "https://github.com/symfony/symfony/pull/65527",
+      "change_type": "local-fix-refactor-simplification"
+    }
+  ]
+}

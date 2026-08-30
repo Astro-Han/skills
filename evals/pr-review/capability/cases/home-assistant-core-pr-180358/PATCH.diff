@@ -1,0 +1,200 @@
+From aa0822e967d07e6bf763ad490a7d09348f10168b Mon Sep 17 00:00:00 2001
+From: tr4nt0r <tr4nt0r@uber.space>
+Date: Wed, 26 Aug 2026 23:39:56 +0000
+Subject: [PATCH 1/2] Add support for priority to SMTP integration
+
+---
+ homeassistant/components/smtp/const.py           |  1 +
+ homeassistant/components/smtp/notify.py          | 12 ++++++++++++
+ homeassistant/components/smtp/services.py        |  4 ++++
+ homeassistant/components/smtp/services.yaml      | 13 +++++++++++++
+ homeassistant/components/smtp/strings.json       | 13 +++++++++++++
+ tests/components/smtp/snapshots/test_notify.ambr |  3 ++-
+ tests/components/smtp/test_notify.py             |  4 +++-
+ 7 files changed, 48 insertions(+), 2 deletions(-)
+
+diff --git a/homeassistant/components/smtp/const.py b/homeassistant/components/smtp/const.py
+index 8a5feccbe6f75..935d077ea2925 100644
+--- a/homeassistant/components/smtp/const.py
++++ b/homeassistant/components/smtp/const.py
+@@ -11,6 +11,7 @@
+ ATTR_MEDIA_SOURCE: Final = "media_source"
+ ATTR_FILENAME: Final = "filename"
+ ATTR_CONTENT_ID: Final = "content_id"
++ATTR_PRIORITY: Final = "priority"
+ 
+ CONF_ENCRYPTION: Final = "encryption"
+ CONF_SERVER: Final = "server"
+diff --git a/homeassistant/components/smtp/notify.py b/homeassistant/components/smtp/notify.py
+index f1a9645db8492..112b4bf74d3ed 100644
+--- a/homeassistant/components/smtp/notify.py
++++ b/homeassistant/components/smtp/notify.py
+@@ -64,6 +64,7 @@
+     ATTR_HTML,
+     ATTR_IMAGES,
+     ATTR_MEDIA_SOURCE,
++    ATTR_PRIORITY,
+     CONF_ENCRYPTION,
+     CONF_ENTRY,
+     CONF_SENDER_NAME,
+@@ -109,6 +110,14 @@
+     }
+ )
+ 
++MAP_X_PRIORITY = {
++    "highest": "1 (Highest)",
++    "high": "2 (High)",
++    "normal": "3 (Normal)",
++    "low": "4 (Low)",
++    "lowest": "5 (Lowest)",
++}
++
+ 
+ async def async_get_service(
+     hass: HomeAssistant,
+@@ -225,6 +234,9 @@ async def smtp_send_message(
+         msg.set_content(message)
+         msg.add_header("Subject", title or ATTR_TITLE_DEFAULT)
+ 
++        if ATTR_PRIORITY in kwargs:
++            msg.add_header("X-Priority", MAP_X_PRIORITY[kwargs[ATTR_PRIORITY]])
++
+         if ATTR_HTML in kwargs:
+             msg.add_alternative(kwargs[ATTR_HTML], subtype="html")
+ 
+diff --git a/homeassistant/components/smtp/services.py b/homeassistant/components/smtp/services.py
+index c0c019b3e79f7..5b75759765e0d 100644
+--- a/homeassistant/components/smtp/services.py
++++ b/homeassistant/components/smtp/services.py
+@@ -18,6 +18,7 @@
+     ATTR_FILENAME,
+     ATTR_HTML,
+     ATTR_MEDIA_SOURCE,
++    ATTR_PRIORITY,
+     DOMAIN,
+ )
+ 
+@@ -40,6 +41,9 @@
+                 )
+             ],
+         ),
++        vol.Optional(ATTR_PRIORITY): vol.In(
++            ["highest", "high", "normal", "low", "lowest"]
++        ),
+     }
+ )
+ 
+diff --git a/homeassistant/components/smtp/services.yaml b/homeassistant/components/smtp/services.yaml
+index 3683d7cd09b49..e487fd21e326e 100644
+--- a/homeassistant/components/smtp/services.yaml
++++ b/homeassistant/components/smtp/services.yaml
+@@ -44,3 +44,16 @@ send_message:
+               selector:
+                 text:
+           translation_key: attachments
++    priority:
++      required: false
++      selector:
++        select:
++          options:
++            - highest
++            - high
++            - normal
++            - low
++            - lowest
++          mode: dropdown
++          translation_key: "priority"
++          sort: false
+diff --git a/homeassistant/components/smtp/strings.json b/homeassistant/components/smtp/strings.json
+index a8ae6784003ea..0a428705cb66b 100644
+--- a/homeassistant/components/smtp/strings.json
++++ b/homeassistant/components/smtp/strings.json
+@@ -183,6 +183,15 @@
+         "starttls": "STARTTLS",
+         "tls": "SSL/TLS"
+       }
++    },
++    "priority": {
++      "options": {
++        "high": "High",
++        "highest": "Highest",
++        "low": "Low",
++        "lowest": "Lowest",
++        "normal": "Normal"
++      }
+     }
+   },
+   "services": {
+@@ -201,6 +210,10 @@
+           "description": "The plain text message body of the email notification.",
+           "name": "Message"
+         },
++        "priority": {
++          "description": "Priority of the email notification. Support for this setting varies between email clients.",
++          "name": "Priority"
++        },
+         "title": {
+           "description": "Subject for your email notification.",
+           "name": "Title"
+diff --git a/tests/components/smtp/snapshots/test_notify.ambr b/tests/components/smtp/snapshots/test_notify.ambr
+index 9ea3311bb87c1..9cfdfc7e872f7 100644
+--- a/tests/components/smtp/snapshots/test_notify.ambr
++++ b/tests/components/smtp/snapshots/test_notify.ambr
+@@ -70,6 +70,7 @@
+   '''
+   MIME-Version: 1.0
+   Subject: Home Assistant
++  X-Priority: 1 (Highest)
+   Content-Type: multipart/alternative;
+    boundary="===============0000000000000000001=="
+   From: Home Assistant <email@example.com>
+@@ -89,7 +90,7 @@
+   Content-Transfer-Encoding: 7bit
+   MIME-Version: 1.0
+   
+-  <html><body><img src="cid:avatar.png"></body></html>
++  <html><body><img src="https://example.com/avatar.png"></body></html>
+   
+   --===============0000000000000000001==--
+   
+diff --git a/tests/components/smtp/test_notify.py b/tests/components/smtp/test_notify.py
+index c6a1774f39553..e91a41ac7ddc8 100644
+--- a/tests/components/smtp/test_notify.py
++++ b/tests/components/smtp/test_notify.py
+@@ -28,6 +28,7 @@
+     ATTR_FILENAME,
+     ATTR_HTML,
+     ATTR_MEDIA_SOURCE,
++    ATTR_PRIORITY,
+     CONF_ENTRY,
+     DOMAIN,
+ )
+@@ -400,7 +401,8 @@ async def test_smtp_send_message(
+         {
+             ATTR_ENTITY_ID: "notify.home_assistant_recipient",
+             ATTR_MESSAGE: "Hello World",
+-            ATTR_HTML: """<html><body><img src="cid:avatar.png"></body></html>""",
++            ATTR_HTML: """<html><body><img src="https://example.com/avatar.png"></body></html>""",
++            ATTR_PRIORITY: "highest",
+         },
+         blocking=True,
+     )
+
+From 91162d5f2851cec8c1066b0c843cb666b6074f9b Mon Sep 17 00:00:00 2001
+From: tr4nt0r <tr4nt0r@uber.space>
+Date: Thu, 27 Aug 2026 00:36:57 +0000
+Subject: [PATCH 2/2] add example
+
+---
+ homeassistant/components/smtp/services.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/homeassistant/components/smtp/services.yaml b/homeassistant/components/smtp/services.yaml
+index e487fd21e326e..32d1ad75eed7d 100644
+--- a/homeassistant/components/smtp/services.yaml
++++ b/homeassistant/components/smtp/services.yaml
+@@ -57,3 +57,4 @@ send_message:
+           mode: dropdown
+           translation_key: "priority"
+           sort: false
++      example: highest

@@ -1,0 +1,119 @@
+{
+  "additions": 114,
+  "author": "nicolas-grekas",
+  "base_sha": "7ca72401f058b8319a27dd40d88f08b7cc0dc9e7",
+  "body": "| Q             | A\n| ------------- | ---\n| Branch?       | 6.4\n| Bug fix?      | yes\n| New feature?  | no\n| Deprecations? | no\n| Issues        | Fix #54161\n| License       | MIT\n\nWhen the mailer is wired to a message bus, every email produces two `MessageEvent` instances: one dispatched by `Mailer::send()` before the email goes to the bus, with `queued` set to true, and one dispatched by the transport when the email is really sent. As soon as the bus handles `SendEmailMessage` synchronously, which is what happens by default once `symfony/messenger` is installed and no routing is configured, both events happen in the same process.\n\n`MessageEvents::getMessages()`, which backs `getMailerMessages()` and `getMailerMessage()` in `MailerAssertionsTrait`, returned one message per event. Tests therefore saw every email twice, and `getMailerMessage(1)` returned the queued copy of the first email instead of the second one. `assertEmailCount()` did not have the problem because the `EmailCount` constraint already ignores queued events, which is why the two disagreed.\n\n`getMessages()` now reports each email once. An email that was queued and then sent in the same process is reported through its sent message, which is the rendered one the transport received. An email that is still in the queue keeps being reported through its queued message, so tests that route emails to a real asynchronous transport are unaffected. `getMailerEvents()` still exposes both events, so `assertQueuedEmailCount()` and the profiler panel are unchanged.\n\nThe pairing is positional: a queued email is folded into the next email sent after it. The queued event and the sent event cannot be correlated by identity, because both carry a different clone of the message. The one case this cannot tell apart is an application that leaves an email in a queue and then sends an unrelated email through the same transport in the same process, which requires two differently wired mailer services.\n\nChecks run on PHP 8.5 with PHPUnit 9.6:\n\n* new `Symfony\\Component\\Mailer\\Tests\\Event\\MessageEventsTest`, which drives a real `Mailer`, a synchronous `MessageBus` and the `MessageLoggerListener`: fails on the base commit with `Failed asserting that actual size 4 matches expected size 2`, passes with the fix.\n* `./phpunit src/Symfony/Component/Mailer/Tests`: 169 tests, 8 skipped, no failure.\n* `./phpunit src/Symfony/Bundle/FrameworkBundle/Tests`: 1374 tests, 5 skipped, no failure. The 31 legacy deprecation notices are reported on the base commit as well.\n\n",
+  "captured_at": "2026-08-30T10:28:24+00:00",
+  "case_id": "symfony-symfony-pr-65527",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Fabbot / Checks",
+      "status": "COMPLETED",
+      "workflowName": "CS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Integration (8.1)",
+      "status": "COMPLETED",
+      "workflowName": "Integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Psalm",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.1)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify Packages",
+      "status": "COMPLETED",
+      "workflowName": "Verify Packages"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "x86 / minimal-exts / lowest-php",
+      "status": "COMPLETED",
+      "workflowName": "Windows"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.4, high-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.2, low-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.3)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.4)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.5)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Unit Tests (8.6)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PHPStan",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Hardening tests",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    }
+  ],
+  "comparison_base_sha": "4f5c62c34cffc818385ecff114edade82c288633",
+  "deletions": 3,
+  "files": [
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "src/Symfony/Component/Mailer/Event/MessageEvents.php"
+    },
+    {
+      "additions": 101,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/Mailer/Tests/Event/MessageEventsTest.php"
+    }
+  ],
+  "head_sha": "f35974eb84c57a97f85e5dc4fb1ad52d65358cd2",
+  "issues": [],
+  "patch_sha256": "451174c377fd6cbc4560f5370a0273accd6c4c3b042aab36fe7449763ca7b41d",
+  "pr_number": 65527,
+  "repo": "symfony/symfony",
+  "schema_version": 1,
+  "title": "[Mailer] Fix emails reported twice when they are queued and sent in the same process",
+  "url": "https://github.com/symfony/symfony/pull/65527"
+}

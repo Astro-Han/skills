@@ -1,0 +1,332 @@
+{
+  "additions": 125,
+  "author": "roidelapluie",
+  "base_sha": "a70bacac22231ab4cf87e7bc4115582f5b824f5f",
+  "body": "Deprecate the --enable-feature=xor2-encoding flag. It now only sets the default for storage.tsdb.chunk_encoding.floats and will become a no-op in a future major version; select xor2 directly in the config instead.\r\n\r\n<!--\r\n    - Please give your PR a title in the form \"area: short description\".  For example \"tsdb: reduce disk usage by 95%\"\r\n\r\n    - Please sign CNCF's Developer Certificate of Origin and sign-off your commits by adding the -s / --signoff flag to `git commit`. See https://github.com/apps/dco for more information.\r\n\r\n    - If the PR adds or changes a behaviour or fixes a bug of an exported API it would need a unit/e2e test.\r\n\r\n    - Where possible use only exported APIs for tests to simplify the review and make it as close as possible to an actual library usage.\r\n\r\n    - Performance improvements would need a benchmark test to prove it.\r\n\r\n    - All exposed objects should have a comment.\r\n\r\n    - All comments should start with a capital letter and end with a full stop.\r\n -->\r\n\r\n#### Which issue(s) does the PR fix:\r\n<!--\r\nIf it applies.\r\nAutomatically closes linked issue when PR is merged.\r\nUsage: `Fixes #<issue number>`, or `Fixes (paste link of issue)`.\r\nMore at https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue#linking-a-pull-request-to-an-issue-using-a-keyword\r\n-->\r\n\r\n#### Release notes for end users (**ALL** commits must be considered).\r\n*Reviewers should verify clarity and quality.*\r\n\r\n<!--\r\nWrite NONE only if there is no user-facing change.\r\n\r\nOtherwise use one of: [FEATURE] [ENHANCEMENT] [PERF] [BUGFIX] [SECURITY] [CHANGE]\r\nFollowing the pattern `[TYPE] Component: description.`\r\n\r\nExample: [FEATURE] API: Add `/api/v1/features` endpoint.\r\n\r\nRefer to the existing CHANGELOG for inspiration:  https://github.com/prometheus/\r\nprometheus/blob/main/CHANGELOG.md\r\n-->\r\n```release-notes\r\n[ENHANCEMENT] TSDB: Stabilize the XOR2 float chunk encoding. `--enable-feature=xor2-encoding` is deprecated; use `storage.tsdb.chunk_encoding.floats: xor2` instead. Check that other software reading the TSDB directly (e.g. Thanos sidecar) supports XOR2 before enabling.\r\n```\r\n",
+  "captured_at": "2026-08-30T10:28:05+00:00",
+  "case_id": "prometheus-prometheus-pr-19461",
+  "changed_files": 15,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "dependabot",
+      "status": "COMPLETED",
+      "workflowName": "Dependabot auto-merge"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "Check release notes"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scorecards analysis",
+      "status": "COMPLETED",
+      "workflowName": "Scorecards supply-chain security"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "More Go tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for 32-bit x86",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "List active LTS releases",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests with previous Go version",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "UI tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests on Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Mixins tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compliance testing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check generated parser",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "golangci-lint",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseMetricText, FuzzParseOpenMetric)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseMetricSelector, FuzzParseExpr)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzXORChunk, FuzzXOR2Chunk)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseProtobuf)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Fuzzing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codeql / Analyze (javascript)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for Prometheus upgrades and downgrades (3.13.2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for Prometheus upgrades and downgrades (3.5.5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (0)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (1)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build Prometheus for all architectures",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Publish UI on npm Registry",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Report status of build Prometheus for all architectures",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish main branch artifacts",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish release artefacts",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Scorecard",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Redirect rules - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "a70bacac22231ab4cf87e7bc4115582f5b824f5f",
+  "deletions": 119,
+  "files": [
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "cmd/prometheus/main.go"
+    },
+    {
+      "additions": 36,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "cmd/prometheus/main_test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "cmd/prometheus/testdata/features.json"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "config/config.go"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "docs/configuration/configuration.md"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 19,
+      "path": "docs/feature_flags.md"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "promql/functions_test.go"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "promql/promqltest/test.go"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "promql/promqltest/test_test.go"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "scrape/scrape_test.go"
+    },
+    {
+      "additions": 25,
+      "changeType": "MODIFIED",
+      "deletions": 31,
+      "path": "tsdb/db.go"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "tsdb/db_append_v2_test.go"
+    },
+    {
+      "additions": 30,
+      "changeType": "MODIFIED",
+      "deletions": 41,
+      "path": "tsdb/db_test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tsdb/docs/format/chunks.md"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tsdb/querier_test.go"
+    }
+  ],
+  "head_sha": "c1f3939425a41e4d4ed596327ed7a519197cb324",
+  "issues": [],
+  "patch_sha256": "f657a7ed18aa0bb1adce6a08c57732b16420f2fd1fe17feb3cc0ba42c3281f06",
+  "pr_number": 19461,
+  "repo": "prometheus/prometheus",
+  "schema_version": 1,
+  "title": "tsdb: stabilize the XOR2 float chunk encoding",
+  "url": "https://github.com/prometheus/prometheus/pull/19461"
+}

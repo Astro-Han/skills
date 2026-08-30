@@ -1,0 +1,280 @@
+From 2926062009a712c7387adb7a175b6446fd55dcde Mon Sep 17 00:00:00 2001
+From: "dean.wang" <dean.wang@plaud.ai>
+Date: Wed, 17 Jun 2026 20:49:14 +0800
+Subject: [PATCH 1/2] tracing: fix BatchSpanProcessor goroutine leak on config
+ reload
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When the `tracing` directive is enabled, each config reload leaks one
+`go.opentelemetry.io/otel/sdk/trace.(*batchSpanProcessor).processQueue`
+goroutine. On a server that reloads frequently (e.g. polling a remote
+config source every few seconds) this accumulates into tens of thousands
+of leaked goroutines over time.
+
+A goroutine dump shows many identical stacks:
+
+```
+goroutine ... [select]:
+go.opentelemetry.io/otel/sdk/trace.(*batchSpanProcessor).processQueue(...)
+	.../sdk/trace/batch_span_processor.go:327
+go.opentelemetry.io/otel/sdk/trace.NewBatchSpanProcessor.func2()
+	.../sdk/trace/batch_span_processor.go:129
+created by go.opentelemetry.io/otel/sdk/trace.NewBatchSpanProcessor
+	.../sdk/trace/batch_span_processor.go:127
+```
+
+`tracing` keeps a global, reference-counted `TracerProvider` so it can be
+reused across reloads (`tracerProvider.getTracerProvider`). Caddy reloads
+provision the new config *before* cleaning up the old one, so the counter
+never drops to 0 and the provider is correctly reused — `Shutdown` is
+never called, by design.
+
+The problem is on the caller side in `newOpenTelemetryWrapper`:
+
+```go
+traceExporter, err := autoexport.NewSpanExporter(ctx)
+...
+tracerProvider := globalTracerProvider.getTracerProvider(
+    sdktrace.WithBatcher(traceExporter),   // evaluated on every reload
+    sdktrace.WithResource(res),
+)
+```
+
+`sdktrace.WithBatcher(e)` is `WithSpanProcessor(NewBatchSpanProcessor(e))`,
+and `NewBatchSpanProcessor` **starts its `processQueue` goroutine eagerly at
+construction time** — not when the option is applied. The option is built
+on every `Provision` (every reload), but `getTracerProvider` only applies
+it when it actually creates a new provider (`t.tracerProvider == nil`). On
+the reuse path the option is silently discarded, so the just-started
+BatchSpanProcessor goroutine is orphaned: it is never registered with any
+provider and therefore never shut down. Result: one leaked goroutine (plus
+a leaked exporter) per reload.
+
+Defer construction of the exporter/batcher until a new provider is actually
+needed. `getTracerProvider` now takes a `buildOpts` factory that is invoked
+only on the create path, so nothing with a side effect is built on the
+reuse path.
+
+The reference counter is now incremented only after the provider is
+successfully obtained, preserving the previous semantics where a failed
+exporter creation did not affect the counter.
+
+- `Test_tracersProvider_buildOptsOnlyOnCreate` — asserts `buildOpts` runs
+  exactly once across one create + five reuses (the regression guard).
+- `Test_tracersProvider_buildOptsError` — asserts that on a build error the
+  provider stays nil and the counter is not incremented.
+- Existing tracing tests updated for the new signature and still pass.
+
+Verified manually with a reload loop: before the fix, 50 reloads leaked 50
+`processQueue` goroutines; after the fix, 0 are leaked while the provider is
+still reused (counter stays at 1).
+---
+ modules/caddyhttp/tracing/tracer.go           | 28 +++++++++----
+ modules/caddyhttp/tracing/tracerprovider.go   | 20 ++++++---
+ .../caddyhttp/tracing/tracerprovider_test.go  | 42 +++++++++++++++++--
+ 3 files changed, 72 insertions(+), 18 deletions(-)
+
+diff --git a/modules/caddyhttp/tracing/tracer.go b/modules/caddyhttp/tracing/tracer.go
+index 5d71059ed88..ceeacbf0e35 100644
+--- a/modules/caddyhttp/tracing/tracer.go
++++ b/modules/caddyhttp/tracing/tracer.go
+@@ -62,17 +62,27 @@ func newOpenTelemetryWrapper(
+ 		return ot, fmt.Errorf("creating resource error: %w", err)
+ 	}
+ 
+-	traceExporter, err := autoexport.NewSpanExporter(ctx)
+-	if err != nil {
+-		return ot, fmt.Errorf("creating trace exporter error: %w", err)
+-	}
+-
+ 	ot.propagators = autoprop.NewTextMapPropagator()
+ 
+-	tracerProvider := globalTracerProvider.getTracerProvider(
+-		sdktrace.WithBatcher(traceExporter),
+-		sdktrace.WithResource(res),
+-	)
++	// Defer creation of the exporter (and its batch span processor goroutine)
++	// until we know a new provider is actually needed. When the global provider
++	// already exists it is reused and these options are discarded; building them
++	// here unconditionally would leak the exporter and a BatchSpanProcessor
++	// goroutine on every config reload.
++	tracerProvider, err := globalTracerProvider.getTracerProvider(func() ([]sdktrace.TracerProviderOption, error) {
++		traceExporter, err := autoexport.NewSpanExporter(ctx)
++		if err != nil {
++			return nil, fmt.Errorf("creating trace exporter error: %w", err)
++		}
++
++		return []sdktrace.TracerProviderOption{
++			sdktrace.WithBatcher(traceExporter),
++			sdktrace.WithResource(res),
++		}, nil
++	})
++	if err != nil {
++		return ot, err
++	}
+ 
+ 	ot.handler = otelhttp.NewHandler(http.HandlerFunc(ot.serveHTTP),
+ 		ot.spanName,
+diff --git a/modules/caddyhttp/tracing/tracerprovider.go b/modules/caddyhttp/tracing/tracerprovider.go
+index 0a376697471..45120276964 100644
+--- a/modules/caddyhttp/tracing/tracerprovider.go
++++ b/modules/caddyhttp/tracing/tracerprovider.go
+@@ -19,20 +19,30 @@ type tracerProvider struct {
+ 	tracerProvidersCounter int
+ }
+ 
+-// getTracerProvider create or return an existing global TracerProvider
+-func (t *tracerProvider) getTracerProvider(opts ...sdktrace.TracerProviderOption) *sdktrace.TracerProvider {
++// getTracerProvider create or return an existing global TracerProvider.
++//
++// buildOpts is only invoked when a new provider must actually be created.
++// This matters because some options (notably sdktrace.WithBatcher) eagerly
++// start background goroutines when constructed. Building them unconditionally
++// and then discarding them on the reuse path would leak a BatchSpanProcessor
++// goroutine on every config reload.
++func (t *tracerProvider) getTracerProvider(buildOpts func() ([]sdktrace.TracerProviderOption, error)) (*sdktrace.TracerProvider, error) {
+ 	t.mu.Lock()
+ 	defer t.mu.Unlock()
+ 
+-	t.tracerProvidersCounter++
+-
+ 	if t.tracerProvider == nil {
++		opts, err := buildOpts()
++		if err != nil {
++			return nil, err
++		}
+ 		t.tracerProvider = sdktrace.NewTracerProvider(
+ 			opts...,
+ 		)
+ 	}
+ 
+-	return t.tracerProvider
++	t.tracerProvidersCounter++
++
++	return t.tracerProvider, nil
+ }
+ 
+ // cleanupTracerProvider gracefully shutdown a TracerProvider
+diff --git a/modules/caddyhttp/tracing/tracerprovider_test.go b/modules/caddyhttp/tracing/tracerprovider_test.go
+index 5a5df0a23f2..80123f2619b 100644
+--- a/modules/caddyhttp/tracing/tracerprovider_test.go
++++ b/modules/caddyhttp/tracing/tracerprovider_test.go
+@@ -3,14 +3,19 @@ package tracing
+ import (
+ 	"testing"
+ 
++	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+ 	"go.uber.org/zap"
+ )
+ 
++func noOpts() ([]sdktrace.TracerProviderOption, error) {
++	return nil, nil
++}
++
+ func Test_tracersProvider_getTracerProvider(t *testing.T) {
+ 	tp := tracerProvider{}
+ 
+-	tp.getTracerProvider()
+-	tp.getTracerProvider()
++	_, _ = tp.getTracerProvider(noOpts)
++	_, _ = tp.getTracerProvider(noOpts)
+ 
+ 	if tp.tracerProvider == nil {
+ 		t.Errorf("There should be tracer provider")
+@@ -24,8 +29,8 @@ func Test_tracersProvider_getTracerProvider(t *testing.T) {
+ func Test_tracersProvider_cleanupTracerProvider(t *testing.T) {
+ 	tp := tracerProvider{}
+ 
+-	tp.getTracerProvider()
+-	tp.getTracerProvider()
++	_, _ = tp.getTracerProvider(noOpts)
++	_, _ = tp.getTracerProvider(noOpts)
+ 
+ 	err := tp.cleanupTracerProvider(zap.NewNop())
+ 	if err != nil {
+@@ -40,3 +45,32 @@ func Test_tracersProvider_cleanupTracerProvider(t *testing.T) {
+ 		t.Errorf("Tracer providers counter should equal to 1")
+ 	}
+ }
++
++// Test_tracersProvider_buildOptsOnlyOnCreate guards against a goroutine leak on
++// config reload: buildOpts must be invoked only when a new provider is actually
++// created, never on the reuse path. Some options (e.g. sdktrace.WithBatcher)
++// eagerly start a BatchSpanProcessor goroutine when constructed, so calling
++// buildOpts on every reload would leak one goroutine per reload.
++func Test_tracersProvider_buildOptsOnlyOnCreate(t *testing.T) {
++	tp := tracerProvider{}
++
++	builds := 0
++	build := func() ([]sdktrace.TracerProviderOption, error) {
++		builds++
++		return nil, nil
++	}
++
++	// First call creates the provider and must build options.
++	_, _ = tp.getTracerProvider(build)
++	// Subsequent calls reuse the existing provider and must NOT build options again.
++	for i := 0; i < 5; i++ {
++		_, _ = tp.getTracerProvider(build)
++	}
++
++	if builds != 1 {
++		t.Errorf("buildOpts should be invoked exactly once (on create), got %d", builds)
++	}
++	if tp.tracerProvidersCounter != 6 {
++		t.Errorf("Tracer providers counter should equal to 6, got %d", tp.tracerProvidersCounter)
++	}
++}
+
+From 5754acae57ea6723a1872d1289a26748bea08ced Mon Sep 17 00:00:00 2001
+From: "dean.wang" <dean.wang@plaud.ai>
+Date: Thu, 18 Jun 2026 13:31:40 +0800
+Subject: [PATCH 2/2] add test for buldOpts error path
+
+---
+ .../caddyhttp/tracing/tracerprovider_test.go  | 26 +++++++++++++++++++
+ 1 file changed, 26 insertions(+)
+
+diff --git a/modules/caddyhttp/tracing/tracerprovider_test.go b/modules/caddyhttp/tracing/tracerprovider_test.go
+index 80123f2619b..bb86e49f504 100644
+--- a/modules/caddyhttp/tracing/tracerprovider_test.go
++++ b/modules/caddyhttp/tracing/tracerprovider_test.go
+@@ -1,6 +1,7 @@
+ package tracing
+ 
+ import (
++	"errors"
+ 	"testing"
+ 
+ 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+@@ -74,3 +75,28 @@ func Test_tracersProvider_buildOptsOnlyOnCreate(t *testing.T) {
+ 		t.Errorf("Tracer providers counter should equal to 6, got %d", tp.tracerProvidersCounter)
+ 	}
+ }
++
++// Test_tracersProvider_buildOptsError verifies that an error from buildOpts is
++// propagated and that no provider is created nor the counter incremented, so a
++// failed build leaves the tracerProvider in its initial state.
++func Test_tracersProvider_buildOptsError(t *testing.T) {
++	tp := tracerProvider{}
++
++	wantErr := errors.New("build failed")
++	build := func() ([]sdktrace.TracerProviderOption, error) {
++		return nil, wantErr
++	}
++
++	_, err := tp.getTracerProvider(build)
++	if !errors.Is(err, wantErr) {
++		t.Errorf("Expected error %v, got %v", wantErr, err)
++	}
++
++	if tp.tracerProvider != nil {
++		t.Errorf("There should be no tracer provider when buildOpts fails")
++	}
++
++	if tp.tracerProvidersCounter != 0 {
++		t.Errorf("Tracer providers counter should equal to 0, got %d", tp.tracerProvidersCounter)
++	}
++}

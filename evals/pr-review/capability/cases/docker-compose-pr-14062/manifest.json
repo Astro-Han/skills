@@ -1,0 +1,329 @@
+{
+  "additions": 326,
+  "author": "ndeloof",
+  "base_sha": "d254e7d062592834e9328a3b8c756025323cc754",
+  "body": "**What I did**\n\nRestructured `monitor.Start` (cognitive complexity 77 \u2192 19), the event loop driving `up`/`logs` termination: each container action moves to an `onContainerX` handler and the recurring bits get names (`watched`, `notify`, `initialContainers`). The tracking sets stay explicit parameters so data flow remains visible. No behavior change: same events, same ordering, same termination conditions.\n\nSince the monitor had no unit test, the refactor ships with a suite covering the full container lifecycle, restart detection through both engine states (`Restarting`, and `Running` per moby/moby#45538), the already-removed-on-die path, service filtering, events stream errors, context cancellation, and exit-code parse errors. `monitor.go` functions are now 75\u2013100% covered.\n\n**Related issue**\n\nn/a\n\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)",
+  "captured_at": "2026-08-30T10:28:40+00:00",
+  "case_id": "docker-compose-pr-14062",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (actions)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "AI disclosure gate",
+      "status": "COMPLETED",
+      "workflowName": "ai-disclosure-gate"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (lint)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor / zizmor",
+      "status": "COMPLETED",
+      "workflowName": "zizmor"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-go-mod)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-headers)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate (validate-docs)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / registry-identities / setup-registry-identities",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / prepare",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (0, darwin/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (1, darwin/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (2, linux/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (3, linux/arm/v6, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (4, linux/arm/v7, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (5, linux/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (6, linux/ppc64le, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (7, linux/riscv64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (8, linux/s390x, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (9, windows/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / build (10, windows/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary / finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / registry-identities / setup-registry-identities",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / prepare",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (0, darwin/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (1, darwin/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (2, linux/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (3, linux/arm/v6, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (4, linux/arm/v7, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (5, linux/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (6, linux/ppc64le, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (7, linux/riscv64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (8, linux/s390x, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (9, windows/amd64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / build (10, windows/arm64, ubuntu-24.04)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bin-image-test / finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (plugin, stable, graphdriver)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "e2e (plugin, stable, containerd)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "e2e (standalone, stable, graphdriver)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (standalone, stable, containerd)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (plugin, oldstable, graphdriver)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "e2e (standalone, oldstable, graphdriver)",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "binary-finalize",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "coverage",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "release",
+      "status": "COMPLETED",
+      "workflowName": "ci"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "d254e7d062592834e9328a3b8c756025323cc754",
+  "deletions": 76,
+  "files": [
+    {
+      "additions": 102,
+      "changeType": "MODIFIED",
+      "deletions": 76,
+      "path": "pkg/compose/monitor.go"
+    },
+    {
+      "additions": 224,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "pkg/compose/monitor_test.go"
+    }
+  ],
+  "head_sha": "42fb13fa81c511ccdfb1569eb05d0ae677fc9ea1",
+  "issues": [],
+  "patch_sha256": "f12cfc3b0bf8886798ea8fc0b3f2273b71a1523bb0193432023396b6d685ec1d",
+  "pr_number": 14062,
+  "repo": "docker/compose",
+  "schema_version": 1,
+  "title": "refactor: one handler per container event in monitor.Start, add tests",
+  "url": "https://github.com/docker/compose/pull/14062"
+}

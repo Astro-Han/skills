@@ -1,0 +1,197 @@
+From 739dedde9db0fe719a0dd2cbb27054cc2c108c11 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?K=C3=A9vin=20Dunglas?= <kevin@dunglas.dev>
+Date: Sat, 15 Aug 2026 11:05:30 +0200
+Subject: [PATCH 1/2] caddyhttp: match url_pattern against decoded, cleaned
+ path
+
+The url_pattern matcher evaluated the raw, percent-encoded request URI
+while path-consuming handlers resolve the decoded, cleaned r.URL.Path.
+An encoded-slash payload such as "..%2f" stayed a single opaque segment
+for the WHATWG URLPattern parser, so "/public/..%2fadmin/secret" matched
+"/public/*" while handlers decoded it to "/admin/secret", bypassing any
+route-level access control built with url_pattern.
+
+Match the same path model handlers resolve: decode the path, normalize
+and clean it (mirroring the path matcher and #4407), then re-encode
+through url.URL to a canonical escaped form before running the pattern.
+The go-urlpattern library is spec-correct; the fix is in the integration.
+---
+ modules/caddyhttp/urlpatternmatcher.go      | 28 ++++++++++-
+ modules/caddyhttp/urlpatternmatcher_test.go | 56 +++++++++++++++++++++
+ 2 files changed, 83 insertions(+), 1 deletion(-)
+
+diff --git a/modules/caddyhttp/urlpatternmatcher.go b/modules/caddyhttp/urlpatternmatcher.go
+index 10dc0123e4a..5bb7f84bebb 100644
+--- a/modules/caddyhttp/urlpatternmatcher.go
++++ b/modules/caddyhttp/urlpatternmatcher.go
+@@ -3,6 +3,7 @@ package caddyhttp
+ import (
+ 	"fmt"
+ 	"net/http"
++	"net/url"
+ 	"strings"
+ 
+ 	"github.com/dunglas/go-urlpattern"
+@@ -39,6 +40,7 @@ type MatchURLPattern struct {
+ 	IgnoreCase bool `json:"ignore_case,omitempty"`
+ 
+ 	compiledPattern *urlpattern.URLPattern
++	mergeSlashes    bool
+ }
+ 
+ // CaddyModule returns the Caddy module information.
+@@ -69,6 +71,19 @@ func (m *MatchURLPattern) Provision(_ caddy.Context) error {
+ 
+ 	m.compiledPattern = p
+ 
++	// Like the path matcher, collapse empty path segments in the request
++	// unless the pattern's path itself relies on them.
++	patternPath := m.Pattern
++	if idx := strings.Index(patternPath, "://"); idx != -1 {
++		patternPath = patternPath[idx+3:]
++		if slash := strings.IndexByte(patternPath, '/'); slash != -1 {
++			patternPath = patternPath[slash:]
++		} else {
++			patternPath = ""
++		}
++	}
++	m.mergeSlashes = !strings.Contains(patternPath, "//")
++
+ 	return nil
+ }
+ 
+@@ -82,6 +97,8 @@ func (m *MatchURLPattern) Match(r *http.Request) bool {
+ // MatchWithError returns true if the request matches the URL pattern. The
+ // request's origin (scheme://host) is the base against which the path is
+ // resolved, so an absolute pattern or base_url can match on scheme and host.
++// The path is matched in its decoded, cleaned form so that the matcher sees
++// the same path that handlers resolve.
+ //
+ // On a match, captured groups are exposed as placeholders scoped by URL
+ // component, mirroring the URLPattern result object: a named group :id in the
+@@ -93,7 +110,16 @@ func (m *MatchURLPattern) MatchWithError(r *http.Request) (bool, error) {
+ 		scheme = "https"
+ 	}
+ 
+-	result := m.compiledPattern.Exec(r.URL.RequestURI(), scheme+"://"+r.Host)
++	// Match the same path model that handlers resolve: the decoded path,
++	// normalized and cleaned (see #4407). Re-encoding through url.URL yields
++	// a canonical escaped form, so encoded traversal payloads such as
++	// "..%2f" cannot diverge from the path handlers actually use.
++	uri := url.URL{
++		Path:     CleanPath(normalizeWindowsPath(r.URL.Path), m.mergeSlashes),
++		RawQuery: r.URL.RawQuery,
++	}
++
++	result := m.compiledPattern.Exec(uri.RequestURI(), scheme+"://"+r.Host)
+ 	if result == nil {
+ 		return false, nil
+ 	}
+diff --git a/modules/caddyhttp/urlpatternmatcher_test.go b/modules/caddyhttp/urlpatternmatcher_test.go
+index fee1ae1d03e..d99dd9d6de3 100644
+--- a/modules/caddyhttp/urlpatternmatcher_test.go
++++ b/modules/caddyhttp/urlpatternmatcher_test.go
+@@ -112,6 +112,62 @@ func TestURLPatternMatcher(t *testing.T) {
+ 			input:  "/search",
+ 			expect: false,
+ 		},
++		{
++			name:   "encoded slash traversal is rejected",
++			match:  MatchURLPattern{Pattern: "/public/*"},
++			host:   "example.com",
++			input:  "/public/..%2fadmin/secret.txt",
++			expect: false,
++		},
++		{
++			name:   "uppercase encoded slash traversal is rejected",
++			match:  MatchURLPattern{Pattern: "/public/*"},
++			host:   "example.com",
++			input:  "/public/..%2Fadmin/secret.txt",
++			expect: false,
++		},
++		{
++			name:   "encoded dot traversal is rejected",
++			match:  MatchURLPattern{Pattern: "/public/*"},
++			host:   "example.com",
++			input:  "/public/%2e%2e/admin/secret.txt",
++			expect: false,
++		},
++		{
++			name:   "raw dot traversal is rejected",
++			match:  MatchURLPattern{Pattern: "/public/*"},
++			host:   "example.com",
++			input:  "/public/../admin/secret.txt",
++			expect: false,
++		},
++		{
++			name:   "cleaned traversal still matches its real target",
++			match:  MatchURLPattern{Pattern: "/admin/*"},
++			host:   "example.com",
++			input:  "/public/..%2fadmin/secret.txt",
++			expect: true,
++		},
++		{
++			name:   "doubled slashes are collapsed before matching",
++			match:  MatchURLPattern{Pattern: "/public/*"},
++			host:   "example.com",
++			input:  "/public//nested//file",
++			expect: true,
++		},
++		{
++			name:   "pattern with empty segment preserves request slashes",
++			match:  MatchURLPattern{Pattern: "/a//b"},
++			host:   "example.com",
++			input:  "/a//b",
++			expect: true,
++		},
++		{
++			name:   "encoded characters match their decoded form",
++			match:  MatchURLPattern{Pattern: "/caf%C3%A9"},
++			host:   "example.com",
++			input:  "/caf%C3%A9",
++			expect: true,
++		},
+ 		{
+ 			name:         "invalid pattern fails provisioning",
+ 			match:        MatchURLPattern{Pattern: "https://[invalid"},
+
+From 9355e8b2bbf6c2cebff7e05cd4202a2ed4d96d0c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?K=C3=A9vin=20Dunglas?= <kevin@dunglas.dev>
+Date: Sat, 15 Aug 2026 11:08:00 +0200
+Subject: [PATCH 2/2] build(deps): bump github.com/dunglas/go-urlpattern to
+ v1.0.0
+
+Moves off the pseudo-version to the first tagged release.
+---
+ go.mod | 2 +-
+ go.sum | 4 ++--
+ 2 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/go.mod b/go.mod
+index bca4aca635d..caad0317ee8 100644
+--- a/go.mod
++++ b/go.mod
+@@ -12,7 +12,7 @@ require (
+ 	github.com/caddyserver/certmagic v0.25.4
+ 	github.com/caddyserver/zerossl v0.1.5
+ 	github.com/cloudflare/circl v1.6.4
+-	github.com/dunglas/go-urlpattern v0.0.0-20260421141449-cbab7cf1e16d
++	github.com/dunglas/go-urlpattern v1.0.0
+ 	github.com/dustin/go-humanize v1.0.1
+ 	github.com/go-chi/chi/v5 v5.3.1
+ 	github.com/google/cel-go v0.29.2
+diff --git a/go.sum b/go.sum
+index 37af15400bc..2b458fd2e64 100644
+--- a/go.sum
++++ b/go.sum
+@@ -138,8 +138,8 @@ github.com/dlclark/regexp2 v1.4.0/go.mod h1:2pZnwuY/m+8K6iRw6wQdMtk+rH5tNGR1i55k
+ github.com/dlclark/regexp2 v1.7.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
+ github.com/dlclark/regexp2/v2 v2.2.1 h1:mf4KkFUj0gJuarK8P+LgiS+Lit7m9N1yAwEfPbee7R0=
+ github.com/dlclark/regexp2/v2 v2.2.1/go.mod h1:avUrQvPaLz2DrFNHJF0taWAFFX2C1GMSSoeiqFjcBmU=
+-github.com/dunglas/go-urlpattern v0.0.0-20260421141449-cbab7cf1e16d h1:Mw8vvAx2b5bjIrQIJaVTO25vJY5DMBUO/hJGNLIl+6g=
+-github.com/dunglas/go-urlpattern v0.0.0-20260421141449-cbab7cf1e16d/go.mod h1:9qyjDljBPOWyWCGz7vo3Ek7cdnoG/DVk0Ucle7gWVS8=
++github.com/dunglas/go-urlpattern v1.0.0 h1:AmMwIDXWJFezeE1v38rxvQRGvvzTlityFuifLLVfoQQ=
++github.com/dunglas/go-urlpattern v1.0.0/go.mod h1:9qyjDljBPOWyWCGz7vo3Ek7cdnoG/DVk0Ucle7gWVS8=
+ github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
+ github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
+ github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=

@@ -1,0 +1,880 @@
+From 04ee400cabc99cf55c8008af23e0a5a8d10356fd Mon Sep 17 00:00:00 2001
+From: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+Date: Wed, 19 Aug 2026 15:57:21 +0200
+Subject: [PATCH 1/3] tsdb: stabilize the XOR2 float chunk encoding
+
+Deprecate the --enable-feature=xor2-encoding flag. It now only sets
+the default for storage.tsdb.chunk_encoding.floats and will become a
+no-op in a future major version; select xor2 directly in the config
+instead.
+
+Signed-off-by: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+---
+ cmd/prometheus/main.go                |  8 ++--
+ cmd/prometheus/main_test.go           | 32 +++++++++++---
+ cmd/prometheus/testdata/features.json |  2 +-
+ config/config.go                      |  6 +--
+ docs/configuration/configuration.md   | 22 +++++----
+ docs/feature_flags.md                 | 23 ++--------
+ promql/functions_test.go              |  1 -
+ promql/promqltest/test.go             |  1 -
+ promql/promqltest/test_test.go        |  1 -
+ scrape/scrape_test.go                 |  1 -
+ tsdb/db.go                            | 49 ++++++++++----------
+ tsdb/db_append_v2_test.go             |  2 -
+ tsdb/db_test.go                       | 64 +++++++++++----------------
+ tsdb/docs/format/chunks.md            |  2 +-
+ tsdb/querier_test.go                  |  1 -
+ 15 files changed, 104 insertions(+), 111 deletions(-)
+
+diff --git a/cmd/prometheus/main.go b/cmd/prometheus/main.go
+index 6e6c61d0f35..7bf75672694 100644
+--- a/cmd/prometheus/main.go
++++ b/cmd/prometheus/main.go
+@@ -281,9 +281,8 @@ func (c *flagConfig) setFeatureListOptions(logger *slog.Logger) error {
+ 				config.DefaultGlobalConfig.ScrapeProtocols = config.DefaultProtoFirstScrapeProtocols
+ 				logger.Info("Experimental start timestamp zero ingestion enabled. OpenMetrics 1.0 parsing will parse <metric>_created metrics as ST instead of normal sample. Changed default scrape_protocols to prefer PrometheusProto format.", "global.scrape_protocols", fmt.Sprintf("%v", config.DefaultGlobalConfig.ScrapeProtocols))
+ 			case "xor2-encoding":
+-				c.tsdb.XOR2EncodingAllowed = true
+ 				c.tsdb.FloatChunkEncoding = chunkenc.EncXOR2
+-				logger.Info("Experimental XOR2 chunk encoding enabled.")
++				logger.Warn("This option for --enable-feature is being phased out. It currently changes the default for the storage.tsdb.chunk_encoding.floats config setting to xor2, but will become a no-op in a future major version. Stop using this option and set storage.tsdb.chunk_encoding.floats in the config instead.", "option", o)
+ 			case "histograms-st-encoding":
+ 				c.tsdb.EnableHistogramSTEncoding = true
+ 				logger.Info("Experimental ST-capable histogram chunk encoding enabled.")
+@@ -785,6 +784,7 @@ func main() {
+ 		logger.Warn("The option --storage.tsdb.block-reload-interval is set to a value less than 1s. Setting it to 1s to avoid overload.")
+ 		cfg.tsdb.BlockReloadInterval = model.Duration(1 * time.Second)
+ 	}
++	cfg.tsdb.ChunkEncodingFloats = cfgFile.StorageConfig.TSDBConfig.ChunkEncoding.Floats
+ 	cfg.tsdb.OutOfOrderTimeWindow = cfgFile.StorageConfig.TSDBConfig.OutOfOrderTimeWindow
+ 	cfg.tsdb.StaleSeriesCompactionThreshold = cfgFile.StorageConfig.TSDBConfig.StaleSeriesCompactionThreshold
+ 	cfg.tsdb.RetentionDuration = cfgFile.StorageConfig.TSDBConfig.Retention.Time
+@@ -2115,7 +2115,7 @@ type tsdbOptions struct {
+ 	StaleSeriesCompactionThreshold float64
+ 	EnableFastStartup              bool
+ 	FloatChunkEncoding             chunkenc.Encoding
+-	XOR2EncodingAllowed            bool
++	ChunkEncodingFloats            string
+ }
+ 
+ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
+@@ -2149,7 +2149,7 @@ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
+ 		StaleSeriesCompactionThreshold: opts.StaleSeriesCompactionThreshold,
+ 		EnableFastStartup:              opts.EnableFastStartup,
+ 		FloatChunkEncoding:             opts.FloatChunkEncoding,
+-		XOR2EncodingAllowed:            opts.XOR2EncodingAllowed,
++		ChunkEncodingFloats:            opts.ChunkEncodingFloats,
+ 	}
+ }
+ 
+diff --git a/cmd/prometheus/main_test.go b/cmd/prometheus/main_test.go
+index 42e0ddeb52e..3dffcc86032 100644
+--- a/cmd/prometheus/main_test.go
++++ b/cmd/prometheus/main_test.go
+@@ -402,33 +402,55 @@ func TestChunkEncodingStartupValidation(t *testing.T) {
+ 		exitCode int
+ 	}{
+ 		{
+-			name: "xor2 without xor2-encoding feature",
++			name: "xor2 without any feature flag",
+ 			config: `
+ storage:
+   tsdb:
+     chunk_encoding:
+       floats: xor2`,
+ 			features: "",
+-			exitCode: 1,
++			exitCode: 0,
+ 		},
+ 		{
+-			name: "xor2 with xor2-encoding feature",
++			name: "xor2 with st-storage feature",
+ 			config: `
+ storage:
+   tsdb:
+     chunk_encoding:
+       floats: xor2`,
+-			features: "xor2-encoding",
++			features: "st-storage",
+ 			exitCode: 0,
+ 		},
+ 		{
+-			name: "xor with st-storage and xor2-encoding features",
++			name: "xor with st-storage feature",
++			config: `
++storage:
++  tsdb:
++    chunk_encoding:
++      floats: xor`,
++			features: "st-storage",
++			exitCode: 1,
++		},
++		{
++			name: "xor2-encoding flag with explicit xor in config",
+ 			config: `
+ storage:
+   tsdb:
+     chunk_encoding:
+       floats: xor`,
++			features: "xor2-encoding",
++			exitCode: 0,
++		},
++		{
++			name:     "st-storage with the xor2-encoding flag and no config field",
++			config:   "",
+ 			features: "st-storage,xor2-encoding",
++			exitCode: 0,
++		},
++		{
++			name:     "st-storage without any float chunk encoding set",
++			config:   "",
++			features: "st-storage",
+ 			exitCode: 1,
+ 		},
+ 		{
+diff --git a/cmd/prometheus/testdata/features.json b/cmd/prometheus/testdata/features.json
+index 4fc8dd008ed..51472455def 100644
+--- a/cmd/prometheus/testdata/features.json
++++ b/cmd/prometheus/testdata/features.json
+@@ -266,7 +266,7 @@
+     "native_histograms": true,
+     "st_storage": false,
+     "use_uncached_io": false,
+-    "xor2_encoding": false
++    "xor2_encoding": true
+   },
+   "ui": {
+     "ui_v2": false,
+diff --git a/config/config.go b/config/config.go
+index 7777a02ba8d..836829cb00d 100644
+--- a/config/config.go
++++ b/config/config.go
+@@ -1133,15 +1133,15 @@ func (t *TSDBRetentionConfig) UnmarshalYAML(unmarshal func(any) error) error {
+ const (
+ 	// FloatChunkEncodingXOR selects standard XOR encoding for float chunks.
+ 	FloatChunkEncodingXOR = "xor"
+-	// FloatChunkEncodingXOR2 selects XOR2 encoding for float chunks; requires --enable-feature=xor2-encoding.
++	// FloatChunkEncodingXOR2 selects XOR2 encoding for float chunks.
+ 	FloatChunkEncodingXOR2 = "xor2"
+ )
+ 
+ // ChunkEncodingConfig configures per-chunk-type encoding overrides.
+ type ChunkEncodingConfig struct {
+ 	// Floats selects the encoding used for float chunks.
+-	// Valid values are "xor", "xor2", and "" (empty/absent). When empty, the encoding
+-	// follows the --enable-feature=xor2-encoding flag. Setting "xor2" requires the flag to be enabled.
++	// Valid values are "xor", "xor2", and "" (empty/absent). When empty, the
++	// encoding follows the --enable-feature=xor2-encoding flag.
+ 	Floats string `yaml:"floats,omitempty"`
+ }
+ 
+diff --git a/docs/configuration/configuration.md b/docs/configuration/configuration.md
+index 13e598c6388..a7987381347 100644
+--- a/docs/configuration/configuration.md
++++ b/docs/configuration/configuration.md
+@@ -4153,15 +4153,19 @@ with this feature.
+ [ stale_series_compaction_threshold: <float> | default = 0 ]
+ 
+ # Configures the float chunk encoding to use for new chunks.
+-# Valid values are 'xor' and 'xor2'. When absent, the encoding follows the
+-# --enable-feature=xor2-encoding flag: 'xor2' if the flag is set, 'xor' otherwise.
+-# Setting 'xor' forces standard XOR encoding even when --enable-feature=xor2-encoding is set.
+-# Setting 'xor2' is only valid when --enable-feature=xor2-encoding is set;
+-# Prometheus will refuse to reload if 'xor2' is set without the feature flag.
++# Valid values are 'xor' and 'xor2'. XOR2 gives better disk compression than XOR for
++# typical Prometheus workloads and can store start timestamps.
++#
++# WARNING: chunks encoded with XOR2 cannot be read by older Prometheus versions that do
++# not support the encoding, nor by downstream tools and LTS systems that do not support
++# it yet (e.g. blocks uploaded by the Thanos sidecar). Once XOR2 chunks have been
++# written, downgrading to a version without XOR2 support requires deleting the affected
++# blocks from disk manually, otherwise Prometheus returns an error on all queries.
++#
++# When absent, the encoding follows the deprecated --enable-feature=xor2-encoding
++# flag: 'xor2' if the flag is set, 'xor' otherwise.
+ # Setting 'xor' is incompatible with --enable-feature=st-storage (XOR chunks do not store
+-# start timestamps); Prometheus will refuse to reload in that case too.
+-# Omitting 'floats' (or the entire 'chunk_encoding' field) is equivalent; the encoding
+-# follows the --enable-feature=xor2-encoding flag.
++# start timestamps); Prometheus will refuse to start or reload in that case.
+ # This field is runtime-reloadable.
+ # When --enable-feature=st-storage is disabled, XOR and XOR2 are compatible
+ # encodings and in-progress chunks are not cut on an encoding change; the new
+@@ -4169,6 +4173,8 @@ with this feature.
+ # When --enable-feature=st-storage is enabled, XOR and XOR2 are not compatible
+ # (XOR chunks do not store start timestamps), so an in-progress chunk is cut
+ # on the next append after the encoding changes.
++# For the equivalent ST-capable encoding for native histograms, see the experimental
++# histograms-st-encoding feature flag.
+ [ chunk_encoding:
+   [ floats: <string> ] ]
+ 
+diff --git a/docs/feature_flags.md b/docs/feature_flags.md
+index c674347aacf..d957f380ad5 100644
+--- a/docs/feature_flags.md
++++ b/docs/feature_flags.md
+@@ -102,9 +102,9 @@ Besides enabling this feature in Prometheus, start timestamps need to be exposed
+ 
+ > NOTE: This is an experimental feature with known limitations until fully implemented.
+ > * It introduces new WAL record type (SamplesV2) that can only be replayed with Prometheus 3.11 or later versions.
+-> * For persistent storage support (TSDB blocks), you need to manually opt-in for the XOR2 chunk format for floats ([`xor2-encoding` flag](#xor2-chunk-encoding)) and the histogram ST chunk format for native histograms ([`histograms-st-encoding` flag](#histogram-st-chunk-encoding)).
++> * For persistent storage support (TSDB blocks), you need to manually opt-in for the XOR2 chunk format for floats ([`chunk_encoding.floats: xor2`](configuration/configuration.md#tsdb)) and the histogram ST chunk format for native histograms ([`histograms-st-encoding` flag](#histogram-st-chunk-encoding)).
+ >   The float chunk encoding must resolve to XOR2 when `st-storage` is active, because XOR chunks do not store start timestamps.
+->   If the resolved encoding is XOR (that is, `--enable-feature=xor2-encoding` is not set and `chunk_encoding.floats: xor2` is not configured), Prometheus refuses to start and fails the configuration validation with an error rather than continuing to run.
++>   If the resolved encoding is XOR, Prometheus refuses to start and fails the configuration validation with an error rather than continuing to run.
+ >   Likewise, explicitly setting `chunk_encoding.floats: xor` in the config file while `st-storage` is active is rejected at config reload.
+ >   These constraints might change later once we finish the experimentation phase.
+ > * Other areas of ST support for native histograms and NHCBs are still in progress (see [#18315](https://github.com/prometheus/prometheus/issues/18315)).
+@@ -292,14 +292,7 @@ For more details, see the [proposal](https://github.com/prometheus/proposals/pul
+ 
+ `--enable-feature=xor2-encoding`
+ 
+-> WARNING: This is highly experimental and risky setting:
+-> * Chunks encoded with XOR2 **cannot be read by older Prometheus versions** that do not support the encoding. Once enabled and data is written, you need to **manually delete blocks from the disk**, otherwise Prometheus will return error on all queries.
+-> * We are still experimenting on the final encoding. As of now this encoding can change in any Prometheus version. All your persistent block data will be lost between versions.
+-> * This encoding is new, meaning downstream tools and LTS systems might not support it yet (e.g. Thanos sidecar uploaded blocks).
+-
+-This setting enables the new XOR2 chunk encoding for float samples, which provides better disk compression than the default XOR encoding for typical Prometheus workloads. This format also allows storing Start Timestamp (ST).
+-
+-For the equivalent ST-capable chunk encoding for native histograms and float histograms, see the [`histograms-st-encoding`](#histogram-st-chunk-encoding) flag. The two flags are independent.
++> **Note:** This feature flag is deprecated. The XOR2 float chunk encoding is stable; select it with the `chunk_encoding.floats` field in the `storage.tsdb` section of the configuration file instead, documented in the [configuration documentation](configuration/configuration.md#tsdb). The flag only sets the default float chunk encoding to `xor2`, and will become a no-op in a future major version.
+ 
+ ## Histogram ST chunk encoding
+ 
+@@ -310,15 +303,7 @@ For the equivalent ST-capable chunk encoding for native histograms and float his
+ > * We are still experimenting on the final encoding. As of now this encoding can change in any Prometheus version. All your persistent block data will be lost between versions.
+ > * This encoding is new, meaning downstream tools and LTS systems might not support it yet (e.g. Thanos sidecar uploaded blocks).
+ 
+-This setting enables the new `histogramST` and `floathistogramST` chunk encodings for native histogram and float histogram samples. These encodings extend the corresponding histogram chunk formats with a Start Timestamp (ST) header and per-sample ST encoding, equivalent to what `xor2-encoding` does for float chunks. The flag does not affect float chunks.
+-
+-The encoding can also be controlled at each configuration reload via the `chunk_encoding.floats` field in the `storage.tsdb` section of the configuration file. Setting `chunk_encoding.floats: xor` forces standard XOR encoding even when `--enable-feature=xor2-encoding` is set; setting `chunk_encoding.floats: xor2` requires `--enable-feature=xor2-encoding` to be enabled.
+-
+-Without [`st-storage`](#start-timestamp-st-native-storage), XOR and XOR2 are compatible encodings, so an encoding change via `chunk_encoding.floats` does not cut the current chunk; the new encoding takes effect when the current chunk is next cut for any reason (size, time range, or sample count). When `st-storage` is also enabled, XOR and XOR2 are not compatible because XOR chunks do not store start timestamps, so the in-progress chunk is cut on the next append after the encoding changes.
+-
+-Note that `--enable-feature=st-storage` does not automatically enable XOR2 encoding.
+-However, setting `chunk_encoding.floats: xor` while `st-storage` is active is rejected at
+-config reload, because XOR chunks do not store start timestamps.
++This setting enables the new `histogramST` and `floathistogramST` chunk encodings for native histogram and float histogram samples. These encodings extend the corresponding histogram chunk formats with a Start Timestamp (ST) header and per-sample ST encoding, equivalent to what the [XOR2 encoding](configuration/configuration.md#tsdb) does for float chunks. The flag does not affect float chunks.
+ 
+ ## Extended Range Selectors
+ 
+diff --git a/promql/functions_test.go b/promql/functions_test.go
+index 10af4387fc3..3d7521ee84c 100644
+--- a/promql/functions_test.go
++++ b/promql/functions_test.go
+@@ -89,7 +89,6 @@ func TestFunctionList(t *testing.T) {
+ 
+ func TestStartTimestampOutputWhenUseStartTimestampIsDisabled(t *testing.T) {
+ 	storage := teststorage.New(t, func(opts *tsdb.Options) {
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		opts.EnableSTStorage = true
+ 	})
+diff --git a/promql/promqltest/test.go b/promql/promqltest/test.go
+index 620091bb15b..2b5c6499040 100644
+--- a/promql/promqltest/test.go
++++ b/promql/promqltest/test.go
+@@ -162,7 +162,6 @@ func RunBuiltinTests(t TBRun, engine promql.QueryEngine) {
+ 	RunBuiltinTestsWithStorage(t, engine, func(t testing.TB) storage.Storage {
+ 		return teststorage.New(t, func(opt *tsdb.Options) {
+ 			opt.EnableSTStorage = true
+-			opt.XOR2EncodingAllowed = true
+ 			opt.FloatChunkEncoding = chunkenc.EncXOR2
+ 			opt.EnableHistogramSTEncoding = true
+ 		})
+diff --git a/promql/promqltest/test_test.go b/promql/promqltest/test_test.go
+index 0eb8910f625..17faf063b07 100644
+--- a/promql/promqltest/test_test.go
++++ b/promql/promqltest/test_test.go
+@@ -33,7 +33,6 @@ func init() {
+ 	testStorageOptions = []teststorage.Option{
+ 		func(opts *tsdb.Options) {
+ 			opts.EnableSTStorage = true
+-			opts.XOR2EncodingAllowed = true
+ 			opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 			opts.EnableHistogramSTEncoding = true
+ 		},
+diff --git a/scrape/scrape_test.go b/scrape/scrape_test.go
+index 0d12b218171..4f5d5d38d17 100644
+--- a/scrape/scrape_test.go
++++ b/scrape/scrape_test.go
+@@ -1923,7 +1923,6 @@ func TestScrapeLoopAppend_StartTimeSynthesis_WithSTStorage(t *testing.T) {
+ 
+ 	s := teststorage.New(t, func(opt *tsdb.Options) {
+ 		opt.EnableSTStorage = true
+-		opt.XOR2EncodingAllowed = true
+ 		opt.FloatChunkEncoding = chunkenc.EncXOR2
+ 		opt.EnableHistogramSTEncoding = true
+ 	})
+diff --git a/tsdb/db.go b/tsdb/db.go
+index fac5810232c..6e0de873574 100644
+--- a/tsdb/db.go
++++ b/tsdb/db.go
+@@ -270,17 +270,14 @@ type Options struct {
+ 	// Always use DefaultOptions() rather than a bare Options literal; the zero value
+ 	// of this field is EncNone, not EncXOR. This field is independent of EnableSTStorage:
+ 	// st-storage does not automatically select EncXOR2.
+-	// Selecting EncXOR2 here requires XOR2EncodingAllowed to be true.
+ 	FloatChunkEncoding chunkenc.Encoding
+ 
+-	// XOR2EncodingAllowed gates whether the XOR2 float chunk encoding may be used
+-	// at all, either as the FloatChunkEncoding default or via chunk_encoding.floats
+-	// in the configuration file. It is the enable/disable switch for the feature,
+-	// kept separate from FloatChunkEncoding which selects the active default.
+-	// Callers that want XOR2 available without making it the default (e.g.
+-	// multi-tenant setups that opt tenants in individually) can set this to true
+-	// while leaving FloatChunkEncoding at EncXOR.
+-	XOR2EncodingAllowed bool
++	// ChunkEncodingFloats is the value of chunk_encoding.floats read from the
++	// configuration file at startup. It takes precedence over FloatChunkEncoding;
++	// an empty value means the field is absent. Subsequent values are picked up by
++	// ApplyConfig, which falls back to FloatChunkEncoding whenever the field is
++	// absent again.
++	ChunkEncodingFloats string
+ 
+ 	// FeatureRegistry is used to register TSDB features.
+ 	FeatureRegistry features.Collector
+@@ -922,13 +919,26 @@ func Open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, st
+ 		opts.FeatureRegistry.Set(features.TSDB, "use_uncached_io", opts.UseUncachedIO)
+ 		opts.FeatureRegistry.Enable(features.TSDB, "native_histograms")
+ 		opts.FeatureRegistry.Set(features.TSDB, "st_storage", opts.EnableSTStorage)
+-		opts.FeatureRegistry.Set(features.TSDB, "xor2_encoding", opts.XOR2EncodingAllowed)
++		opts.FeatureRegistry.Enable(features.TSDB, "xor2_encoding")
+ 		opts.FeatureRegistry.Set(features.TSDB, "histograms_st_encoding", opts.EnableHistogramSTEncoding)
+ 	}
+ 
+ 	return open(dir, l, r, opts, rngs, stats)
+ }
+ 
++// resolveFloatChunkEncoding returns the encoding to use for new float chunks.
++// The chunk_encoding.floats configuration value takes precedence over def; an
++// empty or unknown value keeps def.
++func resolveFloatChunkEncoding(def chunkenc.Encoding, floats string) chunkenc.Encoding {
++	switch floats {
++	case config.FloatChunkEncodingXOR:
++		return chunkenc.EncXOR
++	case config.FloatChunkEncodingXOR2:
++		return chunkenc.EncXOR2
++	}
++	return def
++}
++
+ func validateOpts(opts *Options, rngs []int64) (*Options, []int64, error) {
+ 	if opts == nil {
+ 		opts = DefaultOptions()
+@@ -939,10 +949,7 @@ func validateOpts(opts *Options, rngs []int64) (*Options, []int64, error) {
+ 	if opts.FloatChunkEncoding != chunkenc.EncXOR && opts.FloatChunkEncoding != chunkenc.EncXOR2 {
+ 		return nil, nil, fmt.Errorf("unsupported float chunk encoding %q; valid values are %q and %q", strings.ToLower(opts.FloatChunkEncoding.String()), config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
+ 	}
+-	if opts.FloatChunkEncoding == chunkenc.EncXOR2 && !opts.XOR2EncodingAllowed {
+-		return nil, nil, fmt.Errorf("float chunk %q is not enabled", config.FloatChunkEncodingXOR2)
+-	}
+-	if opts.EnableSTStorage && opts.FloatChunkEncoding == chunkenc.EncXOR {
++	if opts.EnableSTStorage && resolveFloatChunkEncoding(opts.FloatChunkEncoding, opts.ChunkEncodingFloats) == chunkenc.EncXOR {
+ 		return nil, nil, fmt.Errorf("float chunk encoding %q is incompatible with start-timestamp storage; XOR chunks do not store start timestamps, use %q", config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
+ 	}
+ 	if opts.StripeSize <= 0 {
+@@ -1162,7 +1169,7 @@ func open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, rn
+ 	headOpts.EnableSharding = opts.EnableSharding
+ 	headOpts.EnableSTAsZeroSample = opts.EnableSTAsZeroSample
+ 	headOpts.EnableSTStorage.Store(opts.EnableSTStorage)
+-	headOpts.FloatChunkEncoding.Store(uint32(opts.FloatChunkEncoding))
++	headOpts.FloatChunkEncoding.Store(uint32(resolveFloatChunkEncoding(opts.FloatChunkEncoding, opts.ChunkEncodingFloats)))
+ 	headOpts.EnableHistogramSTEncoding.Store(opts.EnableHistogramSTEncoding)
+ 	headOpts.EnableMetadataWALRecords = opts.EnableMetadataWALRecords
+ 	headOpts.EnableFastStartup = opts.EnableFastStartup
+@@ -1365,9 +1372,6 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
+ 	if conf.StorageConfig.TSDBConfig != nil {
+ 		// Validate encoding config before updating the head encoding so that
+ 		// an invalid encoding in the config does not change the active encoding.
+-		if conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats == config.FloatChunkEncodingXOR2 && !db.opts.XOR2EncodingAllowed {
+-			return errors.New("'storage.tsdb.chunk_encoding.floats: xor2' requires the xor2-encoding feature flag to be enabled at startup")
+-		}
+ 		// db.opts.EnableSTStorage is set once at startup and never mutated.
+ 		if conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats == config.FloatChunkEncodingXOR && db.opts.EnableSTStorage {
+ 			return errors.New("'storage.tsdb.chunk_encoding.floats: xor' is incompatible with st-storage; XOR chunks do not store start timestamps")
+@@ -1385,14 +1389,7 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
+ 			db.metrics.maxPercentage.Set(db.opts.MaxPercentage)
+ 			db.retentionMtx.Unlock()
+ 		}
+-		// Default to the startup encoding; overridden by an explicit value below.
+-		effectiveEncoding := db.opts.FloatChunkEncoding
+-		switch conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats {
+-		case config.FloatChunkEncodingXOR:
+-			effectiveEncoding = chunkenc.EncXOR
+-		case config.FloatChunkEncodingXOR2:
+-			effectiveEncoding = chunkenc.EncXOR2
+-		}
++		effectiveEncoding := resolveFloatChunkEncoding(db.opts.FloatChunkEncoding, conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats)
+ 		db.head.opts.FloatChunkEncoding.Store(uint32(effectiveEncoding))
+ 	} else {
+ 		db.opts.staleSeriesCompactionThreshold.Store(0)
+diff --git a/tsdb/db_append_v2_test.go b/tsdb/db_append_v2_test.go
+index 7b79a061ac9..c057841236e 100644
+--- a/tsdb/db_append_v2_test.go
++++ b/tsdb/db_append_v2_test.go
+@@ -7593,7 +7593,6 @@ func TestCompactHeadWithSTStorage_AppendV2(t *testing.T) {
+ 		MaxBlockDuration:          int64(time.Hour * 2 / time.Millisecond),
+ 		WALCompression:            compression.Snappy,
+ 		EnableSTStorage:           true,
+-		XOR2EncodingAllowed:       true,
+ 		FloatChunkEncoding:        chunkenc.EncXOR2,
+ 		EnableHistogramSTEncoding: true,
+ 	}
+@@ -7748,7 +7747,6 @@ func TestDBAppenderV2_STStorage_OutOfOrder(t *testing.T) {
+ 			opts := DefaultOptions()
+ 			opts.OutOfOrderTimeWindow = 300 * time.Minute.Milliseconds()
+ 			opts.EnableSTStorage = true
+-			opts.XOR2EncodingAllowed = true
+ 			opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 			opts.EnableHistogramSTEncoding = true
+ 			db := newTestDB(t, withOpts(opts))
+diff --git a/tsdb/db_test.go b/tsdb/db_test.go
+index def826c3d82..aadd5987e4f 100644
+--- a/tsdb/db_test.go
++++ b/tsdb/db_test.go
+@@ -1808,39 +1808,25 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 		}}
+ 	}
+ 
+-	t.Run("xor2_without_option_returns_error", func(t *testing.T) {
++	t.Run("xor_default_accepts_config_xor2", func(t *testing.T) {
+ 		opts := DefaultOptions()
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR
+ 		db := newTestDB(t, withOpts(opts))
+-		require.ErrorContains(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR2)),
+-			"'storage.tsdb.chunk_encoding.floats: xor2' requires the xor2-encoding feature flag")
+-	})
+-
+-	t.Run("xor2_allowed_with_xor_default_accepts_config_xor2", func(t *testing.T) {
+-		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+-		opts.FloatChunkEncoding = chunkenc.EncXOR
+-		db := newTestDB(t, withOpts(opts))
+-		// With XOR2 allowed but the default kept at XOR, an explicit xor2 in the
+-		// config must be accepted because the feature is enabled. This is the
+-		// multi-tenant case where the encoding is opted in per reload.
+ 		require.NoError(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR2)))
+ 		require.True(t, db.head.opts.UseXOR2FloatEncoding())
+ 	})
+ 
+-	t.Run("explicit_xor_overrides_xor2_option", func(t *testing.T) {
++	t.Run("explicit_xor_overrides_xor2_default", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		db := newTestDB(t, withOpts(opts))
+ 		require.NoError(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR)))
+ 		require.False(t, db.head.opts.UseXOR2FloatEncoding())
+-		require.Equal(t, chunkenc.EncXOR2, db.opts.FloatChunkEncoding, "startup option must not be mutated")
++		require.Equal(t, chunkenc.EncXOR2, db.opts.FloatChunkEncoding, "startup default must not be mutated")
+ 	})
+ 
+-	t.Run("xor2_with_option_succeeds", func(t *testing.T) {
++	t.Run("xor2_default_succeeds", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		db := newTestDB(t, withOpts(opts))
+ 		require.NoError(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR2)))
+@@ -1851,7 +1837,6 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 		for _, enc := range []chunkenc.Encoding{chunkenc.EncXOR2, chunkenc.EncXOR} {
+ 			t.Run(enc.String(), func(t *testing.T) {
+ 				opts := DefaultOptions()
+-				opts.XOR2EncodingAllowed = true
+ 				opts.FloatChunkEncoding = enc
+ 				db := newTestDB(t, withOpts(opts))
+ 				require.NoError(t, db.ApplyConfig(xorCfg("")))
+@@ -1862,7 +1847,6 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 
+ 	t.Run("sequential_reload_reverts_to_startup_option", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		db := newTestDB(t, withOpts(opts))
+ 
+@@ -1875,7 +1859,6 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 
+ 	t.Run("nil_TSDBConfig_resets_to_startup_option", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		db := newTestDB(t, withOpts(opts))
+ 
+@@ -1886,9 +1869,21 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 		require.True(t, db.head.opts.UseXOR2FloatEncoding(), "nil TSDBConfig must revert to startup option")
+ 	})
+ 
++	t.Run("startup_chunk_encoding_floats_applies_before_reload", func(t *testing.T) {
++		opts := DefaultOptions()
++		opts.FloatChunkEncoding = chunkenc.EncXOR
++		opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR2
++		db := newTestDB(t, withOpts(opts))
++		require.True(t, db.head.opts.UseXOR2FloatEncoding(), "startup config value must apply before the first reload")
++
++		// Removing the field must fall back to the startup option, not to the
++		// value the configuration file happened to hold at startup.
++		require.NoError(t, db.ApplyConfig(xorCfg("")))
++		require.False(t, db.head.opts.UseXOR2FloatEncoding())
++	})
++
+ 	t.Run("xor_with_st_storage_returns_error", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		opts.EnableSTStorage = true
+ 		db := newTestDB(t, withOpts(opts))
+@@ -1948,7 +1943,6 @@ func TestVerticalCompactionFloatChunkEncoding(t *testing.T) {
+ 		createOverlappingBlocks(t, dir, 0)
+ 
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		db := newTestDB(t, withDir(dir), withOpts(opts))
+ 		db.DisableCompactions()
+@@ -1964,7 +1958,6 @@ func TestVerticalCompactionFloatChunkEncoding(t *testing.T) {
+ 		createOverlappingBlocks(t, dir, 0)
+ 
+ 		opts := DefaultOptions()
+-		opts.XOR2EncodingAllowed = true
+ 		db := newTestDB(t, withDir(dir), withOpts(opts))
+ 		db.DisableCompactions()
+ 
+@@ -2007,7 +2000,6 @@ func TestChunkQuerierFloatChunkEncoding(t *testing.T) {
+ 
+ 			opts := DefaultOptions()
+ 			if tc.xor2 {
+-				opts.XOR2EncodingAllowed = true
+ 				opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 			}
+ 			db := newTestDB(t, withDir(dir), withOpts(opts))
+@@ -2066,24 +2058,22 @@ func TestValidateOptsSTStorageRequiresXOR2(t *testing.T) {
+ 	_, _, err := validateOpts(opts, nil)
+ 	require.ErrorContains(t, err, "is incompatible with start-timestamp storage")
+ 
+-	// EncXOR2 + st-storage must be accepted when XOR2 is allowed.
+-	opts.XOR2EncodingAllowed = true
++	// EncXOR2 + st-storage must be accepted.
+ 	opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 	_, _, err = validateOpts(opts, nil)
+ 	require.NoError(t, err)
+-}
+ 
+-func TestValidateOptsXOR2RequiresAllowed(t *testing.T) {
+-	t.Parallel()
+-	opts := DefaultOptions()
+-	opts.FloatChunkEncoding = chunkenc.EncXOR2
+-	// XOR2 as the default encoding requires the feature to be enabled.
+-	_, _, err := validateOpts(opts, nil)
+-	require.ErrorContains(t, err, "is not enabled")
+-
+-	opts.XOR2EncodingAllowed = true
++	// So must XOR2 selected by chunk_encoding.floats alone.
++	opts.FloatChunkEncoding = chunkenc.EncXOR
++	opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR2
+ 	_, _, err = validateOpts(opts, nil)
+ 	require.NoError(t, err)
++
++	// chunk_encoding.floats set to xor must still be rejected.
++	opts.FloatChunkEncoding = chunkenc.EncXOR2
++	opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR
++	_, _, err = validateOpts(opts, nil)
++	require.ErrorContains(t, err, "is incompatible with start-timestamp storage")
+ }
+ 
+ func TestNotMatcherSelectsLabelsUnsetSeries(t *testing.T) {
+diff --git a/tsdb/docs/format/chunks.md b/tsdb/docs/format/chunks.md
+index 34df028814b..0c1b14f6dfd 100644
+--- a/tsdb/docs/format/chunks.md
++++ b/tsdb/docs/format/chunks.md
+@@ -36,7 +36,7 @@ in-file offset (lower 4 bytes) and segment sequence number (upper 4 bytes).
+ Notes:
+ 
+ * `len`: Chunk size in bytes. 1 to 5 bytes long using the [`<uvarint>` encoding](https://go.dev/src/encoding/binary/varint.go).
+-* `encoding`: Currently one of `XOR`, `XOR2`, `histogram`, `floathistogram`, `histogramST`, or `floathistogramST`, see [code for numerical values](https://github.com/prometheus/prometheus/blob/02d0de9987ad99dee5de21853715954fadb3239f/tsdb/chunkenc/chunk.go#L28-L47). The `XOR2`, `histogramST`, and `floathistogramST` encodings extend their non-ST counterparts with optional Start Timestamp (ST) data. `XOR2` is gated behind the experimental [`xor2-encoding` feature flag](../../../docs/feature_flags.md#xor2-chunk-encoding); `histogramST` and `floathistogramST` are gated behind the experimental [`histograms-st-encoding` feature flag](../../../docs/feature_flags.md#histogram-st-chunk-encoding).
++* `encoding`: Currently one of `XOR`, `XOR2`, `histogram`, `floathistogram`, `histogramST`, or `floathistogramST`, see [code for numerical values](https://github.com/prometheus/prometheus/blob/02d0de9987ad99dee5de21853715954fadb3239f/tsdb/chunkenc/chunk.go#L28-L47). The `XOR2`, `histogramST`, and `floathistogramST` encodings extend their non-ST counterparts with optional Start Timestamp (ST) data. `XOR2` is selected by the [`storage.tsdb.chunk_encoding.floats`](../../../docs/configuration/configuration.md#tsdb) configuration field; `histogramST` and `floathistogramST` are gated behind the experimental [`histograms-st-encoding` feature flag](../../../docs/feature_flags.md#histogram-st-chunk-encoding).
+ * `data`: See below for each encoding.
+ * `checksum`: Checksum of `encoding` and `data`. It's a [cyclic redundancy check](https://en.wikipedia.org/wiki/Cyclic_redundancy_check) with the Castagnoli polynomial, serialised as an unsigned 32 bits big endian number. Can be referred as a `CRC-32C`.
+ 
+diff --git a/tsdb/querier_test.go b/tsdb/querier_test.go
+index eca1393acb8..bec2b5da16d 100644
+--- a/tsdb/querier_test.go
++++ b/tsdb/querier_test.go
+@@ -3989,7 +3989,6 @@ func testChunkQuerierOverlappingInOrderAndOOOChunks(t *testing.T, valType chunke
+ 	opts.OutOfOrderTimeWindow = 24 * time.Hour.Milliseconds()
+ 	opts.EnableSTStorage = storeST
+ 	if storeST {
+-		opts.XOR2EncodingAllowed = true
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 	}
+ 	db := newTestDB(t, withOpts(opts))
+
+From f7abd89a0f8103b384d1ab397cb4c4aa1ff17a35 Mon Sep 17 00:00:00 2001
+From: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 13:19:55 +0200
+Subject: [PATCH 2/3] tsdb: keep a single float chunk encoding option
+
+tsdb.Options had both FloatChunkEncoding and ChunkEncodingFloats, which is the
+same option twice. Resolve the chunk_encoding.floats config value into
+FloatChunkEncoding in cmd/prometheus instead, and inline the resolution in
+ApplyConfig.
+
+The TSDB errors no longer name Prometheus config paths, so they read correctly
+for downstream consumers.
+
+Note: removing chunk_encoding.floats from the config file and reloading now
+falls back to the encoding resolved at startup, not to the flag-derived default.
+
+Signed-off-by: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+---
+ cmd/prometheus/main.go | 13 ++++++++---
+ tsdb/db.go             | 53 ++++++++++++++++++++----------------------
+ tsdb/db_test.go        | 41 ++++++++++++++++----------------
+ 3 files changed, 55 insertions(+), 52 deletions(-)
+
+diff --git a/cmd/prometheus/main.go b/cmd/prometheus/main.go
+index 7bf75672694..e49906e2c50 100644
+--- a/cmd/prometheus/main.go
++++ b/cmd/prometheus/main.go
+@@ -784,7 +784,16 @@ func main() {
+ 		logger.Warn("The option --storage.tsdb.block-reload-interval is set to a value less than 1s. Setting it to 1s to avoid overload.")
+ 		cfg.tsdb.BlockReloadInterval = model.Duration(1 * time.Second)
+ 	}
+-	cfg.tsdb.ChunkEncodingFloats = cfgFile.StorageConfig.TSDBConfig.ChunkEncoding.Floats
++	// The configuration file takes precedence over the flag-derived default. An
++	// absent field keeps that default; other values are rejected when the
++	// configuration is unmarshalled. The TSDB reads the field again on every
++	// reload and falls back to the value resolved here whenever it is absent.
++	switch cfgFile.StorageConfig.TSDBConfig.ChunkEncoding.Floats {
++	case config.FloatChunkEncodingXOR:
++		cfg.tsdb.FloatChunkEncoding = chunkenc.EncXOR
++	case config.FloatChunkEncodingXOR2:
++		cfg.tsdb.FloatChunkEncoding = chunkenc.EncXOR2
++	}
+ 	cfg.tsdb.OutOfOrderTimeWindow = cfgFile.StorageConfig.TSDBConfig.OutOfOrderTimeWindow
+ 	cfg.tsdb.StaleSeriesCompactionThreshold = cfgFile.StorageConfig.TSDBConfig.StaleSeriesCompactionThreshold
+ 	cfg.tsdb.RetentionDuration = cfgFile.StorageConfig.TSDBConfig.Retention.Time
+@@ -2115,7 +2124,6 @@ type tsdbOptions struct {
+ 	StaleSeriesCompactionThreshold float64
+ 	EnableFastStartup              bool
+ 	FloatChunkEncoding             chunkenc.Encoding
+-	ChunkEncodingFloats            string
+ }
+ 
+ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
+@@ -2149,7 +2157,6 @@ func (opts tsdbOptions) ToTSDBOptions() tsdb.Options {
+ 		StaleSeriesCompactionThreshold: opts.StaleSeriesCompactionThreshold,
+ 		EnableFastStartup:              opts.EnableFastStartup,
+ 		FloatChunkEncoding:             opts.FloatChunkEncoding,
+-		ChunkEncodingFloats:            opts.ChunkEncodingFloats,
+ 	}
+ }
+ 
+diff --git a/tsdb/db.go b/tsdb/db.go
+index 6e0de873574..97b2e4dafb4 100644
+--- a/tsdb/db.go
++++ b/tsdb/db.go
+@@ -264,21 +264,16 @@ type Options struct {
+ 	// BlockReloadInterval is the interval at which blocks are reloaded.
+ 	BlockReloadInterval time.Duration
+ 
+-	// FloatChunkEncoding is the encoding used for new float chunks when
+-	// chunk_encoding.floats is absent from the configuration file.
+-	// Defaults to EncXOR. Set to EncXOR2 to default new float chunks to XOR2.
++	// FloatChunkEncoding is the encoding used for new float chunks. It is the
++	// encoding ApplyConfig falls back to whenever chunk_encoding.floats is absent
++	// from the configuration file, so callers reading that field at startup must
++	// resolve it into this one.
++	// Defaults to EncXOR. Set to EncXOR2 to encode new float chunks as XOR2.
+ 	// Always use DefaultOptions() rather than a bare Options literal; the zero value
+ 	// of this field is EncNone, not EncXOR. This field is independent of EnableSTStorage:
+ 	// st-storage does not automatically select EncXOR2.
+ 	FloatChunkEncoding chunkenc.Encoding
+ 
+-	// ChunkEncodingFloats is the value of chunk_encoding.floats read from the
+-	// configuration file at startup. It takes precedence over FloatChunkEncoding;
+-	// an empty value means the field is absent. Subsequent values are picked up by
+-	// ApplyConfig, which falls back to FloatChunkEncoding whenever the field is
+-	// absent again.
+-	ChunkEncodingFloats string
+-
+ 	// FeatureRegistry is used to register TSDB features.
+ 	FeatureRegistry features.Collector
+ 
+@@ -926,18 +921,10 @@ func Open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, st
+ 	return open(dir, l, r, opts, rngs, stats)
+ }
+ 
+-// resolveFloatChunkEncoding returns the encoding to use for new float chunks.
+-// The chunk_encoding.floats configuration value takes precedence over def; an
+-// empty or unknown value keeps def.
+-func resolveFloatChunkEncoding(def chunkenc.Encoding, floats string) chunkenc.Encoding {
+-	switch floats {
+-	case config.FloatChunkEncodingXOR:
+-		return chunkenc.EncXOR
+-	case config.FloatChunkEncodingXOR2:
+-		return chunkenc.EncXOR2
+-	}
+-	return def
+-}
++// errXORIncompatibleWithSTStorage is returned when the float chunk encoding
++// resolves to XOR while EnableSTStorage is set; XOR chunks do not store start
++// timestamps.
++var errXORIncompatibleWithSTStorage = fmt.Errorf("float chunk encoding %q is incompatible with start-timestamp storage; XOR chunks do not store start timestamps, use %q", config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
+ 
+ func validateOpts(opts *Options, rngs []int64) (*Options, []int64, error) {
+ 	if opts == nil {
+@@ -949,8 +936,8 @@ func validateOpts(opts *Options, rngs []int64) (*Options, []int64, error) {
+ 	if opts.FloatChunkEncoding != chunkenc.EncXOR && opts.FloatChunkEncoding != chunkenc.EncXOR2 {
+ 		return nil, nil, fmt.Errorf("unsupported float chunk encoding %q; valid values are %q and %q", strings.ToLower(opts.FloatChunkEncoding.String()), config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
+ 	}
+-	if opts.EnableSTStorage && resolveFloatChunkEncoding(opts.FloatChunkEncoding, opts.ChunkEncodingFloats) == chunkenc.EncXOR {
+-		return nil, nil, fmt.Errorf("float chunk encoding %q is incompatible with start-timestamp storage; XOR chunks do not store start timestamps, use %q", config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
++	if opts.EnableSTStorage && opts.FloatChunkEncoding == chunkenc.EncXOR {
++		return nil, nil, errXORIncompatibleWithSTStorage
+ 	}
+ 	if opts.StripeSize <= 0 {
+ 		opts.StripeSize = DefaultStripeSize
+@@ -1169,7 +1156,7 @@ func open(dir string, l *slog.Logger, r prometheus.Registerer, opts *Options, rn
+ 	headOpts.EnableSharding = opts.EnableSharding
+ 	headOpts.EnableSTAsZeroSample = opts.EnableSTAsZeroSample
+ 	headOpts.EnableSTStorage.Store(opts.EnableSTStorage)
+-	headOpts.FloatChunkEncoding.Store(uint32(resolveFloatChunkEncoding(opts.FloatChunkEncoding, opts.ChunkEncodingFloats)))
++	headOpts.FloatChunkEncoding.Store(uint32(opts.FloatChunkEncoding))
+ 	headOpts.EnableHistogramSTEncoding.Store(opts.EnableHistogramSTEncoding)
+ 	headOpts.EnableMetadataWALRecords = opts.EnableMetadataWALRecords
+ 	headOpts.EnableFastStartup = opts.EnableFastStartup
+@@ -1373,8 +1360,19 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
+ 		// Validate encoding config before updating the head encoding so that
+ 		// an invalid encoding in the config does not change the active encoding.
+ 		// db.opts.EnableSTStorage is set once at startup and never mutated.
+-		if conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats == config.FloatChunkEncodingXOR && db.opts.EnableSTStorage {
+-			return errors.New("'storage.tsdb.chunk_encoding.floats: xor' is incompatible with st-storage; XOR chunks do not store start timestamps")
++		// An absent chunk_encoding.floats keeps the encoding resolved at startup.
++		effectiveEncoding := db.opts.FloatChunkEncoding
++		switch floats := conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats; floats {
++		case "":
++		case config.FloatChunkEncodingXOR:
++			effectiveEncoding = chunkenc.EncXOR
++		case config.FloatChunkEncodingXOR2:
++			effectiveEncoding = chunkenc.EncXOR2
++		default:
++			return fmt.Errorf("unsupported float chunk encoding %q; valid values are %q and %q", floats, config.FloatChunkEncodingXOR, config.FloatChunkEncodingXOR2)
++		}
++		if db.opts.EnableSTStorage && effectiveEncoding == chunkenc.EncXOR {
++			return errXORIncompatibleWithSTStorage
+ 		}
+ 		oooTimeWindow = conf.StorageConfig.TSDBConfig.OutOfOrderTimeWindow
+ 		db.opts.staleSeriesCompactionThreshold.Store(conf.StorageConfig.TSDBConfig.StaleSeriesCompactionThreshold)
+@@ -1389,7 +1387,6 @@ func (db *DB) ApplyConfig(conf *config.Config) error {
+ 			db.metrics.maxPercentage.Set(db.opts.MaxPercentage)
+ 			db.retentionMtx.Unlock()
+ 		}
+-		effectiveEncoding := resolveFloatChunkEncoding(db.opts.FloatChunkEncoding, conf.StorageConfig.TSDBConfig.ChunkEncoding.Floats)
+ 		db.head.opts.FloatChunkEncoding.Store(uint32(effectiveEncoding))
+ 	} else {
+ 		db.opts.staleSeriesCompactionThreshold.Store(0)
+diff --git a/tsdb/db_test.go b/tsdb/db_test.go
+index aadd5987e4f..0921517f425 100644
+--- a/tsdb/db_test.go
++++ b/tsdb/db_test.go
+@@ -1869,26 +1869,37 @@ func TestDBApplyConfigChunkEncoding(t *testing.T) {
+ 		require.True(t, db.head.opts.UseXOR2FloatEncoding(), "nil TSDBConfig must revert to startup option")
+ 	})
+ 
+-	t.Run("startup_chunk_encoding_floats_applies_before_reload", func(t *testing.T) {
++	t.Run("xor_with_st_storage_returns_error", func(t *testing.T) {
+ 		opts := DefaultOptions()
+-		opts.FloatChunkEncoding = chunkenc.EncXOR
+-		opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR2
++		opts.FloatChunkEncoding = chunkenc.EncXOR2
++		opts.EnableSTStorage = true
++		db := newTestDB(t, withOpts(opts))
++		require.ErrorContains(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR)),
++			"is incompatible with start-timestamp storage")
++	})
++
++	t.Run("empty_encoding_with_st_storage_keeps_startup_option", func(t *testing.T) {
++		opts := DefaultOptions()
++		opts.FloatChunkEncoding = chunkenc.EncXOR2
++		opts.EnableSTStorage = true
+ 		db := newTestDB(t, withOpts(opts))
+-		require.True(t, db.head.opts.UseXOR2FloatEncoding(), "startup config value must apply before the first reload")
+ 
+ 		// Removing the field must fall back to the startup option, not to the
+-		// value the configuration file happened to hold at startup.
++		// XOR default; otherwise st-storage would silently lose XOR2.
+ 		require.NoError(t, db.ApplyConfig(xorCfg("")))
+-		require.False(t, db.head.opts.UseXOR2FloatEncoding())
++		require.True(t, db.head.opts.UseXOR2FloatEncoding())
++		require.NoError(t, db.ApplyConfig(&config.Config{}))
++		require.True(t, db.head.opts.UseXOR2FloatEncoding())
+ 	})
+ 
+-	t.Run("xor_with_st_storage_returns_error", func(t *testing.T) {
++	t.Run("rejected_reload_keeps_active_encoding", func(t *testing.T) {
+ 		opts := DefaultOptions()
+ 		opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 		opts.EnableSTStorage = true
+ 		db := newTestDB(t, withOpts(opts))
+-		require.ErrorContains(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR)),
+-			"incompatible with st-storage")
++
++		require.ErrorContains(t, db.ApplyConfig(xorCfg(config.FloatChunkEncodingXOR)), "is incompatible with start-timestamp storage")
++		require.True(t, db.head.opts.UseXOR2FloatEncoding(), "active encoding must not change on a rejected reload")
+ 	})
+ }
+ 
+@@ -2062,18 +2073,6 @@ func TestValidateOptsSTStorageRequiresXOR2(t *testing.T) {
+ 	opts.FloatChunkEncoding = chunkenc.EncXOR2
+ 	_, _, err = validateOpts(opts, nil)
+ 	require.NoError(t, err)
+-
+-	// So must XOR2 selected by chunk_encoding.floats alone.
+-	opts.FloatChunkEncoding = chunkenc.EncXOR
+-	opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR2
+-	_, _, err = validateOpts(opts, nil)
+-	require.NoError(t, err)
+-
+-	// chunk_encoding.floats set to xor must still be rejected.
+-	opts.FloatChunkEncoding = chunkenc.EncXOR2
+-	opts.ChunkEncodingFloats = config.FloatChunkEncodingXOR
+-	_, _, err = validateOpts(opts, nil)
+-	require.ErrorContains(t, err, "is incompatible with start-timestamp storage")
+ }
+ 
+ func TestNotMatcherSelectsLabelsUnsetSeries(t *testing.T) {
+
+From c1f3939425a41e4d4ed596327ed7a519197cb324 Mon Sep 17 00:00:00 2001
+From: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+Date: Thu, 20 Aug 2026 13:33:28 +0200
+Subject: [PATCH 3/3] cmd/prometheus: add test for config precedence over
+ combined feature flags
+
+Signed-off-by: Julien Pivotto <291750+roidelapluie@users.noreply.github.com>
+---
+ cmd/prometheus/main_test.go | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/cmd/prometheus/main_test.go b/cmd/prometheus/main_test.go
+index 3dffcc86032..19fbca9b4d9 100644
+--- a/cmd/prometheus/main_test.go
++++ b/cmd/prometheus/main_test.go
+@@ -447,6 +447,16 @@ storage:
+ 			features: "st-storage,xor2-encoding",
+ 			exitCode: 0,
+ 		},
++		{
++			name: "st-storage and xor2-encoding flags with explicit xor in config",
++			config: `
++storage:
++  tsdb:
++    chunk_encoding:
++      floats: xor`,
++			features: "st-storage,xor2-encoding",
++			exitCode: 1,
++		},
+ 		{
+ 			name:     "st-storage without any float chunk encoding set",
+ 			config:   "",

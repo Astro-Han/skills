@@ -1,0 +1,351 @@
+{
+  "additions": 551,
+  "author": "fzlzjerry",
+  "base_sha": "3d36e183cd78c9e71be3e6a200a583f5b76f79c9",
+  "body": "Fixes #12591\n\n## Summary\n\n- expose the effective configuration for one scrape pool through an on-demand, experimental API endpoint\n- add a compact, link-like configuration toggle to each parent pool header on the Targets and Service Discovery pages\n- render the configuration in the pool content pane, fetch it only when expanded, and retain YAML secret redaction\n- document the endpoint and add it to the OpenAPI specification\n\n## Validation\n\n- `go test ./web/api/v1 -count=1`\n- `go vet ./web/api/v1`\n- `go build ./cmd/prometheus`\n- `golangci-lint run --timeout 4m ./...`\n- `pnpm --filter @prometheus-io/mantine-ui test --run`\n- `pnpm --filter @prometheus-io/mantine-ui run lint`\n- `pnpm --filter @prometheus-io/mantine-ui run build`\n- ran the built server with an imported `scrape_config_files` job and verified that the pool is returned while its authorization credentials remain redacted\n\n```release-notes\n[ENHANCEMENT] UI: Show the effective configuration for each scrape pool on the Targets and Service Discovery pages.\n```\n",
+  "captured_at": "2026-08-30T10:28:22+00:00",
+  "case_id": "prometheus-prometheus-pr-19384",
+  "changed_files": 16,
+  "checks": [
+    {
+      "conclusion": "FAILURE",
+      "name": "Go tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "dependabot",
+      "status": "COMPLETED",
+      "workflowName": "Dependabot auto-merge"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "Check release notes"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "Check release notes"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scorecards analysis",
+      "status": "COMPLETED",
+      "workflowName": "Scorecards supply-chain security"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "More Go tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for 32-bit x86",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "List active LTS releases",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Go tests with previous Go version",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "UI tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests on Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Mixins tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compliance testing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check generated parser",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "golangci-lint",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseMetricText, FuzzParseOpenMetric)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseMetricSelector, FuzzParseExpr)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzXORChunk, FuzzXOR2Chunk)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Run Go Fuzz Tests (FuzzParseProtobuf)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzzing / Fuzzing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codeql / Analyze (javascript)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for Prometheus upgrades and downgrades (3.13.2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go tests for Prometheus upgrades and downgrades (3.5.5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (0)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (1)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build Prometheus for common architectures (2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build Prometheus for all architectures",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Publish UI on npm Registry",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Report status of build Prometheus for all architectures",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish main branch artifacts",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish release artefacts",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Scorecard",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Redirect rules - prometheus-react",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "3d36e183cd78c9e71be3e6a200a583f5b76f79c9",
+  "deletions": 6,
+  "files": [
+    {
+      "additions": 30,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "docs/querying/api.md"
+    },
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/api.go"
+    },
+    {
+      "additions": 34,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/api_scenarios_test.go"
+    },
+    {
+      "additions": 51,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "web/api/v1/api_test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/openapi.go"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/openapi_examples.go"
+    },
+    {
+      "additions": 15,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/openapi_paths.go"
+    },
+    {
+      "additions": 15,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/openapi_schemas.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/openapi_test.go"
+    },
+    {
+      "additions": 86,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/testdata/openapi_3.1_golden.yaml"
+    },
+    {
+      "additions": 86,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/api/v1/testdata/openapi_3.2_golden.yaml"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "web/ui/mantine-ui/src/api/responseTypes/config.ts"
+    },
+    {
+      "additions": 81,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "web/ui/mantine-ui/src/components/ScrapePoolConfig.test.tsx"
+    },
+    {
+      "additions": 55,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "web/ui/mantine-ui/src/components/ScrapePoolConfig.tsx"
+    },
+    {
+      "additions": 28,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web/ui/mantine-ui/src/pages/service-discovery/ServiceDiscoveryPoolsList.tsx"
+    },
+    {
+      "additions": 29,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "web/ui/mantine-ui/src/pages/targets/ScrapePoolsList.tsx"
+    }
+  ],
+  "head_sha": "e3d37797c51598b686602bab6d4b5aa06eed62fe",
+  "issues": [
+    {
+      "body": "### Proposal\n\nBeing able to quickly see the running configuration on a Prometheus instance using the `/config` UI endpoint is a really convenient feature of Prometheus. However, with the recent addition of being able to separate scrape configs into multiple files with `scrape_config_files`, you lose the ability to see exactly what the full running config actually is when using it. This can make it more difficult to easily see what relabeling is happening on individual scrape jobs. \r\n\r\nInstead, you just see which paths are being included in the main config file, like so:\r\n![Screenshot 2023-07-21 at 11 20 34 AM](https://github.com/prometheus/prometheus/assets/11506822/4314228b-2716-48f9-bedc-c93df0f65c5f)\r\n\r\nI'd propose that the contents in the `/config` endpoint be expanded to show the contents of the included `scrape_config_files`.\r\n\r\nIn order to do so, I'm not sure if the best way would be to just include it in the box that is there now or create a new section named something like \"Running Configuration\" that has all of the scrape config files expanded. Or to create a new endpoint entirely just for scrape configs, similar to `/rules`.\r\n\r\nRegardless, I believe it's an important feature and wanted to put this out there for ideas and tracking.",
+      "number": 12591,
+      "title": "Expand scrape_config_files in the /config web UI endpoint",
+      "url": "https://github.com/prometheus/prometheus/issues/12591"
+    }
+  ],
+  "patch_sha256": "c1726d1ae26254b6162b09375c19c77c54cae75a1f42a77ac9deeb53de095e34",
+  "pr_number": 19384,
+  "repo": "prometheus/prometheus",
+  "schema_version": 1,
+  "title": "ui: show effective scrape pool configuration",
+  "url": "https://github.com/prometheus/prometheus/pull/19384"
+}

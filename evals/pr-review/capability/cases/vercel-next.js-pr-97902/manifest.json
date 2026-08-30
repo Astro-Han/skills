@@ -1,0 +1,863 @@
+{
+  "additions": 527,
+  "author": "sokra",
+  "base_sha": "d352f1740a870d2dcf84f367019dfe7fe033646c",
+  "body": "### What?\n\nAdds debug-only OS realpath validation to successful `DiskFileSystem` file and directory reads. When a successfully canonicalized path differs from the supplied path, the read returns a normal task error naming both paths.\n\nFixes pattern/glob traversal and NFT tracing so physical filesystem access uses resolved paths while logical paths remain available for user-visible specifiers and complete symlink-chain recovery.\n\n### Why?\n\nReading through an unresolved symlink parent gives the same filesystem object multiple path identities. That can make Turbo Tasks dependency tracking and invalidation inconsistent and can produce invalid deployment ZIPs when NFT output contains files below unresolved links.\n\nThe checks return errors rather than asserting because paths can disagree temporarily under eventual consistency. Propagating a task error avoids panicking a worker thread while still exposing invalid callers during development.\n\n### How?\n\nThe validation lives directly in `DiskFileSystem::read` and `DiskFileSystem::raw_read_dir`. It calls the OS canonicalization API inline instead of the Turbo Tasks realpath task, keeping the diagnostic out of the task dependency graph. The guard runs only after the OS read succeeds, so missing/non-directory probes preserve their existing behavior.\n\n`read_matches` resolves each physical directory immediately before enumeration while retaining logical `PatternMatch` paths.\n\n`read_glob` and `track_glob` now resolve their initial directory before enumeration. Symlinks discovered later through wildcard segments are also traversed through resolved targets. `ReadGlobResult` deliberately retains logical paths rooted at the supplied base, allowing consumers to call `realpath_with_links` and recover the complete symlink chain.\n\nConsumers follow that contract explicitly:\n\n- NFT includes expand each logical match with `realpath_with_links`, emit resolved files and every traversed symlink, skip resolved directory targets, and deterministically deduplicate/sort output.\n- `import.meta.glob` uses recursive logical keys as the source of user-visible requests, while module resolution follows and tracks symlinks.\n- the hash-glob example resolves returned logical paths before reading.\n\nWebpack-loader context dependencies are covered for both `path/to/symlink/inner/path/*` and `path/to/*/inner/path/*`. The loader fixture performs its directory read with Node `fs`, reports the directory using `addContextDependency`, and Turbopack tracks the resolved target.\n\n### Verification\n\n- `cargo fmt -p turbo-tasks-fs -p turbopack-ecmascript -p next-api -- --check`\n- `cargo clippy -p turbo-tasks-fs -p turbopack-ecmascript -p next-api --all-targets`\n- `cargo test -p turbo-tasks-fs` (128 passed)\n- `cargo test -p next-api` (7 passed)\n- `cargo check -p turbo-tasks-fs --examples`\n- `import.meta.glob` symlink execution fixture (1 passed)\n- Nine targeted node-file-trace CI cases with `release-with-assertions` (9 passed)\n- `pnpm build-all`\n- `webpack-loader-fs` Turbopack dev e2e (1 passed)\n- `build-trace-extra-entries-turbo` Turbopack production e2e (1 passed)\n- twoslash Turbopack production, normal mode (4 passed)\n- twoslash Turbopack production, cache-components mode (4 passed)\n- `bench/heavy-npm-deps` Turbopack development smoke test (HTTP 200)\n\n### Notes\n\nThe disk guard is cross-platform, while its symlink-parent regression test is Unix-only, matching neighbouring symlink tests. On Windows, OS canonicalization can also normalize casing and 8.3 short names; a debug read using a non-canonical spelling will therefore return the same diagnostic error.\n\n<!-- NEXT_JS_LLM -->\n\n\n<!-- fleet 1d32e12c-f4ec-4f22-862a-c85f0005805c -->",
+  "captured_at": "2026-08-30T10:28:17+00:00",
+  "case_id": "vercel-next.js-pr-97902",
+  "changed_files": 13,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "deploy-target",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "deploy-target",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "optimize-ci / PR Stack Optimizer",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Determine changes",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "generate-native-matrix",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "generate-native-matrix",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Upload PR CI metadata",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build-wasm",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-wasm (web)",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-next / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-wasm (nodejs)",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "stable - ${{ matrix.target }} - node@20",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "stable - x86_64-unknown-linux-gnu - node@20",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "validate-docs-links",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Prepare preview tarball",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Prepare preview tarball",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-native / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Potentially publish release",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Potentially publish release",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-native-windows / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "thank you, build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "thank you, build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fetch test timings",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Upload Turbopack Bytesize metrics to Datadog",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Upload Turbopack Bytesize metrics to Datadog",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test devlow package / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "report publish failure to slack",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "report publish failure to slack",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Wait for preview tarball",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cargo unit / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cargo benches / Test",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "rust check / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "rustdoc check / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ast-grep lint",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test next-swc wasm / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test next-swc wasi",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "types and precompiled / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run devlow benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test unit (20) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test unit (22) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test next-config-ts-native-ts dev (22) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test next-config-ts-native-ts dev (24.15.0) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test next-config-ts-native-ts prod (22) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test next-config-ts-native-ts prod (24.15.0) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (dev) (1/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (dev) (2/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (dev) (3/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (dev) (4/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (dev) (5/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (prod) (1/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (prod) (2/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (prod) (3/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (prod) (4/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests for flakes (prod) (5/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test firefox and safari / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test unit windows (20) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test unit windows (22) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev windows / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test integration windows / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod windows / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (1/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (2/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (3/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (4/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (5/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (6/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack dev (7/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (1/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (2/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (3/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (4/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (5/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (6/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test turbopack production (7/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test rspack dev",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test rspack production",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (1/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (2/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (3/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (4/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (5/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (6/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (7/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (8/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (9/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test dev (10/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (1/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (2/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (3/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (4/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (5/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (6/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (7/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (8/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (9/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test prod (10/10) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (1/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (2/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (3/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (4/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (5/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components dev (6/6) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (1/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (2/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (3/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (4/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (5/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (6/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test cache components prod (7/7) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (1/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (2/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (3/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (4/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (5/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (cache components) (1/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (cache components) (2/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (cache components) (3/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (cache components) (4/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test new and changed tests when deployed (cache components) (5/5) / build",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "thank you, next",
+      "status": "COMPLETED",
+      "workflowName": "build-and-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Socket Security: Project Report",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Vercel Agent Review",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Vercel \u2013 Code Owners",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Docs Link Validation",
+      "status": "COMPLETED",
+      "workflowName": "build-and-deploy"
+    }
+  ],
+  "comparison_base_sha": "d352f1740a870d2dcf84f367019dfe7fe033646c",
+  "deletions": 46,
+  "files": [
+    {
+      "additions": 93,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "crates/next-api/src/nft.rs"
+    },
+    {
+      "additions": 1,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "test/e2e/app-dir/webpack-loader-fs/app/glob-target/inner/path/one.txt"
+    },
+    {
+      "additions": 1,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "test/e2e/app-dir/webpack-loader-fs/app/path/to/symlink"
+    },
+    {
+      "additions": 10,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "test/e2e/app-dir/webpack-loader-fs/test-file-loader.js"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "test/e2e/app-dir/webpack-loader-fs/webpack-loader-fs.test.ts"
+    },
+    {
+      "additions": 18,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "test/production/build-trace-extra-entries-turbo/build-trace-extra-entries-turbo.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "turbopack/crates/turbo-tasks-fs/examples/hash_glob.rs"
+    },
+    {
+      "additions": 110,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "turbopack/crates/turbo-tasks-fs/src/disk.rs"
+    },
+    {
+      "additions": 192,
+      "changeType": "MODIFIED",
+      "deletions": 24,
+      "path": "turbopack/crates/turbo-tasks-fs/src/read_glob.rs"
+    },
+    {
+      "additions": 77,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "turbopack/crates/turbopack-core/src/resolve/pattern.rs"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "turbopack/crates/turbopack-ecmascript/src/references/import_meta_glob.rs"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "turbopack/crates/turbopack-tests/tests/execution/turbopack/resolving/import-meta-glob/input/index.js"
+    },
+    {
+      "additions": 1,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "turbopack/crates/turbopack-tests/tests/execution/turbopack/resolving/import-meta-glob/input/linked"
+    }
+  ],
+  "head_sha": "24d05ce8c2decf918bb59036e85dd539c0d18dec",
+  "issues": [],
+  "patch_sha256": "d5c084aad42b7f3eeaa8aa5745a79cf728eecc11dfc9bf64ba273ab0350342d5",
+  "pr_number": 97902,
+  "repo": "vercel/next.js",
+  "schema_version": 1,
+  "title": "Guard filesystem reads against unresolved symlinks",
+  "url": "https://github.com/vercel/next.js/pull/97902"
+}

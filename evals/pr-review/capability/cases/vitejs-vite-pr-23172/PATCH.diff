@@ -1,0 +1,416 @@
+From 4aeb91e3e4306344553127d2e270a781ecf1ead8 Mon Sep 17 00:00:00 2001
+From: sapphi-red <green@sapphi.red>
+Date: Wed, 5 Aug 2026 14:23:19 +0900
+Subject: [PATCH 1/2] fix(hmr): handle `import.meta.hot.invalidate` in virtual
+ module
+
+Co-authored-by: c4605 <bolasblack@gmail.com>
+---
+ packages/vite/src/node/server/environment.ts  |  4 +--
+ playground/hmr/__tests__/hmr.spec.ts          | 14 ++++++++++
+ playground/hmr/index.html                     |  2 ++
+ playground/hmr/virtual-invalidation/dep.js    |  1 +
+ playground/hmr/virtual-invalidation/parent.js |  7 +++++
+ playground/hmr/vite.config.ts                 | 28 +++++++++++++++++++
+ 6 files changed, 54 insertions(+), 2 deletions(-)
+ create mode 100644 playground/hmr/virtual-invalidation/dep.js
+ create mode 100644 playground/hmr/virtual-invalidation/parent.js
+
+diff --git a/packages/vite/src/node/server/environment.ts b/packages/vite/src/node/server/environment.ts
+index a08b4e11a59653..b0291f2004f3cc 100644
+--- a/packages/vite/src/node/server/environment.ts
++++ b/packages/vite/src/node/server/environment.ts
+@@ -17,7 +17,7 @@ import {
+   createExplicitDepsOptimizer,
+ } from '../optimizer/optimizer'
+ import { ERR_OUTDATED_OPTIMIZED_DEP } from '../../shared/constants'
+-import { cleanUrl, promiseWithResolvers } from '../../shared/utils'
++import { cleanUrl, promiseWithResolvers, unwrapId } from '../../shared/utils'
+ import type { ViteDevServer } from '../server'
+ import { EnvironmentModuleGraph } from './moduleGraph'
+ import type { EnvironmentModuleNode } from './moduleGraph'
+@@ -176,7 +176,7 @@ export class DevEnvironment extends BaseEnvironment {
+       ({ path, message, firstInvalidatedBy }, client) => {
+         this.invalidateModule(
+           {
+-            path,
++            path: unwrapId(path),
+             message,
+             firstInvalidatedBy,
+           },
+diff --git a/playground/hmr/__tests__/hmr.spec.ts b/playground/hmr/__tests__/hmr.spec.ts
+index b8dff189ce9cdb..5098e5033b0ab9 100644
+--- a/playground/hmr/__tests__/hmr.spec.ts
++++ b/playground/hmr/__tests__/hmr.spec.ts
+@@ -259,6 +259,20 @@ if (!isBuild) {
+     }
+   })
+ 
++  test('invalidate virtual module propagates to importers', async () => {
++    const el = await page.$('.virtual-invalidation-parent')
++    await expect.poll(() => el.textContent()).toBe('initial')
++
++    // Edit the real dep file — Vite detects the change and sends
++    // js-update to the virtual module.  The virtual module accepts
++    // then invalidates, which should propagate to parent.js.
++    editFile('virtual-invalidation/dep.js', (code) =>
++      code.replace('initial', 'updated2'),
++    )
++
++    await expect.poll(() => el.textContent()).toBe('updated2')
++  })
++
+   test('invalidate on root triggers page reload', async () => {
+     editFile('invalidation/root.js', (code) => code.replace('Init', 'Updated'))
+     await page.waitForEvent('load')
+diff --git a/playground/hmr/index.html b/playground/hmr/index.html
+index e4ea468b98d67d..92cfda5c2c54bc 100644
+--- a/playground/hmr/index.html
++++ b/playground/hmr/index.html
+@@ -28,6 +28,8 @@
+ <div class="virtual-dep"></div>
+ <div class="soft-invalidation"></div>
+ <div class="invalidation-parent"></div>
++<div class="virtual-invalidation-parent"></div>
++<script type="module" src="./virtual-invalidation/parent.js"></script>
+ <div class="invalidation-root"></div>
+ <div class="invalidation-circular-deps"></div>
+ <div class="invalidation-circular-deps-handled"></div>
+diff --git a/playground/hmr/virtual-invalidation/dep.js b/playground/hmr/virtual-invalidation/dep.js
+new file mode 100644
+index 00000000000000..de8c19c14c7d21
+--- /dev/null
++++ b/playground/hmr/virtual-invalidation/dep.js
+@@ -0,0 +1 @@
++export const depValue = 'initial'
+diff --git a/playground/hmr/virtual-invalidation/parent.js b/playground/hmr/virtual-invalidation/parent.js
+new file mode 100644
+index 00000000000000..47b56698c4787a
+--- /dev/null
++++ b/playground/hmr/virtual-invalidation/parent.js
+@@ -0,0 +1,7 @@
++import { value } from 'virtual:invalidation-file'
++
++if (import.meta.hot) {
++  import.meta.hot.accept()
++}
++
++document.querySelector('.virtual-invalidation-parent').innerHTML = value
+diff --git a/playground/hmr/vite.config.ts b/playground/hmr/vite.config.ts
+index fbe6e4d6a21d9c..030775cd3fa3f2 100644
+--- a/playground/hmr/vite.config.ts
++++ b/playground/hmr/vite.config.ts
+@@ -52,6 +52,7 @@ export default defineConfig(({ command }) => ({
+       },
+     },
+     virtualPlugin(),
++    virtualInvalidationPlugin(),
+     transformCountPlugin(),
+     watchCssDepsPlugin(),
+     TestCssLinkPlugin(),
+@@ -59,6 +60,33 @@ export default defineConfig(({ command }) => ({
+   ],
+ }))
+ 
++// Virtual module that calls invalidate()
++function virtualInvalidationPlugin(): Plugin {
++  return {
++    name: 'virtual-invalidation-file',
++    resolveId(id) {
++      if (id === 'virtual:invalidation-file') {
++        return '\0virtual:invalidation-file'
++      }
++    },
++    load(id) {
++      if (id === '\0virtual:invalidation-file') {
++        // Import a real file so editing it triggers Vite's HMR pipeline.
++        // The virtual module accepts and immediately invalidates,
++        // which should propagate to its importers.
++        return `\
++import { depValue } from '/virtual-invalidation/dep.js';
++export const value = depValue;
++if (import.meta.hot) {
++  import.meta.hot.accept(() => {
++    import.meta.hot.invalidate()
++  })
++}`
++      }
++    },
++  }
++}
++
+ function virtualPlugin(): Plugin {
+   let num = 0
+   return {
+
+From 5399f523c6fa566d1b57a41a9b031252fb215b49 Mon Sep 17 00:00:00 2001
+From: sapphi-red <green@sapphi.red>
+Date: Wed, 5 Aug 2026 15:58:00 +0900
+Subject: [PATCH 2/2] refactor: remove HmrUrl concept
+
+---
+ packages/vite/src/client/client.ts               |  8 +++++++-
+ packages/vite/src/module-runner/hmrHandler.ts    |  5 +----
+ packages/vite/src/node/plugins/importAnalysis.ts | 15 +++++++--------
+ packages/vite/src/node/server/environment.ts     |  4 ++--
+ packages/vite/src/node/server/hmr.ts             | 16 ++++------------
+ .../vite/src/node/server/transformRequest.ts     |  8 ++++----
+ packages/vite/types/customEvent.d.ts             |  8 ++++++++
+ packages/vite/types/hmrPayload.d.ts              |  8 ++++++++
+ 8 files changed, 41 insertions(+), 31 deletions(-)
+
+diff --git a/packages/vite/src/client/client.ts b/packages/vite/src/client/client.ts
+index e75c439dd1bfa7..0127fbe8fa7e22 100644
+--- a/packages/vite/src/client/client.ts
++++ b/packages/vite/src/client/client.ts
+@@ -1,6 +1,7 @@
+ import type { ErrorPayload, HotPayload } from '#types/hmrPayload'
+ import type { ViteHotContext } from '#types/hot'
+ import { HMRClient, HMRContext } from '../shared/hmr'
++import { wrapId } from '../shared/utils'
+ import {
+   createWebSocketModuleRunnerTransport,
+   normalizeModuleRunnerTransport,
+@@ -139,6 +140,10 @@ const debounceReload = (time: number) => {
+ }
+ export const pageReload = debounceReload(20)
+ 
++function wrapIdIfNeeded(id: string): string {
++  return id[0] === '.' || id[0] === '/' ? id : wrapId(id)
++}
++
+ const hmrClient = new HMRClient(
+   {
+     error: (err) => console.error('[vite]', err),
+@@ -152,10 +157,11 @@ const hmrClient = new HMRClient(
+     isWithinCircularImport,
+   }) {
+     const [acceptedPathWithoutQuery, query] = acceptedPath.split(`?`)
++    const browserPath = wrapIdIfNeeded(acceptedPathWithoutQuery)
+     const importPromise = import(
+       /* @vite-ignore */
+       base +
+-        acceptedPathWithoutQuery.slice(1) +
++        browserPath.slice(1) +
+         `?${explicitImportRequired ? 'import&' : ''}t=${timestamp}${
+           query ? `&${query}` : ''
+         }`
+diff --git a/packages/vite/src/module-runner/hmrHandler.ts b/packages/vite/src/module-runner/hmrHandler.ts
+index ec4fb5aec4b4c9..cfab4df39cbdb4 100644
+--- a/packages/vite/src/module-runner/hmrHandler.ts
++++ b/packages/vite/src/module-runner/hmrHandler.ts
+@@ -1,5 +1,5 @@
+ import type { HotPayload } from '#types/hmrPayload'
+-import { slash, unwrapId } from '../shared/utils'
++import { slash } from '../shared/utils'
+ import { ERR_OUTDATED_OPTIMIZED_DEP } from '../shared/constants'
+ import { createHMRHandler } from '../shared/hmrHandler'
+ import type { ModuleRunner } from './runner'
+@@ -19,9 +19,6 @@ export function createHMRHandlerForRunner(
+         await Promise.all(
+           payload.updates.map(async (update): Promise<void> => {
+             if (update.type === 'js-update') {
+-              // runner always caches modules by their full path without /@id/ prefix
+-              update.acceptedPath = unwrapId(update.acceptedPath)
+-              update.path = unwrapId(update.path)
+               return hmrClient.queueUpdate(update)
+             }
+ 
+diff --git a/packages/vite/src/node/plugins/importAnalysis.ts b/packages/vite/src/node/plugins/importAnalysis.ts
+index ea27e678a57cf8..4002a41650529d 100644
+--- a/packages/vite/src/node/plugins/importAnalysis.ts
++++ b/packages/vite/src/node/plugins/importAnalysis.ts
+@@ -27,7 +27,6 @@ import {
+   handlePrunedModules,
+   lexAcceptedHmrDeps,
+   lexAcceptedHmrExports,
+-  normalizeHmrUrl,
+ } from '../server/hmr'
+ import {
+   createDebugger,
+@@ -682,10 +681,11 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
+ 
+             // record for HMR import chain analysis
+             // make sure to unwrap and normalize away base
+-            const hmrUrl = unwrapId(stripBase(url, base))
+-            const isLocalImport = !isExternalUrl(hmrUrl) && !isDataUrl(hmrUrl)
++            const moduleUrl = unwrapId(stripBase(url, base))
++            const isLocalImport =
++              !isExternalUrl(moduleUrl) && !isDataUrl(moduleUrl)
+             if (isLocalImport) {
+-              orderedImportedUrls[index] = hmrUrl
++              orderedImportedUrls[index] = moduleUrl
+             }
+ 
+             if (enablePartialAccept && importedBindings) {
+@@ -705,7 +705,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
+               // pre-transform known direct imports
+               // These requests will also be registered in transformRequest to be awaited
+               // by the deps optimizer
+-              const url = removeImportQuery(hmrUrl)
++              const url = removeImportQuery(moduleUrl)
+               environment.warmupRequest(url)
+             }
+           } else if (!importer.startsWith(withTrailingSlash(clientDir))) {
+@@ -789,7 +789,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
+         str().prepend(
+           `import { createHotContext as __vite__createHotContext } from "${clientPublicPath}";` +
+             `import.meta.hot = __vite__createHotContext(${JSON.stringify(
+-              normalizeHmrUrl(importerModule.url),
++              importerModule.url,
+             )});`,
+         )
+       }
+@@ -827,8 +827,7 @@ export function importAnalysisPlugin(config: ResolvedConfig): Plugin {
+           })
+         }
+         normalizedAcceptedUrls.add(normalized)
+-        const hmrAccept = normalizeHmrUrl(normalized)
+-        str().overwrite(start, end, JSON.stringify(hmrAccept), {
++        str().overwrite(start, end, JSON.stringify(normalized), {
+           contentOnly: true,
+         })
+       }
+diff --git a/packages/vite/src/node/server/environment.ts b/packages/vite/src/node/server/environment.ts
+index b0291f2004f3cc..a08b4e11a59653 100644
+--- a/packages/vite/src/node/server/environment.ts
++++ b/packages/vite/src/node/server/environment.ts
+@@ -17,7 +17,7 @@ import {
+   createExplicitDepsOptimizer,
+ } from '../optimizer/optimizer'
+ import { ERR_OUTDATED_OPTIMIZED_DEP } from '../../shared/constants'
+-import { cleanUrl, promiseWithResolvers, unwrapId } from '../../shared/utils'
++import { cleanUrl, promiseWithResolvers } from '../../shared/utils'
+ import type { ViteDevServer } from '../server'
+ import { EnvironmentModuleGraph } from './moduleGraph'
+ import type { EnvironmentModuleNode } from './moduleGraph'
+@@ -176,7 +176,7 @@ export class DevEnvironment extends BaseEnvironment {
+       ({ path, message, firstInvalidatedBy }, client) => {
+         this.invalidateModule(
+           {
+-            path: unwrapId(path),
++            path,
+             message,
+             firstInvalidatedBy,
+           },
+diff --git a/packages/vite/src/node/server/hmr.ts b/packages/vite/src/node/server/hmr.ts
+index 84e9616b5d45f1..a911ebb9a913ad 100644
+--- a/packages/vite/src/node/server/hmr.ts
++++ b/packages/vite/src/node/server/hmr.ts
+@@ -21,7 +21,7 @@ import { getHookHandler } from '../plugins'
+ import { isExplicitImportRequired } from '../plugins/importAnalysis'
+ import { getEnvFilesForMode } from '../env'
+ import type { Environment } from '../environment'
+-import { withTrailingSlash, wrapId } from '../../shared/utils'
++import { withTrailingSlash } from '../../shared/utils'
+ import type { Plugin } from '../plugin'
+ import {
+   ignoreDeprecationWarnings,
+@@ -719,8 +719,7 @@ export function updateModules(
+     if (
+       firstInvalidatedBy &&
+       boundaries.some(
+-        ({ acceptedVia }) =>
+-          normalizeHmrUrl(acceptedVia.url) === firstInvalidatedBy,
++        ({ acceptedVia }) => acceptedVia.url === firstInvalidatedBy,
+       )
+     ) {
+       needFullReload = 'circular import invalidate'
+@@ -732,8 +731,8 @@ export function updateModules(
+         ({ boundary, acceptedVia, isWithinCircularImport }) => ({
+           type: `${boundary.type}-update` as const,
+           timestamp,
+-          path: normalizeHmrUrl(boundary.url),
+-          acceptedPath: normalizeHmrUrl(acceptedVia.url),
++          path: boundary.url,
++          acceptedPath: acceptedVia.url,
+           explicitImportRequired:
+             boundary.type === 'js'
+               ? isExplicitImportRequired(acceptedVia.url)
+@@ -1124,13 +1123,6 @@ export function lexAcceptedHmrExports(
+   return urls.size > 0
+ }
+ 
+-export function normalizeHmrUrl(url: string): string {
+-  if (url[0] !== '.' && url[0] !== '/') {
+-    url = wrapId(url)
+-  }
+-  return url
+-}
+-
+ function error(pos: number) {
+   const err = new Error(
+     `import.meta.hot.accept() can only accept string literals or an ` +
+diff --git a/packages/vite/src/node/server/transformRequest.ts b/packages/vite/src/node/server/transformRequest.ts
+index 35d01b3833d129..d682a382760011 100644
+--- a/packages/vite/src/node/server/transformRequest.ts
++++ b/packages/vite/src/node/server/transformRequest.ts
+@@ -491,15 +491,15 @@ async function handleModuleSoftInvalidation(
+       }
+ 
+       const urlWithoutTimestamp = removeTimestampQuery(rawUrl)
+-      // hmrUrl must be derived the same way as importAnalysis
+-      const hmrUrl = unwrapId(
++      // moduleUrl must be derived the same way as importAnalysis
++      const moduleUrl = unwrapId(
+         stripBase(
+           removeImportQuery(urlWithoutTimestamp),
+           environment.config.base,
+         ),
+       )
+       for (const importedMod of mod.importedModules) {
+-        if (importedMod.url !== hmrUrl) continue
++        if (importedMod.url !== moduleUrl) continue
+         if (importedMod.lastHMRTimestamp > 0) {
+           const replacedUrl = injectQuery(
+             urlWithoutTimestamp,
+@@ -512,7 +512,7 @@ async function handleModuleSoftInvalidation(
+ 
+         if (imp.d === -1 && environment.config.dev.preTransformRequests) {
+           // pre-transform known direct imports
+-          environment.warmupRequest(hmrUrl)
++          environment.warmupRequest(moduleUrl)
+         }
+ 
+         break
+diff --git a/packages/vite/types/customEvent.d.ts b/packages/vite/types/customEvent.d.ts
+index d117f4bc18f2a0..252b014bcd7a49 100644
+--- a/packages/vite/types/customEvent.d.ts
++++ b/packages/vite/types/customEvent.d.ts
+@@ -39,8 +39,16 @@ export interface WebSocketConnectionPayload {
+ }
+ 
+ export interface InvalidatePayload {
++  /**
++   * Module URL of the invalidated module.
++   * @remarks This changed from a browser-safe URL to a module URL.
++   */
+   path: string
+   message: string | undefined
++  /**
++   * Module URL of the first module that invalidated the update.
++   * @remarks This changed from a browser-safe URL to a module URL.
++   */
+   firstInvalidatedBy: string
+ }
+ 
+diff --git a/packages/vite/types/hmrPayload.d.ts b/packages/vite/types/hmrPayload.d.ts
+index 85daa03647ba1f..3b4e76762c0a91 100644
+--- a/packages/vite/types/hmrPayload.d.ts
++++ b/packages/vite/types/hmrPayload.d.ts
+@@ -38,7 +38,15 @@ export interface BundledDevUpdatePayload {
+ 
+ export interface Update {
+   type: 'js-update' | 'css-update'
++  /**
++   * Module URL of the HMR boundary.
++   * @remarks This changed from a browser-safe URL to a module URL.
++   */
+   path: string
++  /**
++   * Module URL of the accepted module.
++   * @remarks This changed from a browser-safe URL to a module URL.
++   */
+   acceptedPath: string
+   timestamp: number
+   /** @internal */

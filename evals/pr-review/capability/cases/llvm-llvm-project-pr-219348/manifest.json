@@ -1,0 +1,155 @@
+{
+  "additions": 553,
+  "author": "Michael-Chen-NJU",
+  "base_sha": "316b0edee400b3ef72ed0a082dae9bd337ac01a0",
+  "body": "Add packed widening add/sub header wrappers for the RISC-V P extension using generic vector IR.",
+  "captured_at": "2026-08-30T10:28:18+00:00",
+  "case_id": "llvm-llvm-project-pr-219348",
+  "changed_files": 6,
+  "checks": [
+    {
+      "conclusion": "CANCELLED",
+      "name": "Build and Test Linux AArch64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Linux${{ (((startsWith(matrix.runs-on, 'depot-ubuntu-24.04-arm') && ' AArch64')) || '') }}",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "greeter",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "buildbot_comment",
+      "status": "COMPLETED",
+      "workflowName": "Add buildbot information to first PRs from new contributors"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check LLVM_ABI annotations with ids",
+      "status": "COMPLETED",
+      "workflowName": "Check LLVM ABI annotations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "code_formatter",
+      "status": "COMPLETED",
+      "workflowName": "Check code formatting"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Linux",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "automate-prs-labels",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "CANCELLED",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Graphite / mergeability_check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "316b0edee400b3ef72ed0a082dae9bd337ac01a0",
+  "deletions": 5,
+  "files": [
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "clang/lib/Headers/riscv_packed_simd.h"
+    },
+    {
+      "additions": 208,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "clang/test/CodeGen/RISCV/rvp-intrinsics.c"
+    },
+    {
+      "additions": 74,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "cross-project-tests/intrinsic-header-tests/riscv_packed_simd.c"
+    },
+    {
+      "additions": 67,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "llvm/lib/Target/RISCV/RISCVISelLowering.cpp"
+    },
+    {
+      "additions": 36,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "llvm/lib/Target/RISCV/RISCVInstrInfoP.td"
+    },
+    {
+      "additions": 151,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "llvm/test/CodeGen/RISCV/rvp-simd-32.ll"
+    }
+  ],
+  "head_sha": "82642e1638b6c98b6ec78c025aa2e972f45f0d9f",
+  "issues": [],
+  "patch_sha256": "b3f837a0a7f8a10cb59dc936e112ff8c517024b9aa7deb132567f349856da80e",
+  "pr_number": 219348,
+  "repo": "llvm/llvm-project",
+  "schema_version": 1,
+  "title": "[Clang][RISCV] Add packed widening add/sub intrinsics",
+  "url": "https://github.com/llvm/llvm-project/pull/219348"
+}

@@ -1,0 +1,668 @@
+{
+  "additions": 472,
+  "author": "rcoh",
+  "base_sha": "ecd621dd2c1a5205a84f579225e1454b62af211c",
+  "body": "\r\n\r\n<!--\r\nThank you for your Pull Request. Please provide a description above and review\r\nthe requirements below.\r\n\r\nBug fixes and new features should include tests.\r\n\r\nContributors guide: https://github.com/tokio-rs/tokio/blob/master/CONTRIBUTING.md\r\n\r\nThe contributors guide includes instructions for running rustfmt and building the\r\ndocumentation, which requires special commands beyond `cargo fmt` and `cargo doc`.\r\n-->\r\n\r\n## Motivation\r\n\r\n#7986 exposes a task-schedule-latency histogram and metric. For tools like dial9, it is very helpful to have this statistic available on a per-poll basis.\r\n\r\n\r\n<!--\r\nExplain the context and why you're making that change. What is the problem\r\nyou're trying to solve? In some cases there is not a problem and this can be\r\nthought of as being the motivation for your change.\r\n-->\r\n\r\n## Solution\r\n\r\nExpose `schedule_latency() -> Option<Duration>` on `TaskMeta`.\r\n\r\nThis is off by default. When disabled, schedule_latency returns `None`. It is enabled by calling `track_task_schedule_latency()`; happy to workshop the name. It can be enabled separately from the histogram: if you are tracking the individual latencies there's no specific need to also put them in a histogram. Enabling the histogram also exposes it to `TaskMeta`.\r\n\r\n_Assisted by GPT 5.6 Sol_\r\n\r\n<!--\r\nSummarize the solution and provide any necessary context needed to understand\r\nthe code change.\r\n-->\r\n",
+  "captured_at": "2026-08-30T10:28:19+00:00",
+  "case_id": "tokio-rs-tokio-pr-8282",
+  "changed_files": 15,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio::runtime::spawn_blocking",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "minrust",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "triage",
+      "status": "COMPLETED",
+      "workflowName": "Pull Request Labeler"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Stress Test (simple_echo_tcp)",
+      "status": "COMPLETED",
+      "workflowName": "Stress Test"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio::sync",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fmt",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom time driver",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs (windows-latest, tracing)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "loom current-thread scheduler",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs (ubuntu-latest, tracing,io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check README",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "loom multi-thread scheduler (loom_multi_thread::group_a)",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "loom multi-thread scheduler (loom_multi_thread::group_b)",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "loom multi-thread scheduler (loom_multi_thread::group_c)",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "loom multi-thread scheduler (loom_multi_thread::group_d)",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "loom tokio-util",
+      "status": "COMPLETED",
+      "workflowName": "Loom"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-wasip2",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "get-latest-kernel-version",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "basic checks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test all crates in the workspace with all features and panic=abort (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run integration tests for each feature (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "compile tests with parking lot send guards",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "valgrind",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (ubuntu-latest, io-uring)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio full --unstable --taskdump (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check tokio full --internal-mt-counters (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-lib",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri-doc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "asan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "semver",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (powerpc-unknown-linux-gnu)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (powerpc64-unknown-linux-gnu)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check (arm-linux-androideabi)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-check-tier3 (x86_64-unknown-haiku, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (i686-unknown-linux-gnu, ubuntu-latest, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (armv5te-unknown-linux-gnueabi, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (armv7-unknown-linux-gnueabihf, ubuntu-24.04-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (aarch64-unknown-linux-gnu, ubuntu-24.04-arm, io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-with-parking_lot (aarch64-pc-windows-msvc, windows-11-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (i686-unknown-linux-gnu, ubuntu-latest, taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (armv5te-unknown-linux-gnueabi, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (armv7-unknown-linux-gnueabihf, ubuntu-24.04-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (aarch64-unknown-linux-gnu, ubuntu-24.04-arm, io-uring,taskdump)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross-test-without-parking_lot (aarch64-pc-windows-msvc, windows-11-arm)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test tokio --all-features on i686-unknown-linux-gnu without AtomicU64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check tokio --feature-powerset --depth 2 on i686-unknown-linux-gnu without AtomicU64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude --unstable",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "features exclude --unstable io-uring,taskdump,schedule-latency",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "minimal-versions",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build loom tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test hyper (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Quinn (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build tokio for x86_64-fortanix-unknown-sgx",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build tokio for redox-os",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync rt)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test tokio for wasm32-unknown-unknown (macros sync time rt)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm32-wasip1",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm32-wasip1-threads",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-external-types (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-external-types (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fuzzing",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-spelling",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test io_uring on Linux 7.1.7 / build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test io_uring on Linux 4.19.325 / build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD docs",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD i686",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Header rules - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Pages changed - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "*control",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Redirect rules - tokio-rs",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "ecd621dd2c1a5205a84f579225e1454b62af211c",
+  "deletions": 82,
+  "files": [
+    {
+      "additions": 58,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/src/runtime/builder.rs"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/src/runtime/config.rs"
+    },
+    {
+      "additions": 77,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "tokio/src/runtime/metrics/batch.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "tokio/src/runtime/metrics/mod.rs"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tokio/src/runtime/metrics/schedule_latency.rs"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 9,
+      "path": "tokio/src/runtime/metrics/schedule_latency_mock.rs"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 19,
+      "path": "tokio/src/runtime/scheduler/current_thread/mod.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/src/runtime/scheduler/multi_thread/handle.rs"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "tokio/src/runtime/scheduler/multi_thread/stats.rs"
+    },
+    {
+      "additions": 29,
+      "changeType": "MODIFIED",
+      "deletions": 26,
+      "path": "tokio/src/runtime/scheduler/multi_thread/worker.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/src/runtime/task/harness.rs"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 9,
+      "path": "tokio/src/runtime/task/mod.rs"
+    },
+    {
+      "additions": 31,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/src/runtime/task_hooks.rs"
+    },
+    {
+      "additions": 51,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/tests/rt_unstable_metrics.rs"
+    },
+    {
+      "additions": 172,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tokio/tests/task_hooks.rs"
+    }
+  ],
+  "head_sha": "52014fdb6ce1c2764b556e882eab8212df6ffcf5",
+  "issues": [],
+  "patch_sha256": "e44f8108b75dc3a7ed02c17231f556fe62e0a5af519f28ae1d52ef41cab0b54f",
+  "pr_number": 8282,
+  "repo": "tokio-rs/tokio",
+  "schema_version": 1,
+  "title": "runtime: expose schedule latency in TaskMeta / Task Hooks",
+  "url": "https://github.com/tokio-rs/tokio/pull/8282"
+}

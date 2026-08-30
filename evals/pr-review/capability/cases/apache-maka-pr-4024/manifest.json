@@ -1,0 +1,107 @@
+{
+  "additions": 372,
+  "author": "liugddx",
+  "base_sha": "c8410c53b52e1ab3d19fc1fff45c90885a853862",
+  "body": "## Screenshot\n\nSettings \u2192 Appearance \u2192 \u5b57\u53f7 (Font size), presented as Codex-style numeric px steppers \u2014 an independent **UI font size** and **terminal font size**, each with a description and a `px` stepper:\n\n![Font size controls](https://raw.githubusercontent.com/liugddx/maka-agent/pr4024-assets/assets/font-size-section.png)\n\n<details><summary>Full Appearance page</summary>\n\n![Appearance page](https://raw.githubusercontent.com/liugddx/maka-agent/pr4024-assets/assets/font-size-appearance-full.png)\n\n</details>\n\n<details><summary>Boundary: 22px (max)</summary>\n\n![Appearance page at 22px](https://raw.githubusercontent.com/liugddx/maka-agent/pr4024-assets/assets/font-size-appearance-22px.png)\n\n</details>\n\n<details><summary>Boundary: 11px (min)</summary>\n\n![Appearance page at 11px](https://raw.githubusercontent.com/liugddx/maka-agent/pr4024-assets/assets/font-size-appearance-11px.png)\n\n</details>\n\n## Summary\n\nAppearance settings only exposed *theme* and *palette* \u2014 there was no in-app way to change font size. The renderer type scale was fixed at `base: 14` and both xterm.js terminals hardcoded `fontSize: 12`, so users on large / high-DPI displays had to fall back to coarse OS-level scaling.\n\nThis adds two controls to the Appearance page, mirroring Codex Desktop's *UI Font* / *Code Font* but deliberately kept as **separate** knobs:\n\n- **UI font size** \u2014 an integer px value (11\u201322, default 14 = the type-scale base). Applied as a document-root font-size of `16px \u00d7 size / base`: every `--font-size-*` token is `rem`, so this scales what is rem-derived \u2014 text and Astryx's rem-based icon atoms \u2014 while px-literal spacing and control widths stay fixed. That is why the range is clamped tightly around the base rather than offered as a free zoom; the boundary screenshots above show the layout absorbing the max/min sizes by wrapping, not clipping. It is **not** the old `html { font-size }` density hack removed in `makaTheme.ts`. Restored before first paint in `cached-theme-bootstrap` to avoid a resize flash.\n- **Terminal font size** \u2014 an integer px value (9\u201324, default 12) fed via `getTerminalFontSize()` into both `Terminal` instances; open terminals subscribe and re-fit (re-emitting geometry to the PTY) on change.\n\nBoth persist under `appearance` (already client-owned) and **fail closed** to their defaults on any malformed/out-of-range value \u2014 so a bad persisted value can't drive an arbitrary root size (the failure mode that made Codex's font size unusable).\n\nRefs #4021\n\n## Verification\n\n- `npm --workspace @maka/core run typecheck` \u2014 pass\n- `npm --workspace @maka/desktop run typecheck` \u2014 pass (preload/main/renderer/storybook)\n- `node --test packages/core/dist/__tests__/settings.test.js` \u2014 20/20 pass, including a new test covering the fail-closed normalize (wrong types \u2192 defaults, out-of-range \u2192 clamped) for `uiFontSize` / `terminalFontSize`\n- `biome check` on all changed files \u2014 clean\n- Manual: launched the desktop app on this branch (isolated `--user-data-dir` profile), changed both values in Settings \u2192 Appearance \u2014 UI rescales and open terminals re-fit immediately, values persist across relaunch. Screenshots above are from that run.\n\n## AI use\n\nSelect exactly one:\n\n- [ ] No generative tool made a substantive contribution\n- [x] Generative tooling made a substantive contribution\n\nTool(s) and scope: Claude Opus 4.8 \u2014 codebase investigation, implementation across settings schema / theme apply layer / terminal wiring / settings UI + i18n, and the added unit test. Commit carries a `Generated-by` trailer.\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary above\n- [ ] No\n\n\n",
+  "captured_at": "2026-08-30T10:28:21+00:00",
+  "case_id": "apache-maka-pr-4024",
+  "changed_files": 12,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    }
+  ],
+  "comparison_base_sha": "76adbdb20b58a4c1287c9272d006db65ea65830d",
+  "deletions": 10,
+  "files": [
+    {
+      "additions": 40,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/font-size-type-scale.test.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/astryx-theme/makaTheme.ts"
+    },
+    {
+      "additions": 32,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "apps/desktop/src/renderer/astryx-theme/type-scale.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/renderer/cached-theme-bootstrap.ts"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/features/workbar/tools/terminal/session-terminal-panel.tsx"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/locales/settings-preferences-copy.ts"
+    },
+    {
+      "additions": 74,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/renderer/settings/appearance-settings-page.tsx"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/settings/runtime-host-ssh-terminal-dialog.tsx"
+    },
+    {
+      "additions": 80,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/renderer/theme.ts"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "apps/desktop/src/renderer/use-shell-appearance.ts"
+    },
+    {
+      "additions": 44,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/src/__tests__/settings.test.ts"
+    },
+    {
+      "additions": 51,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/core/src/settings.ts"
+    }
+  ],
+  "head_sha": "d32399b12308323b38d7fa54832ba192503df13d",
+  "issues": [],
+  "patch_sha256": "60a4ba5e24cdc896a4e6951b8cc3f1dd1403251635fb9886e53df52389adee1d",
+  "pr_number": 4024,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "feat(ui): add UI and terminal font size settings to Appearance",
+  "url": "https://github.com/apache/maka/pull/4024"
+}

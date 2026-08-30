@@ -1,0 +1,275 @@
+{
+  "additions": 54,
+  "author": "dmitrivMS",
+  "base_sha": "cefc83193036e53a85e980c5d0b22e9d66cd267e",
+  "body": "## Summary\n\n- break the `ChatService` \u2192 customization migration \u2192 agent host tools dependency cycle that prevented Browser and Remote test workbenches from starting\n- register the customization migration hint provider after `ChatService` has been constructed\n- preserve migration hint behavior and update its focused tests\n\nThis fixes the startup failure observed in #331439 after #333216 merged.\n\n## Validation\n\n- `npm run typecheck-client`\n- 4 focused `ChatService` migration hint tests\n- `scripts\\test-remote-integration.bat` reached the extension host test suite without the dependency-cycle failure and ran 330 tests; the run ended on an unrelated active-editor timing failure (`#49125`)\n- repository pre-commit hygiene hook",
+  "captured_at": "2026-08-30T10:28:11+00:00",
+  "case_id": "microsoft-vscode-pr-333247",
+  "changed_files": 5,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compile & Hygiene",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (actions)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Screenshots & Tests",
+      "status": "COMPLETED",
+      "workflowName": "Component Fixtures"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Monaco Editor checks",
+      "status": "COMPLETED",
+      "workflowName": "Monaco Editor checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check metadata",
+      "status": "COMPLETED",
+      "workflowName": "Telemetry"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (c-cpp)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (macos-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (csharp)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "chat-lib tests (windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "chat-lib tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (java-kotlin)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (javascript-typescript)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (python)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (ruby)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (rust)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / CLI",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Linux / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macOS / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Electron",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Electron-Smoke",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Browser",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows / Remote",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Check Test Cache",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Check Telemetry",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Test (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Copilot - Test (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "Code OSS"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Dependencies Check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "VS Code PR Check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "license/cla",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "cefc83193036e53a85e980c5d0b22e9d66cd267e",
+  "deletions": 10,
+  "files": [
+    {
+      "additions": 16,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/vs/workbench/contrib/chat/browser/chat.shared.contribution.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "src/vs/workbench/contrib/chat/common/chatService/chatService.ts"
+    },
+    {
+      "additions": 18,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "src/vs/workbench/contrib/chat/common/chatService/chatServiceImpl.ts"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "src/vs/workbench/contrib/chat/test/common/chatService/chatService.test.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/vs/workbench/contrib/chat/test/common/chatService/mockChatService.ts"
+    }
+  ],
+  "head_sha": "80399c0f74209c773704de8b04a1ee94b4771470",
+  "issues": [],
+  "patch_sha256": "403bf34d782ef83a66ac0597a26b489f5fd806aec9143df404d09a63df36cdff",
+  "pr_number": 333247,
+  "repo": "microsoft/vscode",
+  "schema_version": 1,
+  "title": "Fix chat customization migration dependency cycle",
+  "url": "https://github.com/microsoft/vscode/pull/333247"
+}

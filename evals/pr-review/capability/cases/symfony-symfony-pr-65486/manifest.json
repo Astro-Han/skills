@@ -1,0 +1,119 @@
+{
+  "additions": 50,
+  "author": "nicolas-grekas",
+  "base_sha": "7ca72401f058b8319a27dd40d88f08b7cc0dc9e7",
+  "body": "| Q             | A\n| ------------- | ---\n| Branch?       | 6.4\n| Bug fix?      | yes\n| New feature?  | no\n| Deprecations? | no\n| Issues        | Fix #35038\n| License       | MIT\n\n`messenger:consume` turns its `--limit`, `--failure-limit` and `--memory-limit` options into event subscribers and registers them on the event dispatcher it was given, together with the reset services listener. None of them is removed when the command returns, and that dispatcher is the shared application one.\n\nThis stays invisible for a worker started from the command line, because the process ends with the command. It does not stay invisible when several runs share one process, which is what functional tests do. The second run still carries the listeners of the first one: a run with `--limit=3` that follows a run with `--limit=1` stops after a single message, because the leftover listener of the first run stops the worker. The reset services listener is added again on every run, so services also get reset once more per run.\n\nThe listeners are now collected while the options are read, registered right before the worker runs, and removed in the `finally` block that already clears the command's worker reference. Registering them just before the run also means that an invalid `--time-limit`, which is validated after the other options, no longer leaves listeners behind.\n\nThe new test runs the command twice on one dispatcher, with `--limit=1` then `--limit=2`, and checks that the second run handles two messages and that the dispatcher holds no listener once a run is over.\n\nChecks run:\n- `./phpunit src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php`: 18 tests, 61 assertions, green.\n- `./phpunit src/Symfony/Component/Messenger/Tests`: 411 tests, 1142 assertions, green, with the same 9 legacy deprecation notices the base commit reports (410 tests, 1139 assertions there).\n- Revert check: source change removed, test kept, the test fails on the dispatcher assertion, which prints the leftover `StopWorkerOnMessageLimitListener` with `maximumNumberOfMessages => 1` plus the `ResetServicesListener` still subscribed to `WorkerRunningEvent` and `WorkerStoppedEvent`.\n- A script running the command twice on one dispatcher, `--limit=1` then `--limit=3`: 1 message then 1 message before the change, 1 message then 3 messages after it.\n- Both branches of this sweep touch `ConsumeMessagesCommand::execute()`. Cherry-picking them on top of each other merges without conflict and the Messenger suite stays green (412 tests, 1144 assertions).\n",
+  "captured_at": "2026-08-30T10:28:08+00:00",
+  "case_id": "symfony-symfony-pr-65486",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Fabbot / Checks",
+      "status": "COMPLETED",
+      "workflowName": "CS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Integration (8.1)",
+      "status": "COMPLETED",
+      "workflowName": "Integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Psalm",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.1)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify Packages",
+      "status": "COMPLETED",
+      "workflowName": "Verify Packages"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "x86 / minimal-exts / lowest-php",
+      "status": "COMPLETED",
+      "workflowName": "Windows"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.4, high-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.2, low-deps)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.3)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.4)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit Tests (8.5)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "FAILURE",
+      "name": "Unit Tests (8.6)",
+      "status": "COMPLETED",
+      "workflowName": "Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "PHPStan",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Hardening tests",
+      "status": "COMPLETED",
+      "workflowName": "Static Analysis"
+    }
+  ],
+  "comparison_base_sha": "4f5c62c34cffc818385ecff114edade82c288633",
+  "deletions": 4,
+  "files": [
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "src/Symfony/Component/Messenger/Command/ConsumeMessagesCommand.php"
+    },
+    {
+      "additions": 37,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "src/Symfony/Component/Messenger/Tests/Command/ConsumeMessagesCommandTest.php"
+    }
+  ],
+  "head_sha": "a90082b9cff575a6a8f05b0583f82a90ebf6ef39",
+  "issues": [],
+  "patch_sha256": "8b9278624cb126be5f2c2d8fc161bcbcad2ec4dd4a1e4e508792a1b5c4bf3763",
+  "pr_number": 65486,
+  "repo": "symfony/symfony",
+  "schema_version": 1,
+  "title": "[Messenger] Remove the worker listeners when messenger:consume ends",
+  "url": "https://github.com/symfony/symfony/pull/65486"
+}

@@ -1,0 +1,767 @@
+From 2d2b76f769dc6896db8c9c3ff7fccf1ffabe80be Mon Sep 17 00:00:00 2001
+From: Michael-Chen-NJU <2802328816@qq.com>
+Date: Fri, 28 Aug 2026 10:06:25 +0800
+Subject: [PATCH 1/2] [Clang][RISCV] Add packed widening add/sub intrinsics
+
+Add packed widening add/sub header wrappers for the RISC-V P extension using generic vector IR.
+
+Select the RV32 direct packed widening add/sub forms and the RV64 spec-listed decompositions, with Clang, LLVM CodeGen, and cross-project header coverage.
+---
+ clang/lib/Headers/riscv_packed_simd.h         |  17 ++
+ clang/test/CodeGen/RISCV/rvp-intrinsics.c     | 208 ++++++++++++++++++
+ .../riscv_packed_simd.c                       |  74 +++++++
+ llvm/lib/Target/RISCV/RISCVISelLowering.cpp   |  71 ++++++
+ llvm/lib/Target/RISCV/RISCVInstrInfoP.td      |  36 +++
+ llvm/test/CodeGen/RISCV/rvp-simd-32.ll        | 156 ++++++++++++-
+ 6 files changed, 557 insertions(+), 5 deletions(-)
+
+diff --git a/clang/lib/Headers/riscv_packed_simd.h b/clang/lib/Headers/riscv_packed_simd.h
+index d6826d3b1f7cd..1bae9ac9cec37 100644
+--- a/clang/lib/Headers/riscv_packed_simd.h
++++ b/clang/lib/Headers/riscv_packed_simd.h
+@@ -142,6 +142,12 @@ typedef uint32_t uint32x2_t __attribute__((__vector_size__(8)));
+   static __inline__ rty __DEFAULT_FN_ATTRS __riscv_##name(ty __rs1) {          \
+     return __builtin_convertvector(__rs1, rty);                                \
+   }
++#define __packed_widen_binary_op(name, rty, ty, op)                            \
++  static __inline__ rty __DEFAULT_FN_ATTRS __riscv_##name(ty __rs1,            \
++                                                          ty __rs2) {          \
++    return __builtin_convertvector(__rs1, rty)                                 \
++        op __builtin_convertvector(__rs2, rty);                                \
++  }
+ #define __packed_widen_mul(name, rty, ty)                                      \
+   static __inline__ rty __DEFAULT_FN_ATTRS __riscv_##name(ty __rs1,            \
+                                                           ty __rs2) {          \
+@@ -604,6 +610,16 @@ __packed_widen_high4(pwcvth_u16x4, uint16x4_t, uint8x4_t)
+ __packed_widen_high2(pwcvth_i32x2, int32x2_t, int16x2_t)
+ __packed_widen_high2(pwcvth_u32x2, uint32x2_t, uint16x2_t)
+ 
++/* Packed Widening Addition and Subtraction */
++__packed_widen_binary_op(pwadd_i16x4, int16x4_t, int8x4_t, +)
++__packed_widen_binary_op(pwadd_i32x2, int32x2_t, int16x2_t, +)
++__packed_widen_binary_op(pwaddu_u16x4, uint16x4_t, uint8x4_t, +)
++__packed_widen_binary_op(pwaddu_u32x2, uint32x2_t, uint16x2_t, +)
++__packed_widen_binary_op(pwsub_i16x4, int16x4_t, int8x4_t, -)
++__packed_widen_binary_op(pwsub_i32x2, int32x2_t, int16x2_t, -)
++__packed_widen_binary_op(pwsubu_u16x4, uint16x4_t, uint8x4_t, -)
++__packed_widen_binary_op(pwsubu_u32x2, uint32x2_t, uint16x2_t, -)
++
+ /* Packed Widening Multiply (32-bit) */
+ __packed_widen_mul(pwmul_i16x4, int16x4_t, int8x4_t)
+ __packed_widen_mul(pwmul_i32x2, int32x2_t, int16x2_t)
+@@ -1048,6 +1064,7 @@ __packed_reinterpret(u32x2_i32x2, int32x2_t, uint32x2_t)
+ #undef __packed_merge_builtin
+ #undef __packed_unary_builtin
+ #undef __packed_widen_convert
++#undef __packed_widen_binary_op
+ #undef __packed_widen_mul
+ #undef __packed_widen_mulsu
+ #undef __packed_widen_high2
+diff --git a/clang/test/CodeGen/RISCV/rvp-intrinsics.c b/clang/test/CodeGen/RISCV/rvp-intrinsics.c
+index 8266259811c14..9453a07e89ce7 100644
+--- a/clang/test/CodeGen/RISCV/rvp-intrinsics.c
++++ b/clang/test/CodeGen/RISCV/rvp-intrinsics.c
+@@ -8032,6 +8032,214 @@ uint32x2_t test_pwcvtu_u32x2(uint16x2_t rs1) {
+   return __riscv_pwcvtu_u32x2(rs1);
+ }
+ 
++// RV32-LABEL: define dso_local i64 @test_pwadd_i16x4(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[CONV_I:%.*]] = sext <4 x i8> [[TMP0]] to <4 x i16>
++// RV32-NEXT:    [[CONV3_I:%.*]] = sext <4 x i8> [[TMP1]] to <4 x i16>
++// RV32-NEXT:    [[ADD_I:%.*]] = add nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[ADD_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwadd_i16x4(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[CONV_I:%.*]] = sext <4 x i8> [[TMP0]] to <4 x i16>
++// RV64-NEXT:    [[CONV3_I:%.*]] = sext <4 x i8> [[TMP1]] to <4 x i16>
++// RV64-NEXT:    [[ADD_I:%.*]] = add nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[ADD_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++int16x4_t test_pwadd_i16x4(int8x4_t rs1, int8x4_t rs2) {
++  return __riscv_pwadd_i16x4(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwadd_i32x2(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[CONV_I:%.*]] = sext <2 x i16> [[TMP0]] to <2 x i32>
++// RV32-NEXT:    [[CONV3_I:%.*]] = sext <2 x i16> [[TMP1]] to <2 x i32>
++// RV32-NEXT:    [[ADD_I:%.*]] = add nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[ADD_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwadd_i32x2(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[CONV_I:%.*]] = sext <2 x i16> [[TMP0]] to <2 x i32>
++// RV64-NEXT:    [[CONV3_I:%.*]] = sext <2 x i16> [[TMP1]] to <2 x i32>
++// RV64-NEXT:    [[ADD_I:%.*]] = add nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[ADD_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++int32x2_t test_pwadd_i32x2(int16x2_t rs1, int16x2_t rs2) {
++  return __riscv_pwadd_i32x2(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwaddu_u16x4(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[CONV_I:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
++// RV32-NEXT:    [[CONV3_I:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
++// RV32-NEXT:    [[ADD_I:%.*]] = add nuw nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[ADD_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwaddu_u16x4(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[CONV_I:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
++// RV64-NEXT:    [[CONV3_I:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
++// RV64-NEXT:    [[ADD_I:%.*]] = add nuw nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[ADD_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++uint16x4_t test_pwaddu_u16x4(uint8x4_t rs1, uint8x4_t rs2) {
++  return __riscv_pwaddu_u16x4(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwaddu_u32x2(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[CONV_I:%.*]] = zext <2 x i16> [[TMP0]] to <2 x i32>
++// RV32-NEXT:    [[CONV3_I:%.*]] = zext <2 x i16> [[TMP1]] to <2 x i32>
++// RV32-NEXT:    [[ADD_I:%.*]] = add nuw nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[ADD_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwaddu_u32x2(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[CONV_I:%.*]] = zext <2 x i16> [[TMP0]] to <2 x i32>
++// RV64-NEXT:    [[CONV3_I:%.*]] = zext <2 x i16> [[TMP1]] to <2 x i32>
++// RV64-NEXT:    [[ADD_I:%.*]] = add nuw nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[ADD_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++uint32x2_t test_pwaddu_u32x2(uint16x2_t rs1, uint16x2_t rs2) {
++  return __riscv_pwaddu_u32x2(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwsub_i16x4(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[CONV_I:%.*]] = sext <4 x i8> [[TMP0]] to <4 x i16>
++// RV32-NEXT:    [[CONV3_I:%.*]] = sext <4 x i8> [[TMP1]] to <4 x i16>
++// RV32-NEXT:    [[SUB_I:%.*]] = sub nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[SUB_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwsub_i16x4(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[CONV_I:%.*]] = sext <4 x i8> [[TMP0]] to <4 x i16>
++// RV64-NEXT:    [[CONV3_I:%.*]] = sext <4 x i8> [[TMP1]] to <4 x i16>
++// RV64-NEXT:    [[SUB_I:%.*]] = sub nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[SUB_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++int16x4_t test_pwsub_i16x4(int8x4_t rs1, int8x4_t rs2) {
++  return __riscv_pwsub_i16x4(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwsub_i32x2(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[CONV_I:%.*]] = sext <2 x i16> [[TMP0]] to <2 x i32>
++// RV32-NEXT:    [[CONV3_I:%.*]] = sext <2 x i16> [[TMP1]] to <2 x i32>
++// RV32-NEXT:    [[SUB_I:%.*]] = sub nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[SUB_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwsub_i32x2(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[CONV_I:%.*]] = sext <2 x i16> [[TMP0]] to <2 x i32>
++// RV64-NEXT:    [[CONV3_I:%.*]] = sext <2 x i16> [[TMP1]] to <2 x i32>
++// RV64-NEXT:    [[SUB_I:%.*]] = sub nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[SUB_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++int32x2_t test_pwsub_i32x2(int16x2_t rs1, int16x2_t rs2) {
++  return __riscv_pwsub_i32x2(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwsubu_u16x4(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV32-NEXT:    [[CONV_I:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
++// RV32-NEXT:    [[CONV3_I:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
++// RV32-NEXT:    [[SUB_I:%.*]] = sub nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[SUB_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwsubu_u16x4(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <4 x i8>
++// RV64-NEXT:    [[CONV_I:%.*]] = zext <4 x i8> [[TMP0]] to <4 x i16>
++// RV64-NEXT:    [[CONV3_I:%.*]] = zext <4 x i8> [[TMP1]] to <4 x i16>
++// RV64-NEXT:    [[SUB_I:%.*]] = sub nsw <4 x i16> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <4 x i16> [[SUB_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++uint16x4_t test_pwsubu_u16x4(uint8x4_t rs1, uint8x4_t rs2) {
++  return __riscv_pwsubu_u16x4(rs1, rs2);
++}
++
++// RV32-LABEL: define dso_local i64 @test_pwsubu_u32x2(
++// RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV32-NEXT:  [[ENTRY:.*:]]
++// RV32-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV32-NEXT:    [[CONV_I:%.*]] = zext <2 x i16> [[TMP0]] to <2 x i32>
++// RV32-NEXT:    [[CONV3_I:%.*]] = zext <2 x i16> [[TMP1]] to <2 x i32>
++// RV32-NEXT:    [[SUB_I:%.*]] = sub nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV32-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[SUB_I]] to i64
++// RV32-NEXT:    ret i64 [[TMP2]]
++//
++// RV64-LABEL: define dso_local i64 @test_pwsubu_u32x2(
++// RV64-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
++// RV64-NEXT:  [[ENTRY:.*:]]
++// RV64-NEXT:    [[TMP0:%.*]] = bitcast i32 [[RS1_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[TMP1:%.*]] = bitcast i32 [[RS2_COERCE]] to <2 x i16>
++// RV64-NEXT:    [[CONV_I:%.*]] = zext <2 x i16> [[TMP0]] to <2 x i32>
++// RV64-NEXT:    [[CONV3_I:%.*]] = zext <2 x i16> [[TMP1]] to <2 x i32>
++// RV64-NEXT:    [[SUB_I:%.*]] = sub nsw <2 x i32> [[CONV_I]], [[CONV3_I]]
++// RV64-NEXT:    [[TMP2:%.*]] = bitcast <2 x i32> [[SUB_I]] to i64
++// RV64-NEXT:    ret i64 [[TMP2]]
++//
++uint32x2_t test_pwsubu_u32x2(uint16x2_t rs1, uint16x2_t rs2) {
++  return __riscv_pwsubu_u32x2(rs1, rs2);
++}
++
+ // RV32-LABEL: define dso_local i64 @test_pwmul_i16x4(
+ // RV32-SAME: i32 noundef [[RS1_COERCE:%.*]], i32 noundef [[RS2_COERCE:%.*]]) #[[ATTR0]] {
+ // RV32-NEXT:  [[ENTRY:.*:]]
+diff --git a/cross-project-tests/intrinsic-header-tests/riscv_packed_simd.c b/cross-project-tests/intrinsic-header-tests/riscv_packed_simd.c
+index 7385b4b3a642e..089db9a7fa511 100644
+--- a/cross-project-tests/intrinsic-header-tests/riscv_packed_simd.c
++++ b/cross-project-tests/intrinsic-header-tests/riscv_packed_simd.c
+@@ -2269,6 +2269,80 @@ uint32x2_t test_pwcvtu_u32x2(uint16x2_t rs1) {
+   return __riscv_pwcvtu_u32x2(rs1);
+ }
+ 
++// CHECK-LABEL: test_pwadd_i16x4:
++// RV32:        pwadd.b
++// RV64:        zip8p
++// RV64:        psrai.h
++// RV64:        psext.h.b
++// RV64:        padd.h
++int16x4_t test_pwadd_i16x4(int8x4_t rs1, int8x4_t rs2) {
++  return __riscv_pwadd_i16x4(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwadd_i32x2:
++// RV32:        pwadd.h
++// RV64:        zip16p
++// RV64:        pli.h
++// RV64:        pm2add.h
++int32x2_t test_pwadd_i32x2(int16x2_t rs1, int16x2_t rs2) {
++  return __riscv_pwadd_i32x2(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwaddu_u16x4:
++// RV32:        pwaddu.b
++// RV64:        pwcvtu.wb
++// RV64:        pwcvtu.wb
++// RV64:        padd.h
++uint16x4_t test_pwaddu_u16x4(uint8x4_t rs1, uint8x4_t rs2) {
++  return __riscv_pwaddu_u16x4(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwaddu_u32x2:
++// RV32:        pwaddu.h
++// RV64:        zip16p
++// RV64:        pli.h
++// RV64:        pm2addu.h
++uint32x2_t test_pwaddu_u32x2(uint16x2_t rs1, uint16x2_t rs2) {
++  return __riscv_pwaddu_u32x2(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwsub_i16x4:
++// RV32:        pwsub.b
++// RV64:        zip8p
++// RV64:        psrai.h
++// RV64:        psext.h.b
++// RV64:        psub.h
++int16x4_t test_pwsub_i16x4(int8x4_t rs1, int8x4_t rs2) {
++  return __riscv_pwsub_i16x4(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwsub_i32x2:
++// RV32:        pwsub.h
++// RV64:        zip16p
++// RV64:        pli.h
++// RV64:        pm2sub.h
++int32x2_t test_pwsub_i32x2(int16x2_t rs1, int16x2_t rs2) {
++  return __riscv_pwsub_i32x2(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwsubu_u16x4:
++// RV32:        pwsubu.b
++// RV64:        pwcvtu.wb
++// RV64:        pwcvtu.wb
++// RV64:        psub.h
++uint16x4_t test_pwsubu_u16x4(uint8x4_t rs1, uint8x4_t rs2) {
++  return __riscv_pwsubu_u16x4(rs1, rs2);
++}
++
++// CHECK-LABEL: test_pwsubu_u32x2:
++// RV32:        pwsubu.h
++// RV64:        pwcvtu.wh
++// RV64:        pwcvtu.wh
++// RV64:        psub.w
++uint32x2_t test_pwsubu_u32x2(uint16x2_t rs1, uint16x2_t rs2) {
++  return __riscv_pwsubu_u32x2(rs1, rs2);
++}
++
+ // CHECK-LABEL: test_pwcvth_i16x4:
+ // RV32:        pwcvth.b
+ // RV64:        pwcvth.wb
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+index 96ece8ff6b4ce..92cf3dcbf055b 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -18133,6 +18133,73 @@ static SDValue combineAddMulh(SDNode *N, SelectionDAG &DAG,
+   return DAG.getNode(RISCVISD::MULHSU, DL, VT, X, Mulh.getOperand(1));
+ }
+ 
++static SDValue combinePExtWideningAddSub(SDNode *N, SelectionDAG &DAG,
++                                         const RISCVSubtarget &Subtarget) {
++  // Recognize the RV64 decompositions listed for the 32-bit packed widening
++  // add/sub operations. Mixed signed/unsigned PM2 forms are outside that group.
++  if (!Subtarget.hasStdExtP() || !Subtarget.is64Bit())
++    return SDValue();
++
++  unsigned Opcode = N->getOpcode();
++  if (Opcode != ISD::ADD && Opcode != ISD::SUB)
++    return SDValue();
++
++  EVT VT = N->getValueType(0);
++  if (VT != MVT::v4i16 && VT != MVT::v2i32)
++    return SDValue();
++
++  SDValue N0 = N->getOperand(0);
++  SDValue N1 = N->getOperand(1);
++  bool N0IsSExt = N0.getOpcode() == ISD::SIGN_EXTEND;
++  bool N0IsZExt = N0.getOpcode() == ISD::ZERO_EXTEND;
++  bool N1IsSExt = N1.getOpcode() == ISD::SIGN_EXTEND;
++  bool N1IsZExt = N1.getOpcode() == ISD::ZERO_EXTEND;
++  if (!(N0IsSExt || N0IsZExt) || !(N1IsSExt || N1IsZExt) || !N0.hasOneUse() ||
++      !N1.hasOneUse())
++    return SDValue();
++
++  SDValue A = N0.getOperand(0);
++  SDValue B = N1.getOperand(0);
++  MVT SrcVT = VT == MVT::v4i16 ? MVT::v4i8 : MVT::v2i16;
++  MVT LegalSrcVT = VT == MVT::v4i16 ? MVT::v8i8 : MVT::v4i16;
++  if (A.getValueType() != SrcVT || B.getValueType() != SrcVT)
++    return SDValue();
++
++  if (VT == MVT::v4i16 && (!N0IsSExt || !N1IsSExt))
++    return SDValue();
++
++  bool IsPM2Halfword =
++      VT == MVT::v2i32 &&
++      ((N0IsSExt && N1IsSExt) || (Opcode == ISD::ADD && N0IsZExt && N1IsZExt));
++  if (VT == MVT::v2i32 && !IsPM2Halfword)
++    return SDValue();
++
++  SDLoc DL(N);
++  A = DAG.getNode(ISD::CONCAT_VECTORS, DL, LegalSrcVT, A, DAG.getUNDEF(SrcVT));
++  B = DAG.getNode(ISD::CONCAT_VECTORS, DL, LegalSrcVT, B, DAG.getUNDEF(SrcVT));
++
++  SDValue Zip = DAG.getNode(RISCVISD::PZIP, DL, LegalSrcVT, A, B);
++  if (VT == MVT::v4i16) {
++    SDValue ZipAsVT = DAG.getBitcast(VT, Zip);
++    SDValue Low = DAG.getNode(ISD::SIGN_EXTEND_INREG, DL, VT, ZipAsVT,
++                              DAG.getValueType(MVT::v4i8));
++    SDValue High = DAG.getNode(RISCVISD::PSRA, DL, VT, ZipAsVT,
++                               DAG.getConstant(8, DL, MVT::i64));
++    return DAG.getNode(Opcode, DL, VT, Low, High);
++  }
++
++  SDValue Ones = DAG.getConstant(1, DL, LegalSrcVT);
++  if (N0IsSExt && N1IsSExt) {
++    unsigned Opc = Opcode == ISD::ADD ? RISCVISD::PM2ADD_H : RISCVISD::PM2SUB_H;
++    return DAG.getNode(Opc, DL, VT, Zip, Ones);
++  }
++
++  if (Opcode == ISD::ADD && N0IsZExt && N1IsZExt)
++    return DAG.getNode(RISCVISD::PM2ADDU_H, DL, VT, Zip, Ones);
++
++  return SDValue();
++}
++
+ static SDValue performADDCombine(SDNode *N,
+                                  TargetLowering::DAGCombinerInfo &DCI,
+                                  const RISCVSubtarget &Subtarget) {
+@@ -18151,6 +18218,8 @@ static SDValue performADDCombine(SDNode *N,
+     return V;
+   if (SDValue V = combineBinOpOfExtractToReduceTree(N, DAG, Subtarget))
+     return V;
++  if (SDValue V = combinePExtWideningAddSub(N, DAG, Subtarget))
++    return V;
+   if (SDValue V = combineBinOpOfZExt(N, DAG))
+     return V;
+   if (SDValue V = combineAddMulh(N, DAG, Subtarget))
+@@ -18280,6 +18349,8 @@ static SDValue performSUBCombine(SDNode *N, SelectionDAG &DAG,
+     }
+   }
+ 
++  if (SDValue V = combinePExtWideningAddSub(N, DAG, Subtarget))
++    return V;
+   if (SDValue V = combineBinOpOfZExt(N, DAG))
+     return V;
+   if (SDValue V = combineSubShiftToOrcB(N, DAG, Subtarget))
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfoP.td b/llvm/lib/Target/RISCV/RISCVInstrInfoP.td
+index 0590ceb16d0d3..fce4418109e0a 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfoP.td
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfoP.td
+@@ -1883,6 +1883,16 @@ def riscv_pmulsu_halves_00
+ def riscv_pmulsu_halves_11
+     : RVSDNode<"PMULSU_HALVES_11", SDT_RISCVPackedWideningMulByHalves>;
+ 
++def SDT_RISCVPM2Halfword
++    : SDTypeProfile<1, 2, [SDTCisVT<0, v2i32>,
++                           SDTCisVT<1, v4i16>,
++                           SDTCisSameAs<1, 2>]>;
++def riscv_pm2add_h
++    : RVSDNode<"PM2ADD_H", SDT_RISCVPM2Halfword, [SDNPCommutative]>;
++def riscv_pm2addu_h
++    : RVSDNode<"PM2ADDU_H", SDT_RISCVPM2Halfword, [SDNPCommutative]>;
++def riscv_pm2sub_h : RVSDNode<"PM2SUB_H", SDT_RISCVPM2Halfword>;
++
+ def SDT_RISCVWideningShiftLeft : SDTypeProfile<2, 2, [SDTCisVT<0, i32>,
+                                                       SDTCisSameAs<0, 1>,
+                                                       SDTCisSameAs<0, 2>,
+@@ -2431,6 +2441,24 @@ let append Predicates = [IsRV32] in {
+             (PACK zexti16:$rs1,
+                   (XLenVT (PPAIRE_B zexti8:$op1rs1, GPR:$op1rs2)))>;
+ 
++  // Packed widening addition and subtraction patterns.
++  def : Pat<(v4i16 (add (sext (v4i8 GPR:$rs1)), (sext (v4i8 GPR:$rs2)))),
++            (PWADD_B GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (add (sext (v2i16 GPR:$rs1)), (sext (v2i16 GPR:$rs2)))),
++            (PWADD_H GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v4i16 (add (zext (v4i8 GPR:$rs1)), (zext (v4i8 GPR:$rs2)))),
++            (PWADDU_B GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (add (zext (v2i16 GPR:$rs1)), (zext (v2i16 GPR:$rs2)))),
++            (PWADDU_H GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v4i16 (sub (sext (v4i8 GPR:$rs1)), (sext (v4i8 GPR:$rs2)))),
++            (PWSUB_B GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (sub (sext (v2i16 GPR:$rs1)), (sext (v2i16 GPR:$rs2)))),
++            (PWSUB_H GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v4i16 (sub (zext (v4i8 GPR:$rs1)), (zext (v4i8 GPR:$rs2)))),
++            (PWSUBU_B GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (sub (zext (v2i16 GPR:$rs1)), (zext (v2i16 GPR:$rs2)))),
++            (PWSUBU_H GPR:$rs1, GPR:$rs2)>;
++
+   // Packed widening multiply patterns.
+   def : Pat<(v4i16 (riscv_pwmul (v4i8 GPR:$rs1), (v4i8 GPR:$rs2))),
+             (PWMUL_B GPR:$rs1, GPR:$rs2)>;
+@@ -3026,6 +3054,14 @@ let append Predicates = [IsRV64] in {
+             (PMULSU_W_H00 GPR:$rs1, GPR:$rs2)>;
+   def : Pat<(v2i32 (riscv_pmulsu_halves_11 (v4i16 GPR:$rs1), (v4i16 GPR:$rs2))),
+             (PMULSU_W_H11 GPR:$rs1, GPR:$rs2)>;
++
++  def : Pat<(v2i32 (riscv_pm2add_h (v4i16 GPR:$rs1), (v4i16 GPR:$rs2))),
++            (PM2ADD_H GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (riscv_pm2addu_h (v4i16 GPR:$rs1), (v4i16 GPR:$rs2))),
++            (PM2ADDU_H GPR:$rs1, GPR:$rs2)>;
++  def : Pat<(v2i32 (riscv_pm2sub_h (v4i16 GPR:$rs1), (v4i16 GPR:$rs2))),
++            (PM2SUB_H GPR:$rs1, GPR:$rs2)>;
++
+   // 32-bit logical shift left/right patterns
+   def : PatGprImm<riscv_pshl, PSLLI_W, uimm5, v2i32>;
+   def : PatGprImm<riscv_psrl, PSRLI_W, uimm5, v2i32>;
+diff --git a/llvm/test/CodeGen/RISCV/rvp-simd-32.ll b/llvm/test/CodeGen/RISCV/rvp-simd-32.ll
+index abc61c4a86c50..fbdf685fb55bc 100644
+--- a/llvm/test/CodeGen/RISCV/rvp-simd-32.ll
++++ b/llvm/test/CodeGen/RISCV/rvp-simd-32.ll
+@@ -1356,7 +1356,153 @@ define <2 x i16> @test_pssha_s_i16x2_neg_imm_too_large(<2 x i16> %a) {
+   ret <2 x i16> %res
+ }
+ 
+-; Test packed widening multiply signed for v4i8
++; Test packed widening addition and subtraction.
++define <4 x i16> @test_pwadd_b(<4 x i8> %a, <4 x i8> %b) {
++; RV32-LABEL: test_pwadd_b:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwadd.b a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwadd_b:
++; RV64:       # %bb.0:
++; RV64-NEXT:    zip8p a0, a0, a1
++; RV64-NEXT:    psrai.h a1, a0, 8
++; RV64-NEXT:    psext.h.b a0, a0
++; RV64-NEXT:    padd.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = sext <4 x i8> %a to <4 x i16>
++  %b_ext = sext <4 x i8> %b to <4 x i16>
++  %res = add <4 x i16> %a_ext, %b_ext
++  ret <4 x i16> %res
++}
++
++define <2 x i32> @test_pwadd_h(<2 x i16> %a, <2 x i16> %b) {
++; RV32-LABEL: test_pwadd_h:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwadd.h a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwadd_h:
++; RV64:       # %bb.0:
++; RV64-NEXT:    zip16p a0, a0, a1
++; RV64-NEXT:    pli.h a1, 1
++; RV64-NEXT:    pm2add.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = sext <2 x i16> %a to <2 x i32>
++  %b_ext = sext <2 x i16> %b to <2 x i32>
++  %res = add <2 x i32> %a_ext, %b_ext
++  ret <2 x i32> %res
++}
++
++define <4 x i16> @test_pwaddu_b(<4 x i8> %a, <4 x i8> %b) {
++; RV32-LABEL: test_pwaddu_b:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwaddu.b a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwaddu_b:
++; RV64:       # %bb.0:
++; RV64-NEXT:    pwcvtu.wb a0, a0
++; RV64-NEXT:    pwcvtu.wb a1, a1
++; RV64-NEXT:    padd.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = zext <4 x i8> %a to <4 x i16>
++  %b_ext = zext <4 x i8> %b to <4 x i16>
++  %res = add <4 x i16> %a_ext, %b_ext
++  ret <4 x i16> %res
++}
++
++define <2 x i32> @test_pwaddu_h(<2 x i16> %a, <2 x i16> %b) {
++; RV32-LABEL: test_pwaddu_h:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwaddu.h a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwaddu_h:
++; RV64:       # %bb.0:
++; RV64-NEXT:    zip16p a0, a0, a1
++; RV64-NEXT:    pli.h a1, 1
++; RV64-NEXT:    pm2addu.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = zext <2 x i16> %a to <2 x i32>
++  %b_ext = zext <2 x i16> %b to <2 x i32>
++  %res = add <2 x i32> %a_ext, %b_ext
++  ret <2 x i32> %res
++}
++
++define <4 x i16> @test_pwsub_b(<4 x i8> %a, <4 x i8> %b) {
++; RV32-LABEL: test_pwsub_b:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwsub.b a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwsub_b:
++; RV64:       # %bb.0:
++; RV64-NEXT:    zip8p a0, a0, a1
++; RV64-NEXT:    psrai.h a1, a0, 8
++; RV64-NEXT:    psext.h.b a0, a0
++; RV64-NEXT:    psub.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = sext <4 x i8> %a to <4 x i16>
++  %b_ext = sext <4 x i8> %b to <4 x i16>
++  %res = sub <4 x i16> %a_ext, %b_ext
++  ret <4 x i16> %res
++}
++
++define <2 x i32> @test_pwsub_h(<2 x i16> %a, <2 x i16> %b) {
++; RV32-LABEL: test_pwsub_h:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwsub.h a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwsub_h:
++; RV64:       # %bb.0:
++; RV64-NEXT:    zip16p a0, a0, a1
++; RV64-NEXT:    pli.h a1, 1
++; RV64-NEXT:    pm2sub.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = sext <2 x i16> %a to <2 x i32>
++  %b_ext = sext <2 x i16> %b to <2 x i32>
++  %res = sub <2 x i32> %a_ext, %b_ext
++  ret <2 x i32> %res
++}
++
++define <4 x i16> @test_pwsubu_b(<4 x i8> %a, <4 x i8> %b) {
++; RV32-LABEL: test_pwsubu_b:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwsubu.b a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwsubu_b:
++; RV64:       # %bb.0:
++; RV64-NEXT:    pwcvtu.wb a0, a0
++; RV64-NEXT:    pwcvtu.wb a1, a1
++; RV64-NEXT:    psub.h a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = zext <4 x i8> %a to <4 x i16>
++  %b_ext = zext <4 x i8> %b to <4 x i16>
++  %res = sub <4 x i16> %a_ext, %b_ext
++  ret <4 x i16> %res
++}
++
++define <2 x i32> @test_pwsubu_h(<2 x i16> %a, <2 x i16> %b) {
++; RV32-LABEL: test_pwsubu_h:
++; RV32:       # %bb.0:
++; RV32-NEXT:    pwsubu.h a0, a0, a1
++; RV32-NEXT:    ret
++;
++; RV64-LABEL: test_pwsubu_h:
++; RV64:       # %bb.0:
++; RV64-NEXT:    pwcvtu.wh a0, a0
++; RV64-NEXT:    pwcvtu.wh a1, a1
++; RV64-NEXT:    psub.w a0, a0, a1
++; RV64-NEXT:    ret
++  %a_ext = zext <2 x i16> %a to <2 x i32>
++  %b_ext = zext <2 x i16> %b to <2 x i32>
++  %res = sub <2 x i32> %a_ext, %b_ext
++  ret <2 x i32> %res
++}
++
+ define <4 x i16> @test_pwmul_b(<4 x i8> %a, <4 x i8> %b) {
+ ; RV32-LABEL: test_pwmul_b:
+ ; RV32:       # %bb.0:
+@@ -2408,10 +2554,10 @@ define <2 x i16> @test_select_v2i16(i1 %cond, <2 x i16> %a, <2 x i16> %b) {
+ ; CHECK:       # %bb.0:
+ ; CHECK-NEXT:    andi a3, a0, 1
+ ; CHECK-NEXT:    mv a0, a1
+-; CHECK-NEXT:    bnez a3, .LBB170_2
++; CHECK-NEXT:    bnez a3, [[SELECT_BB:.LBB[0-9]+_2]]
+ ; CHECK-NEXT:  # %bb.1:
+ ; CHECK-NEXT:    mv a0, a2
+-; CHECK-NEXT:  .LBB170_2:
++; CHECK-NEXT:  [[SELECT_BB]]:
+ ; CHECK-NEXT:    ret
+   %res = select i1 %cond, <2 x i16> %a, <2 x i16> %b
+   ret <2 x i16> %res
+@@ -2422,10 +2568,10 @@ define <4 x i8> @test_select_v4i8(i1 %cond, <4 x i8> %a, <4 x i8> %b) {
+ ; CHECK:       # %bb.0:
+ ; CHECK-NEXT:    andi a3, a0, 1
+ ; CHECK-NEXT:    mv a0, a1
+-; CHECK-NEXT:    bnez a3, .LBB171_2
++; CHECK-NEXT:    bnez a3, [[SELECT_BB:.LBB[0-9]+_2]]
+ ; CHECK-NEXT:  # %bb.1:
+ ; CHECK-NEXT:    mv a0, a2
+-; CHECK-NEXT:  .LBB171_2:
++; CHECK-NEXT:  [[SELECT_BB]]:
+ ; CHECK-NEXT:    ret
+   %res = select i1 %cond, <4 x i8> %a, <4 x i8> %b
+   ret <4 x i8> %res
+
+From a8fb16c29a5c11692c5b8001a1f3483a7ffc2920 Mon Sep 17 00:00:00 2001
+From: Michael-Chen-NJU <2802328816@qq.com>
+Date: Fri, 28 Aug 2026 22:09:24 +0800
+Subject: [PATCH 2/2] [RISCV] Simplify widening add/sub extend matching
+
+---
+ llvm/lib/Target/RISCV/RISCVISelLowering.cpp | 20 ++++++++------------
+ 1 file changed, 8 insertions(+), 12 deletions(-)
+
+diff --git a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+index 92cf3dcbf055b..d90645cb6c4fb 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelLowering.cpp
+@@ -18150,13 +18150,11 @@ static SDValue combinePExtWideningAddSub(SDNode *N, SelectionDAG &DAG,
+ 
+   SDValue N0 = N->getOperand(0);
+   SDValue N1 = N->getOperand(1);
+-  bool N0IsSExt = N0.getOpcode() == ISD::SIGN_EXTEND;
+-  bool N0IsZExt = N0.getOpcode() == ISD::ZERO_EXTEND;
+-  bool N1IsSExt = N1.getOpcode() == ISD::SIGN_EXTEND;
+-  bool N1IsZExt = N1.getOpcode() == ISD::ZERO_EXTEND;
+-  if (!(N0IsSExt || N0IsZExt) || !(N1IsSExt || N1IsZExt) || !N0.hasOneUse() ||
+-      !N1.hasOneUse())
++  unsigned ExtendOpcode = N0.getOpcode();
++  if ((ExtendOpcode != ISD::SIGN_EXTEND && ExtendOpcode != ISD::ZERO_EXTEND) ||
++      N1.getOpcode() != ExtendOpcode || !N0.hasOneUse() || !N1.hasOneUse())
+     return SDValue();
++  bool IsSExt = ExtendOpcode == ISD::SIGN_EXTEND;
+ 
+   SDValue A = N0.getOperand(0);
+   SDValue B = N1.getOperand(0);
+@@ -18165,12 +18163,10 @@ static SDValue combinePExtWideningAddSub(SDNode *N, SelectionDAG &DAG,
+   if (A.getValueType() != SrcVT || B.getValueType() != SrcVT)
+     return SDValue();
+ 
+-  if (VT == MVT::v4i16 && (!N0IsSExt || !N1IsSExt))
++  if (VT == MVT::v4i16 && !IsSExt)
+     return SDValue();
+ 
+-  bool IsPM2Halfword =
+-      VT == MVT::v2i32 &&
+-      ((N0IsSExt && N1IsSExt) || (Opcode == ISD::ADD && N0IsZExt && N1IsZExt));
++  bool IsPM2Halfword = VT == MVT::v2i32 && (IsSExt || Opcode == ISD::ADD);
+   if (VT == MVT::v2i32 && !IsPM2Halfword)
+     return SDValue();
+ 
+@@ -18189,12 +18185,12 @@ static SDValue combinePExtWideningAddSub(SDNode *N, SelectionDAG &DAG,
+   }
+ 
+   SDValue Ones = DAG.getConstant(1, DL, LegalSrcVT);
+-  if (N0IsSExt && N1IsSExt) {
++  if (IsSExt) {
+     unsigned Opc = Opcode == ISD::ADD ? RISCVISD::PM2ADD_H : RISCVISD::PM2SUB_H;
+     return DAG.getNode(Opc, DL, VT, Zip, Ones);
+   }
+ 
+-  if (Opcode == ISD::ADD && N0IsZExt && N1IsZExt)
++  if (Opcode == ISD::ADD)
+     return DAG.getNode(RISCVISD::PM2ADDU_H, DL, VT, Zip, Ones);
+ 
+   return SDValue();

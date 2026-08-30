@@ -1,0 +1,254 @@
+{
+  "additions": 606,
+  "author": "bluegate-studio",
+  "base_sha": "55b3397a2da2af0a8d567b63460af1be8e6820a7",
+  "body": "Ref: #7808\r\n\r\nThis restores the `allow_underscore_in_headers` opt-in flag that was implemented and tested in `3eb8e48` but removed before merge.\r\n\r\n## What it does\r\n\r\nAdds a boolean `allow_underscore_in_headers` global server option. When set, incoming HTTP request headers containing underscores are preserved instead of being dropped. When unset (the default), the v2.11.4 drop behaviour is unchanged.\r\n\r\n```caddyfile\r\n{\r\n    servers {\r\n        allow_underscore_in_headers\r\n    }\r\n}\r\n```\r\n\r\n## What it doesn't do\r\n\r\n- Does **not** change the default behaviour \u2014 underscore headers are still dropped unless the operator explicitly opts in.\r\n- Does **not** weaken the security posture for any deployment that doesn't set the flag.\r\n- Does **not** introduce new dependencies, new packages, or new test infrastructure.\r\n\r\n## Why\r\n\r\nSome deployments use underscore-named headers with backends that have no CGI/FastCGI ambiguity (Bun, Deno, Node, Go's own `net/http`). For those, the drop is a breaking change with no migration path \u2014 especially when immutable clients (deployed mobile apps) cannot be updated to use hyphenated names.\r\n\r\nNGINX solves this identically: `underscores_in_headers off` by default, `on` as an explicit opt-in.\r\n\r\n## Implementation\r\n\r\nFollows the exact pattern of `enable_full_duplex`:\r\n\r\n| File | Change |\r\n|------|--------|\r\n| `modules/caddyhttp/server.go` | `AllowUnderscoreInHeaders bool` field on `Server` struct; gate the drop loop |\r\n| `caddyconfig/httpcaddyfile/serveroptions.go` | Field on `serverOptions` struct; Caddyfile parsing; wiring in `applyServerOptions` |\r\n\r\n2 files changed, +24 / \u22125. The existing tests (drop, debug log, RFC-7230 space rejection, fastcgi replacer, forward_auth integration) all pass \u2014 the default path is unaffected.\r\n\r\n## Testing\r\n\r\n- `go test -race -short ./...` \u2014 all packages pass\r\n- Deployed and verified in a production environment serving multiple backends\r\n\r\n## Assistance Disclosure\r\n\r\nAI-assisted (Opus 4.6). Used for code search and pattern matching against existing conventions. All code drafted, written, reviewed, and tested by the human operator.\r\n",
+  "captured_at": "2026-08-30T10:28:14+00:00",
+  "case_id": "caddyserver-caddy-pr-7809",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Track Maintainer Approvals",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (aix, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (linux)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scorecard analysis",
+      "status": "COMPLETED",
+      "workflowName": "OpenSSF Scorecard supply-chain security"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (linux, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (linux, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (mac)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (mac, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (solaris, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint (windows)",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (windows, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (illumos, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (dragonfly, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (freebsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (openbsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (windows, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (darwin, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build (netbsd, 1.26)",
+      "status": "COMPLETED",
+      "workflowName": "Cross-Build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Handle PR Closed Without Tag",
+      "status": "COMPLETED",
+      "workflowName": "Release Proposal Approval Tracker"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test (s390x on IBM Z)",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "govulncheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "goreleaser-check",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dependency-review",
+      "status": "COMPLETED",
+      "workflowName": "Lint"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "Scorecard",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "55b3397a2da2af0a8d567b63460af1be8e6820a7",
+  "deletions": 26,
+  "files": [
+    {
+      "additions": 30,
+      "changeType": "MODIFIED",
+      "deletions": 21,
+      "path": "caddyconfig/httpcaddyfile/serveroptions.go"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "modules/caddyhttp/app.go"
+    },
+    {
+      "additions": 144,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "modules/caddyhttp/server.go"
+    },
+    {
+      "additions": 427,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "modules/caddyhttp/server_test.go"
+    }
+  ],
+  "head_sha": "7f2024df34402501bd2ec1a617becc44cded6faf",
+  "issues": [],
+  "patch_sha256": "68733a12efa15a230a85fb3802b126734a3a96275ae3b101bb06973f33140576",
+  "pr_number": 7809,
+  "repo": "caddyserver/caddy",
+  "schema_version": 1,
+  "title": "caddyhttp: restore allow_underscore_in_headers server option",
+  "url": "https://github.com/caddyserver/caddy/pull/7809"
+}

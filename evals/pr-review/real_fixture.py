@@ -285,6 +285,64 @@ def verify_diverse_selection(candidates_path: Path, policy_path: Path, selection
     return len(selected_ids)
 
 
+def verify_capability_selection(pool_paths, policy_path: Path, selection_path: Path):
+    policy = read_json(policy_path)
+    selection = read_json(selection_path)
+    pool_values = [read_json(path) for path in pool_paths]
+    pools = {pool["repo"]: pool for pool in pool_values}
+    allowed_repositories = {item["repo"]: item["stack"] for item in policy["repositories"]}
+    cases = selection["cases"]
+    case_ids = [f"{case['repo']}#{case['number']}" for case in cases]
+    if len(cases) != int(policy["target_case_count"]):
+        raise ValueError("capability selection has the wrong case count")
+    if len(case_ids) != len(set(case_ids)):
+        raise ValueError("capability selection contains duplicate cases")
+
+    expected_types = set(policy["change_types"])
+    type_counts = {name: 0 for name in expected_types}
+    repository_counts = {}
+    selected_stacks = set()
+    excluded = set(policy.get("exclude_cases", []))
+    rules = policy["eligibility"]
+    for case, case_id in zip(cases, case_ids):
+        repo = case["repo"]
+        if repo not in allowed_repositories or repo not in pools:
+            raise ValueError(f"capability selection contains unsupported repo: {repo}")
+        if case_id in excluded:
+            raise ValueError(f"capability selection contains excluded case: {case_id}")
+        change_type = case["change_type"]
+        if change_type not in expected_types:
+            raise ValueError(f"unknown capability change type: {change_type}")
+        type_counts[change_type] += 1
+        repository_counts[repo] = repository_counts.get(repo, 0) + 1
+        selected_stacks.add(allowed_repositories[repo])
+
+        matches = [pr for pr in pools[repo]["pull_requests"] if pr["number"] == case["number"]]
+        if len(matches) != 1:
+            raise ValueError(f"capability case not found exactly once: {case_id}")
+        pull = matches[0]
+        churn = int(pull["additions"]) + int(pull["deletions"])
+        if pull["state"] != rules["state"] or pull.get("isDraft") or is_bot(pull):
+            raise ValueError(f"ineligible capability case state or author: {case_id}")
+        if not int(rules["minimum_churn"]) <= churn <= int(rules["maximum_churn"]):
+            raise ValueError(f"ineligible capability case churn: {case_id}")
+        if int(pull["changedFiles"]) > int(rules["maximum_changed_files"]):
+            raise ValueError(f"ineligible capability case file count: {case_id}")
+        if case["title"] != pull["title"] or case["url"] != pull["url"]:
+            raise ValueError(f"capability case metadata drift: {case_id}")
+
+    expected_per_type = int(policy["cases_per_change_type"])
+    if set(type_counts.values()) != {expected_per_type}:
+        raise ValueError(f"capability change-type quotas differ: {type_counts}")
+    if max(repository_counts.values()) > int(policy["maximum_cases_per_repository"]):
+        raise ValueError("capability repository quota exceeded")
+    if len(repository_counts) < int(policy["minimum_repositories"]):
+        raise ValueError("capability repository diversity is too low")
+    if len(selected_stacks) < int(policy["minimum_stacks"]):
+        raise ValueError("capability stack diversity is too low")
+    return len(cases)
+
+
 def github_json(args):
     return json.loads(run(["gh", *args]))
 
@@ -523,6 +581,38 @@ def verify_diverse_cases(cases_root: Path, selection_path: Path):
     return len(case_dirs)
 
 
+def verify_capability_cases(cases_root: Path, pool_paths, selection_path: Path):
+    pool_values = [read_json(path) for path in pool_paths]
+    pools = {pool["repo"]: pool for pool in pool_values}
+    selected = {
+        f"{case['repo']}#{case['number']}": case
+        for case in read_json(selection_path)["cases"]
+    }
+    case_dirs = sorted(path.parent for path in cases_root.glob("*/manifest.json"))
+    captured = {}
+    for case_dir in case_dirs:
+        verify_case(case_dir)
+        manifest = read_json(case_dir / "manifest.json")
+        case_id = f"{manifest['repo']}#{manifest['pr_number']}"
+        captured[case_id] = manifest
+    if set(captured) != set(selected):
+        missing = sorted(set(selected) - set(captured))
+        extra = sorted(set(captured) - set(selected))
+        raise ValueError(f"capability cases differ from selection: missing={missing}, extra={extra}")
+    for case_id, expected in selected.items():
+        manifest = captured[case_id]
+        pull = next(
+            pr
+            for pr in pools[expected["repo"]]["pull_requests"]
+            if pr["number"] == expected["number"]
+        )
+        if manifest["head_sha"] != pull["headRefOid"]:
+            raise ValueError(f"capability case head differs from frozen pool: {case_id}")
+        if manifest["title"] != expected["title"] or manifest["url"] != expected["url"]:
+            raise ValueError(f"capability case metadata differs from selection: {case_id}")
+    return len(case_dirs)
+
+
 def apply_captured_patch(work: Path, patch_path: Path, base_sha: str):
     first_line = patch_path.read_text().splitlines()[0] if patch_path.stat().st_size else ""
     if re.fullmatch(r"From [0-9a-f]{40} Mon Sep 17 00:00:00 2001", first_line):
@@ -655,9 +745,17 @@ def build_parser():
     diverse_verify.add_argument("--candidates", type=Path, required=True)
     diverse_verify.add_argument("--policy", type=Path, required=True)
     diverse_verify.add_argument("--selection", type=Path, required=True)
+    capability_verify = sub.add_parser("verify-capability-selection")
+    capability_verify.add_argument("--pool", type=Path, action="append", required=True)
+    capability_verify.add_argument("--policy", type=Path, required=True)
+    capability_verify.add_argument("--selection", type=Path, required=True)
     diverse_cases = sub.add_parser("verify-diverse-cases")
     diverse_cases.add_argument("--cases-root", type=Path, required=True)
     diverse_cases.add_argument("--selection", type=Path, required=True)
+    capability_cases = sub.add_parser("verify-capability-cases")
+    capability_cases.add_argument("--cases-root", type=Path, required=True)
+    capability_cases.add_argument("--pool", type=Path, action="append", required=True)
+    capability_cases.add_argument("--selection", type=Path, required=True)
     capture = sub.add_parser("capture")
     capture.add_argument("--repo", required=True)
     capture.add_argument("--number", type=int, required=True)
@@ -692,9 +790,19 @@ def main():
             f"verified {verify_diverse_selection(args.candidates, args.policy, args.selection)} "
             "diverse PR cases"
         )
+    elif args.command == "verify-capability-selection":
+        print(
+            f"verified {verify_capability_selection(args.pool, args.policy, args.selection)} "
+            "capability PR cases"
+        )
     elif args.command == "verify-diverse-cases":
         print(
             f"verified {verify_diverse_cases(args.cases_root, args.selection)} diverse PR cases"
+        )
+    elif args.command == "verify-capability-cases":
+        print(
+            f"verified {verify_capability_cases(args.cases_root, args.pool, args.selection)} "
+            "capability PR cases"
         )
     elif args.command == "capture":
         capture_case(args.repo, args.number, args.case_id, args.output_root)

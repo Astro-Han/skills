@@ -1,0 +1,1390 @@
+From deeaf1e5babb790abe5aba0f06376e7de5c6d3bf Mon Sep 17 00:00:00 2001
+From: liugddx <liugddx@gmail.com>
+Date: Thu, 27 Aug 2026 20:29:15 +0800
+Subject: [PATCH 1/3] feat(ui): add font-size controls to Appearance settings
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Appearance only exposed theme and palette; there was no in-app way to
+change font size. The type scale was fixed at base 14 and both xterm.js
+terminals hardcoded fontSize 12, so users on large/high-DPI displays had
+to fall back to OS-level scaling.
+
+Add two controls to the Appearance page, mirroring Codex Desktop's UI
+Font / Code Font but kept as separate knobs:
+
+- UI font size: a document-root multiplier (UI_FONT_SCALES). Every
+  --font-size-* token is rem, so one root font-size uniformly scales
+  text, icons and rem spacing — the intended UI-zoom hook, NOT the old
+  density hack removed in makaTheme.ts. Restored before first paint in
+  cached-theme-bootstrap to avoid a resize flash.
+- Terminal font size: feeds getTerminalFontSize() into both Terminal
+  instances; live terminals subscribe and re-fit (re-emitting geometry
+  to the PTY) on change.
+
+Both persist under appearance (already client-owned) and fail closed to
+their defaults on any malformed value, so an out-of-range persisted value
+can't drive an arbitrary root size — avoiding the Codex issues where an
+extreme value made the UI unusable.
+
+Refs #4021
+
+Generated-by: Claude Opus 4.8
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../src/renderer/cached-theme-bootstrap.ts    |   5 +
+ .../tools/terminal/session-terminal-panel.tsx |  13 ++-
+ .../locales/settings-preferences-copy.ts      |  12 +-
+ .../settings/appearance-settings-page.tsx     | 107 ++++++++++++++++++
+ .../runtime-host-ssh-terminal-dialog.tsx      |   8 +-
+ apps/desktop/src/renderer/theme.ts            |  77 ++++++++++++-
+ .../src/renderer/use-shell-appearance.ts      |  15 ++-
+ packages/core/src/__tests__/settings.test.ts  |  26 +++++
+ packages/core/src/settings.ts                 |  47 ++++++++
+ 9 files changed, 303 insertions(+), 7 deletions(-)
+
+diff --git a/apps/desktop/src/renderer/cached-theme-bootstrap.ts b/apps/desktop/src/renderer/cached-theme-bootstrap.ts
+index 0d510fb93f..10d9c473db 100644
+--- a/apps/desktop/src/renderer/cached-theme-bootstrap.ts
++++ b/apps/desktop/src/renderer/cached-theme-bootstrap.ts
+@@ -18,6 +18,7 @@
+  */
+ 
+ import { safeLocalStorageGet } from './browser-storage';
++import { applyCachedFontAppearanceBeforeMount } from './theme';
+ 
+ // Apply the cached theme before React mounts so dark-theme users don't get
+ // a brief light-mode flash while settings.json loads. We persist the resolved
+@@ -47,4 +48,8 @@ export function applyCachedThemeBeforeMount(): void {
+   if (cachedPalette && cachedPalette !== 'default' && /^[a-z0-9-]{1,32}$/.test(cachedPalette)) {
+     document.documentElement.setAttribute('data-maka-theme', cachedPalette);
+   }
++  // Restore a cached non-default UI font scale (and seed the terminal size)
++  // the same way, so the first paint is at the user's chosen size rather than
++  // 1× snapping once app-shell applies settings.json.
++  applyCachedFontAppearanceBeforeMount();
+ }
+diff --git a/apps/desktop/src/renderer/features/workbar/tools/terminal/session-terminal-panel.tsx b/apps/desktop/src/renderer/features/workbar/tools/terminal/session-terminal-panel.tsx
+index e8ba38eb84..7ebf7c34bb 100644
+--- a/apps/desktop/src/renderer/features/workbar/tools/terminal/session-terminal-panel.tsx
++++ b/apps/desktop/src/renderer/features/workbar/tools/terminal/session-terminal-panel.tsx
+@@ -33,6 +33,7 @@ import { SessionTerminalHydration } from './session-terminal-hydration';
+ import { suppressTerminalQueryReplies } from './session-terminal-query';
+ import { scheduleTerminalFrame } from './session-terminal-frame';
+ import { useWorkbarServices } from '../../services-context.js';
++import { getTerminalFontSize, subscribeTerminalFontSize } from '../../../../theme';
+ 
+ function terminalTheme(element: HTMLElement) {
+   const styles = getComputedStyle(element);
+@@ -88,7 +89,7 @@ export function SessionTerminalPanel(props: {
+       cursorBlink: true,
+       cursorStyle: 'bar',
+       fontFamily: 'Geist Mono Variable, ui-monospace, SFMono-Regular, Menlo, monospace',
+-      fontSize: 12,
++      fontSize: getTerminalFontSize(),
+       letterSpacing: 0,
+       lineHeight: 1.2,
+       screenReaderMode: true,
+@@ -193,6 +194,15 @@ export function SessionTerminalPanel(props: {
+     const observer = new ResizeObserver(resize);
+     observer.observe(host);
+ 
++    // Live-apply font-size changes from Appearance settings. Changing the size
++    // reflows cols/rows, so clear the cached size and re-fit to re-emit the new
++    // geometry to the PTY.
++    const unsubscribeFontSize = subscribeTerminalFontSize((size) => {
++      terminal.options.fontSize = size;
++      lastSizeRef.current = '';
++      resize();
++    });
++
+     setError(null);
+     hydrate(hydration.begin());
+ 
+@@ -201,6 +211,7 @@ export function SessionTerminalPanel(props: {
+       cancelHydrationFrame?.();
+       cancelHydrationFrame = null;
+       observer.disconnect();
++      unsubscribeFontSize();
+       unsubscribe();
+       unsubscribeResync();
+       inputSubscription.dispose();
+diff --git a/apps/desktop/src/renderer/locales/settings-preferences-copy.ts b/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
+index 86399bcba6..857e42ed7f 100644
+--- a/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
++++ b/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
+@@ -61,6 +61,8 @@ export type SettingsPreferencesCopy = {
+     paletteHelp: string;
+     appIcon: string;
+     appIconHelp: string;
++    fontSize: string;
++    fontSizeHelp: string;
+     pets: string;
+     petsHelp: string;
+   };
+@@ -107,6 +109,11 @@ export type SettingsPreferencesCopy = {
+       string
+     >;
+     appIconUnavailable: string;
++    fontSize: {
++      uiLabel: string;
++      terminalLabel: string;
++      ui: Record<'compact' | 'default' | 'large' | 'xlarge', string>;
++    };
+   };
+   pets: {
+     import: string;
+@@ -271,6 +278,7 @@ const SETTINGS_PREFERENCES_COPY_BY_LOCALE = {
+       theme: '主题', themeHelp: '界面跟随系统，还是固定浅色或深色。',
+       palette: '调色板', paletteHelp: '强调色与画布色调；切换会立即生效并保存在本地。',
+       appIcon: '应用图标', appIconHelp: 'Dock、任务栏和切换器里显示的 Maka 图标；切换会立即生效。',
++      fontSize: '字号', fontSizeHelp: '界面与终端的文字大小；调整会立即生效并保存在本地。',
+       pets: '自定义宠物', petsHelp: '管理你自己导入的 PetPack。Maka 不预装、也不默认启用任何宠物。',
+     },
+     appearance: {
+@@ -307,6 +315,7 @@ const SETTINGS_PREFERENCES_COPY_BY_LOCALE = {
+         write_failed: '无法保存导入的图标',
+       },
+       appIconUnavailable: '无法载入应用图标',
++      fontSize: { uiLabel: '界面', terminalLabel: '终端', ui: { compact: '紧凑', default: '标准', large: '大', xlarge: '特大' } },
+     },
+     pets: {
+       import: '导入 PetPack', importing: '正在导入…', loading: '正在载入自定义宠物…',
+@@ -356,10 +365,11 @@ const SETTINGS_PREFERENCES_COPY_BY_LOCALE = {
+       theme: 'Theme', themeHelp: 'Follow the system appearance, or stay on light or dark.',
+       palette: 'Color palette', paletteHelp: 'Accent and canvas colors. Changes apply immediately and are saved locally.',
+       appIcon: 'App icon', appIconHelp: 'The Maka icon shown in the dock, taskbar, and app switcher. Changes apply immediately.',
++      fontSize: 'Font size', fontSizeHelp: 'Text size across the interface and terminal. Changes apply immediately and are saved locally.',
+       pets: 'Custom pets', petsHelp: 'Manage PetPacks you import yourself. Maka does not bundle or enable any pet by default.',
+     },
+     appearance: {
+-      saveFailed: 'Could not save appearance settings', theme: 'Theme', palette: 'Color palette', themeOptions: { light: { label: 'Light', help: 'Always use the light interface.' }, dark: { label: 'Dark', help: 'Always use the dark interface.' }, auto: { label: 'Follow system', help: 'Match the current system appearance.' } }, paletteLabels: { default: 'Default', onedark: 'One Dark', 'catppuccin-mocha': 'Catppuccin Mocha', 'tokyo-night': 'Tokyo Night', nord: 'Nord', coral: 'Coral', azure: 'Azure', forest: 'Forest', dusk: 'Dusk', sand: 'Sand', mono: 'Monochrome' }, paletteHelp: { default: 'Maka brand-blue accent', onedark: 'Classic dark editor theme', 'catppuccin-mocha': 'Soft purple dark theme', 'tokyo-night': 'Deep-blue editor theme', nord: 'Cool Nordic colors', coral: 'Warm pink and coral accent', azure: 'Clean, calm blue accent', forest: 'Deep moss and warm honey', dusk: 'Deep violet on a cool canvas', sand: 'Amber sand and warm ivory', mono: 'Pure grayscale without color distraction' }, paletteGroups: { editor: 'Editor themes', product: 'Product colors' }, appIconLabels: { default: 'Classic', mono: 'Monochrome', 'sky': 'Sky', 'cyan': 'Cyan', 'ice': 'Ice', 'pale-inverted': 'Inverted', 'ink': 'Ink', 'paper': 'Paper', 'graphite': 'Graphite', 'pencil-kraft': 'Pencil, kraft', 'pencil-sky': 'Pencil, sky', 'pencil-navy': 'Pencil, navy', 'alpine': 'Alpine', 'dusk': 'Dusk', 'night': 'Night', 'midnight': 'Midnight', 'carbon': 'Carbon', 'slate': 'Slate', 'obsidian': 'Obsidian', 'neon-cyan': 'Neon cyan', 'matrix': 'Phosphor', 'magenta': 'Magenta', 'amber-crt': 'Amber CRT', 'clay': 'Clay', 'sage': 'Sage', 'dust': 'Dust', 'fog': 'Fog', 'sunset': 'Sunset', 'amber': 'Amber', 'terracotta': 'Terracotta', 'ocean': 'Ocean', 'moss': 'Moss', 'desert': 'Desert', 'glacier': 'Glacier', 'gold': 'Gold', 'chrome': 'Chrome', 'mono-black': 'Mono black', 'mono-white': 'Mono white', 'hazard': 'Hazard', 'forest': 'Forest' }, appIconHelp: { default: 'The default Maka mark', mono: 'Grayscale, for a quieter dock', 'sky': 'The geometric M mark in brand blue', 'cyan': 'Blue leaning to cyan', 'ice': 'A pale-to-deep blue gradient', 'pale-inverted': 'A deep blue mark on a pale field', 'ink': 'White on black, the highest contrast', 'paper': 'Black on white', 'graphite': 'Black on white with a grey tip', 'pencil-kraft': 'The pencil reading, on kraft paper', 'pencil-sky': 'The pencil reading, on sky blue', 'pencil-navy': 'The pencil reading, on deep navy', 'alpine': 'A snow-capped peak under clear sky', 'dusk': 'A snow-capped peak at dusk', 'night': 'A snow-capped peak at night', 'midnight': 'A bright mark on deep navy; keeps its edge on a dark dock', 'carbon': 'True black, so an OLED panel shows nothing but the mark', 'slate': 'Pale grey on cool slate', 'obsidian': 'Lilac on a violet-black gradient', 'neon-cyan': 'Electric cyan on near-black', 'matrix': 'The green of a phosphor terminal', 'magenta': 'Hot pink on deep violet', 'amber-crt': 'The amber of an early terminal', 'clay': 'Muted terracotta', 'sage': 'Muted grey-green', 'dust': 'Muted dusty rose', 'fog': 'Muted blue-grey', 'sunset': 'An orange-to-pink diagonal', 'amber': 'A dark mark on amber', 'terracotta': 'A brick-red gradient', 'ocean': 'A deep teal gradient', 'moss': 'A deep moss gradient', 'desert': 'A dark mark on desert sand', 'glacier': 'A pale glacial blue', 'gold': 'The mark itself carries a gold gradient', 'chrome': 'The mark itself carries a silver gradient', 'mono-black': 'Black on pure white; prints in one colour', 'mono-white': 'White on pure black', 'hazard': 'Yellow on black, the highest contrast in the set', 'forest': 'A snow-capped peak in green' }, appIconGroups: { mascot: 'Mascot', blue: 'Blues', contrast: 'Black & white', pencil: 'Pencil', mountain: 'Mountain', dark: 'Dark', neon: 'Neon', muted: 'Muted', warm: 'Warm', nature: 'Nature', metal: 'Metal', highContrast: 'High contrast', custom: 'Imported' }, appIconSplitLabel: 'Use a different icon in dark mode', appIconSplitHelp: 'When off, one icon is used in both appearances.', appIconTargets: { light: 'Light', dark: 'Dark' }, appIconCustom: 'Imported icon', appIconCustomHelp: 'An image you imported', appIconImport: 'Import icon…', appIconImporting: 'Importing…', appIconImportHelp: 'A square PNG works best. Leave about 10% transparent margin so it sits the same size as other apps in the dock.', appIconRemove: 'Remove', appIconImportError: 'Could not import the icon', appIconRemoveFailed: 'Could not remove the icon', appIconSelectFailed: 'Could not switch the icon', appIconImportFailed: { too_large: 'That file is too large; pick a smaller image', too_many_pixels: 'That image is too large; 4096×4096 is the maximum', unsupported_format: 'Only PNG and JPEG are supported', unreadable: 'No image could be read from that file', too_small: 'That image is too small; 128×128 is the minimum', write_failed: 'Could not store the imported icon' }, appIconUnavailable: 'Could not load the app icons',
++      saveFailed: 'Could not save appearance settings', theme: 'Theme', palette: 'Color palette', themeOptions: { light: { label: 'Light', help: 'Always use the light interface.' }, dark: { label: 'Dark', help: 'Always use the dark interface.' }, auto: { label: 'Follow system', help: 'Match the current system appearance.' } }, paletteLabels: { default: 'Default', onedark: 'One Dark', 'catppuccin-mocha': 'Catppuccin Mocha', 'tokyo-night': 'Tokyo Night', nord: 'Nord', coral: 'Coral', azure: 'Azure', forest: 'Forest', dusk: 'Dusk', sand: 'Sand', mono: 'Monochrome' }, paletteHelp: { default: 'Maka brand-blue accent', onedark: 'Classic dark editor theme', 'catppuccin-mocha': 'Soft purple dark theme', 'tokyo-night': 'Deep-blue editor theme', nord: 'Cool Nordic colors', coral: 'Warm pink and coral accent', azure: 'Clean, calm blue accent', forest: 'Deep moss and warm honey', dusk: 'Deep violet on a cool canvas', sand: 'Amber sand and warm ivory', mono: 'Pure grayscale without color distraction' }, paletteGroups: { editor: 'Editor themes', product: 'Product colors' }, appIconLabels: { default: 'Classic', mono: 'Monochrome', 'sky': 'Sky', 'cyan': 'Cyan', 'ice': 'Ice', 'pale-inverted': 'Inverted', 'ink': 'Ink', 'paper': 'Paper', 'graphite': 'Graphite', 'pencil-kraft': 'Pencil, kraft', 'pencil-sky': 'Pencil, sky', 'pencil-navy': 'Pencil, navy', 'alpine': 'Alpine', 'dusk': 'Dusk', 'night': 'Night', 'midnight': 'Midnight', 'carbon': 'Carbon', 'slate': 'Slate', 'obsidian': 'Obsidian', 'neon-cyan': 'Neon cyan', 'matrix': 'Phosphor', 'magenta': 'Magenta', 'amber-crt': 'Amber CRT', 'clay': 'Clay', 'sage': 'Sage', 'dust': 'Dust', 'fog': 'Fog', 'sunset': 'Sunset', 'amber': 'Amber', 'terracotta': 'Terracotta', 'ocean': 'Ocean', 'moss': 'Moss', 'desert': 'Desert', 'glacier': 'Glacier', 'gold': 'Gold', 'chrome': 'Chrome', 'mono-black': 'Mono black', 'mono-white': 'Mono white', 'hazard': 'Hazard', 'forest': 'Forest' }, appIconHelp: { default: 'The default Maka mark', mono: 'Grayscale, for a quieter dock', 'sky': 'The geometric M mark in brand blue', 'cyan': 'Blue leaning to cyan', 'ice': 'A pale-to-deep blue gradient', 'pale-inverted': 'A deep blue mark on a pale field', 'ink': 'White on black, the highest contrast', 'paper': 'Black on white', 'graphite': 'Black on white with a grey tip', 'pencil-kraft': 'The pencil reading, on kraft paper', 'pencil-sky': 'The pencil reading, on sky blue', 'pencil-navy': 'The pencil reading, on deep navy', 'alpine': 'A snow-capped peak under clear sky', 'dusk': 'A snow-capped peak at dusk', 'night': 'A snow-capped peak at night', 'midnight': 'A bright mark on deep navy; keeps its edge on a dark dock', 'carbon': 'True black, so an OLED panel shows nothing but the mark', 'slate': 'Pale grey on cool slate', 'obsidian': 'Lilac on a violet-black gradient', 'neon-cyan': 'Electric cyan on near-black', 'matrix': 'The green of a phosphor terminal', 'magenta': 'Hot pink on deep violet', 'amber-crt': 'The amber of an early terminal', 'clay': 'Muted terracotta', 'sage': 'Muted grey-green', 'dust': 'Muted dusty rose', 'fog': 'Muted blue-grey', 'sunset': 'An orange-to-pink diagonal', 'amber': 'A dark mark on amber', 'terracotta': 'A brick-red gradient', 'ocean': 'A deep teal gradient', 'moss': 'A deep moss gradient', 'desert': 'A dark mark on desert sand', 'glacier': 'A pale glacial blue', 'gold': 'The mark itself carries a gold gradient', 'chrome': 'The mark itself carries a silver gradient', 'mono-black': 'Black on pure white; prints in one colour', 'mono-white': 'White on pure black', 'hazard': 'Yellow on black, the highest contrast in the set', 'forest': 'A snow-capped peak in green' }, appIconGroups: { mascot: 'Mascot', blue: 'Blues', contrast: 'Black & white', pencil: 'Pencil', mountain: 'Mountain', dark: 'Dark', neon: 'Neon', muted: 'Muted', warm: 'Warm', nature: 'Nature', metal: 'Metal', highContrast: 'High contrast', custom: 'Imported' }, appIconSplitLabel: 'Use a different icon in dark mode', appIconSplitHelp: 'When off, one icon is used in both appearances.', appIconTargets: { light: 'Light', dark: 'Dark' }, appIconCustom: 'Imported icon', appIconCustomHelp: 'An image you imported', appIconImport: 'Import icon…', appIconImporting: 'Importing…', appIconImportHelp: 'A square PNG works best. Leave about 10% transparent margin so it sits the same size as other apps in the dock.', appIconRemove: 'Remove', appIconImportError: 'Could not import the icon', appIconRemoveFailed: 'Could not remove the icon', appIconSelectFailed: 'Could not switch the icon', appIconImportFailed: { too_large: 'That file is too large; pick a smaller image', too_many_pixels: 'That image is too large; 4096×4096 is the maximum', unsupported_format: 'Only PNG and JPEG are supported', unreadable: 'No image could be read from that file', too_small: 'That image is too small; 128×128 is the minimum', write_failed: 'Could not store the imported icon' }, appIconUnavailable: 'Could not load the app icons', fontSize: { uiLabel: 'Interface', terminalLabel: 'Terminal', ui: { compact: 'Compact', default: 'Default', large: 'Large', xlarge: 'Extra large' } },
+     },
+     pets: {
+       import: 'Import PetPack', importing: 'Importing…', loading: 'Loading custom pets…',
+diff --git a/apps/desktop/src/renderer/settings/appearance-settings-page.tsx b/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
+index 205d447c99..de7ed92757 100644
+--- a/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
++++ b/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
+@@ -25,14 +25,23 @@ import {
+   DEFAULT_APP_ICON_DARK,
+   type AppIconChoice,
+   type AppIconTarget,
++  TERMINAL_FONT_SIZES,
++  type TerminalFontSize,
+   type ThemePalette,
+   type ThemePreference,
++  type UiFontScale,
+   type UpdateAppSettingsResult,
+ } from '@maka/core/settings';
+ import { Switch, useMountedRef, useToast, useUiLocale } from '@maka/ui';
+ import { settingsActionErrorMessage } from './settings-error-copy';
+ import { getSettingsPreferencesCopy } from '../locales/settings-preferences-copy.js';
+ import { CustomPetSettingsSection } from './custom-pet-settings-section.js';
++import {
++  applyTerminalFontSize,
++  applyUiFontScale,
++  getTerminalFontSize,
++  getUiFontScale,
++} from '../theme';
+ 
+ /**
+  * Mini chat-surface mockup rendered inside each theme radio tile. Replaces
+@@ -141,6 +150,21 @@ const APP_ICON_SECTION_HEADING_ID = 'settings-appearance-app-icon-heading';
+ const PALETTE_SECTION_HEADING_ID = 'settings-appearance-palette-heading';
+ const paletteGroupLabelId = (group: 'editor' | 'product') => `settings-appearance-palette-${group}-label`;
+ const appIconGroupLabelId = (group: string) => `settings-appearance-app-icon-${group}-label`;
++const FONT_SIZE_SECTION_HEADING_ID = 'settings-appearance-font-size-heading';
++const UI_FONT_SIZE_GROUP_LABEL_ID = 'settings-appearance-ui-font-size-label';
++const TERMINAL_FONT_SIZE_GROUP_LABEL_ID = 'settings-appearance-terminal-font-size-label';
++
++// The UI font scale is a document-root multiplier (see theme.ts). Each tile
++// maps a stable copy key to one of the closed `UI_FONT_SCALES` values.
++const UI_FONT_SCALE_OPTIONS: ReadonlyArray<{
++  key: 'compact' | 'default' | 'large' | 'xlarge';
++  scale: UiFontScale;
++}> = [
++  { key: 'compact', scale: 0.9 },
++  { key: 'default', scale: 1 },
++  { key: 'large', scale: 1.15 },
++  { key: 'xlarge', scale: 1.3 },
++];
+ 
+ export function AppearanceSettingsPage(props: {
+   themePref: ThemePreference;
+@@ -342,6 +366,22 @@ export function AppearanceSettingsPage(props: {
+     await persistAppearance({ palette: next });
+   }
+ 
++  // Font sizing has no app-shell state to thread: theme.ts holds the live
++  // values, so the page seeds its selection from there and applies directly.
++  // Same apply-then-persist shape as theme/palette above.
++  const [uiFontScale, setUiFontScaleState] = useState<number>(() => getUiFontScale());
++  const [terminalFontSize, setTerminalFontSizeState] = useState<number>(() => getTerminalFontSize());
++  async function setUiFontScale(next: UiFontScale) {
++    setUiFontScaleState(next);
++    applyUiFontScale(next);
++    await persistAppearance({ uiFontScale: next });
++  }
++  async function setTerminalFontSize(next: TerminalFontSize) {
++    setTerminalFontSizeState(next);
++    applyTerminalFontSize(next);
++    await persistAppearance({ terminalFontSize: next });
++  }
++
+   return (
+     /* Designer audit P2-13: 显示名称/界面语言/语气偏好 are identity, not
+        appearance — they render on the 通用 page (see
+@@ -440,6 +480,73 @@ export function AppearanceSettingsPage(props: {
+           </VStack>
+         ))}
+       </SettingsSection>
++      <SettingsSection
++        variant="bare"
++        titleId={FONT_SIZE_SECTION_HEADING_ID}
++        title={sections.fontSize}
++        description={sections.fontSizeHelp}
++      >
++        <VStack gap={3}>
++          <VStack gap={1.5}>
++            <Text
++              id={UI_FONT_SIZE_GROUP_LABEL_ID}
++              type="supporting"
++              size="sm"
++              color="secondary"
++              weight="medium"
++            >
++              {copy.fontSize.uiLabel}
++            </Text>
++            <Grid
++              columns={{ minWidth: 140 }}
++              gap={2}
++              role="group"
++              aria-labelledby={UI_FONT_SIZE_GROUP_LABEL_ID}
++            >
++              {UI_FONT_SCALE_OPTIONS.map((option) => (
++                <SelectableCard
++                  key={option.key}
++                  label={copy.fontSize.ui[option.key]}
++                  isSelected={uiFontScale === option.scale}
++                  onChange={() => void setUiFontScale(option.scale)}
++                  padding={2}
++                >
++                  <Text type="label" size="sm">{copy.fontSize.ui[option.key]}</Text>
++                </SelectableCard>
++              ))}
++            </Grid>
++          </VStack>
++          <VStack gap={1.5}>
++            <Text
++              id={TERMINAL_FONT_SIZE_GROUP_LABEL_ID}
++              type="supporting"
++              size="sm"
++              color="secondary"
++              weight="medium"
++            >
++              {copy.fontSize.terminalLabel}
++            </Text>
++            <Grid
++              columns={{ minWidth: 120 }}
++              gap={2}
++              role="group"
++              aria-labelledby={TERMINAL_FONT_SIZE_GROUP_LABEL_ID}
++            >
++              {TERMINAL_FONT_SIZES.map((size) => (
++                <SelectableCard
++                  key={size}
++                  label={`${size}px`}
++                  isSelected={terminalFontSize === size}
++                  onChange={() => void setTerminalFontSize(size)}
++                  padding={2}
++                >
++                  <Text type="label" size="sm">{`${size}px`}</Text>
++                </SelectableCard>
++              ))}
++            </Grid>
++          </VStack>
++        </VStack>
++      </SettingsSection>
+       <SettingsSection
+         variant="bare"
+         titleId={APP_ICON_SECTION_HEADING_ID}
+diff --git a/apps/desktop/src/renderer/settings/runtime-host-ssh-terminal-dialog.tsx b/apps/desktop/src/renderer/settings/runtime-host-ssh-terminal-dialog.tsx
+index 917e53f760..3234965445 100644
+--- a/apps/desktop/src/renderer/settings/runtime-host-ssh-terminal-dialog.tsx
++++ b/apps/desktop/src/renderer/settings/runtime-host-ssh-terminal-dialog.tsx
+@@ -23,6 +23,7 @@ import { Layout, LayoutContent, LayoutFooter } from '@astryxdesign/core/Layout';
+ import { Banner, Button, useUiLocale } from '@maka/ui';
+ import { FitAddon } from '@xterm/addon-fit';
+ import { Terminal } from '@xterm/xterm';
++import { getTerminalFontSize, subscribeTerminalFontSize } from '../theme';
+ import type {
+   DesktopRuntimeHostSshTerminalEvent,
+   DesktopRuntimeHostSshTerminalSnapshot,
+@@ -139,7 +140,7 @@ export function RuntimeHostSshTerminalDialog() {
+     const terminal = new Terminal({
+       cursorBlink: true,
+       fontFamily: 'Geist Mono Variable, ui-monospace, SFMono-Regular, Menlo, monospace',
+-      fontSize: 12,
++      fontSize: getTerminalFontSize(),
+       lineHeight: 1.2,
+       screenReaderMode: true,
+       scrollback: 2_000,
+@@ -164,6 +165,10 @@ export function RuntimeHostSshTerminalDialog() {
+     };
+     const observer = new ResizeObserver(resize);
+     observer.observe(host);
++    const unsubscribeFontSize = subscribeTerminalFontSize((size) => {
++      terminal.options.fontSize = size;
++      resize();
++    });
+     const input = terminal.onData((data) => {
+       const sessionId = sessionIdRef.current;
+       if (sessionId) {
+@@ -178,6 +183,7 @@ export function RuntimeHostSshTerminalDialog() {
+     });
+     return () => {
+       observer.disconnect();
++      unsubscribeFontSize();
+       input.dispose();
+       terminalRef.current = undefined;
+       terminal.dispose();
+diff --git a/apps/desktop/src/renderer/theme.ts b/apps/desktop/src/renderer/theme.ts
+index f51826df83..14fdf54e84 100644
+--- a/apps/desktop/src/renderer/theme.ts
++++ b/apps/desktop/src/renderer/theme.ts
+@@ -24,12 +24,85 @@
+ // is `auto`, the helper subscribes to the system `prefers-color-scheme` media
+ // query so the app follows OS-level Light/Dark switches in real time.
+ //
+-import type { ThemePalette, ThemePreference } from '@maka/core/settings';
+-import { safeLocalStorageSet } from './browser-storage';
++import {
++  DEFAULT_TERMINAL_FONT_SIZE,
++  DEFAULT_UI_FONT_SCALE,
++  isTerminalFontSize,
++  isUiFontScale,
++  type ThemePalette,
++  type ThemePreference,
++} from '@maka/core/settings';
++import { safeLocalStorageGet, safeLocalStorageSet } from './browser-storage';
+ import { compositeScrimOverBackground, parseCssRgbColor } from './titlebar-dim-color.js';
+ 
+ const DARK_CLASS = 'dark';
+ 
++// Persisted alongside the theme/palette caches so the pre-React paint
++// (cached-theme-bootstrap.ts) can restore a non-default UI scale before the
++// first frame, and the same rationale as `maka-theme-v1`.
++const UI_FONT_SCALE_STORAGE_KEY = 'maka-font-scale-v1';
++const TERMINAL_FONT_SIZE_STORAGE_KEY = 'maka-terminal-font-size-v1';
++// The document root stays at the browser default; every --font-size-* token is
++// rem, so a scaled root font-size grows text, icons and rem spacing uniformly.
++const ROOT_FONT_SIZE_PX = 16;
++
++let currentUiFontScale: number = DEFAULT_UI_FONT_SCALE;
++let currentTerminalFontSize: number = DEFAULT_TERMINAL_FONT_SIZE;
++const terminalFontSizeListeners = new Set<(size: number) => void>();
++
++export function getUiFontScale(): number {
++  return currentUiFontScale;
++}
++
++/**
++ * Scale the whole UI by writing the document-root font-size, then persist so
++ * the pre-React paint can restore it next launch. An out-of-range value fails
++ * closed to the default rather than driving an arbitrary root size.
++ */
++export function applyUiFontScale(scale: number): void {
++  const next = isUiFontScale(scale) ? scale : DEFAULT_UI_FONT_SCALE;
++  currentUiFontScale = next;
++  document.documentElement.style.fontSize = `${ROOT_FONT_SIZE_PX * next}px`;
++  safeLocalStorageSet(UI_FONT_SCALE_STORAGE_KEY, String(next));
++}
++
++export function getTerminalFontSize(): number {
++  return currentTerminalFontSize;
++}
++
++/**
++ * Set the xterm font size. There is no DOM to touch here — live terminals
++ * subscribe via `subscribeTerminalFontSize` and re-fit themselves; a terminal
++ * opened later reads `getTerminalFontSize()` at creation.
++ */
++export function applyTerminalFontSize(size: number): void {
++  const next = isTerminalFontSize(size) ? size : DEFAULT_TERMINAL_FONT_SIZE;
++  currentTerminalFontSize = next;
++  safeLocalStorageSet(TERMINAL_FONT_SIZE_STORAGE_KEY, String(next));
++  for (const listener of terminalFontSizeListeners) listener(next);
++}
++
++/** Subscribe to live terminal font-size changes. Returns an unsubscribe fn. */
++export function subscribeTerminalFontSize(listener: (size: number) => void): () => void {
++  terminalFontSizeListeners.add(listener);
++  return () => {
++    terminalFontSizeListeners.delete(listener);
++  };
++}
++
++/**
++ * Restore the cached UI font scale before React mounts, so a non-default scale
++ * does not paint at 1× and snap once settings.json loads. Mirrors the cached
++ * theme/palette restore in cached-theme-bootstrap.ts. Also seeds the terminal
++ * size cache so an early terminal open uses the right size without a reflow.
++ */
++export function applyCachedFontAppearanceBeforeMount(): void {
++  const cachedScale = Number.parseFloat(safeLocalStorageGet(UI_FONT_SCALE_STORAGE_KEY) ?? '');
++  if (isUiFontScale(cachedScale)) applyUiFontScale(cachedScale);
++  const cachedTerminal = Number.parseInt(safeLocalStorageGet(TERMINAL_FONT_SIZE_STORAGE_KEY) ?? '', 10);
++  if (isTerminalFontSize(cachedTerminal)) currentTerminalFontSize = cachedTerminal;
++}
++
+ let unsubscribeMediaQuery: (() => void) | null = null;
+ 
+ /**
+diff --git a/apps/desktop/src/renderer/use-shell-appearance.ts b/apps/desktop/src/renderer/use-shell-appearance.ts
+index d52166de41..6524ff184d 100644
+--- a/apps/desktop/src/renderer/use-shell-appearance.ts
++++ b/apps/desktop/src/renderer/use-shell-appearance.ts
+@@ -18,11 +18,16 @@
+  */
+ 
+ import { useState, type Dispatch, type SetStateAction } from 'react';
+-import type { ThemePalette, ThemePreference } from '@maka/core/settings';
++import {
++  DEFAULT_TERMINAL_FONT_SIZE,
++  DEFAULT_UI_FONT_SCALE,
++  type ThemePalette,
++  type ThemePreference,
++} from '@maka/core/settings';
+ import type { ThinkingLevel } from '@maka/core/model-thinking';
+ import type { UiLocale, UiLocalePreference } from '@maka/core/ui-locale';
+ import { createUiLocaleUpdateGate } from './settings/ui-locale-update-gate';
+-import { applyTheme, applyThemePalette } from './theme';
++import { applyTerminalFontSize, applyTheme, applyThemePalette, applyUiFontScale } from './theme';
+ import { getShellCopy, localizedShellErrorMessage } from './locales/shell-copy';
+ 
+ type ToastApi = {
+@@ -92,6 +97,12 @@ export function useShellAppearance({
+       setThemePalette(palette);
+       applyTheme(pref);
+       applyThemePalette(palette);
++      // Font appearance has no app-shell state of its own: theme.ts holds the
++      // current values and live terminals subscribe for updates, so applying
++      // here is the whole hydration step. Invalid/absent values fail closed to
++      // the defaults inside the apply functions.
++      applyUiFontScale(next.appearance.uiFontScale ?? DEFAULT_UI_FONT_SCALE);
++      applyTerminalFontSize(next.appearance.terminalFontSize ?? DEFAULT_TERMINAL_FONT_SIZE);
+     } else {
+       const copy = getShellCopy(uiLocale).app;
+       toastApi.error(
+diff --git a/packages/core/src/__tests__/settings.test.ts b/packages/core/src/__tests__/settings.test.ts
+index 3192715e14..87373210a3 100644
+--- a/packages/core/src/__tests__/settings.test.ts
++++ b/packages/core/src/__tests__/settings.test.ts
+@@ -24,6 +24,8 @@ import {
+   createDefaultSettings,
+   DEFAULT_APP_ICON,
+   DEFAULT_APP_ICON_DARK,
++  DEFAULT_TERMINAL_FONT_SIZE,
++  DEFAULT_UI_FONT_SCALE,
+   mergeSettings,
+   normalizeSettings,
+   startupAppIcon,
+@@ -149,6 +151,30 @@ test('an app icon the build does not ship falls back without disturbing the them
+   ).toBe('mono');
+ });
+ 
++test('font-size appearance defaults, and malformed values fail closed to them', () => {
++  expect(createDefaultSettings().appearance.uiFontScale).toBe(DEFAULT_UI_FONT_SCALE);
++  expect(createDefaultSettings().appearance.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
++
++  // A value outside the closed allowlist (or the wrong type) must not reach the
++  // renderer as an arbitrary root font-size / xterm size — it drops to the
++  // default, and, like the app-icon guard above, does not disturb the theme.
++  for (const bad of [undefined, 0.5, 99, '1.15', null, Number.NaN]) {
++    const normalized = normalizeSettings({
++      appearance: { theme: 'dark', uiFontScale: bad, terminalFontSize: bad } as never,
++    });
++    expect(normalized.appearance.uiFontScale).toBe(DEFAULT_UI_FONT_SCALE);
++    expect(normalized.appearance.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
++    expect(normalized.appearance.theme).toBe('dark');
++  }
++
++  // A value on the allowlist survives untouched.
++  const kept = normalizeSettings({
++    appearance: { theme: 'auto', uiFontScale: 1.3, terminalFontSize: 16 } as never,
++  });
++  expect(kept.appearance.uiFontScale).toBe(1.3);
++  expect(kept.appearance.terminalFontSize).toBe(16);
++});
++
+ test('imported app icons normalize by id shape, never by path', () => {
+   const custom = `custom:${'a'.repeat(32)}`;
+   expect(
+diff --git a/packages/core/src/settings.ts b/packages/core/src/settings.ts
+index ac47f3515d..05f43ba744 100644
+--- a/packages/core/src/settings.ts
++++ b/packages/core/src/settings.ts
+@@ -361,6 +361,36 @@ export function appIconForTheme(
+   return appearance.appIconDark === undefined ? light : toAppIconChoice(appearance.appIconDark);
+ }
+ 
++/**
++ * UI font scale multipliers applied to the document-root font-size. Every
++ * `--font-size-*` token is `rem`, so writing one scaled root font-size grows
++ * text, icons and rem spacing together — the deliberate "UI zoom" hook (see
++ * `maka-tokens.css`, which keeps the root at the 16px browser default at scale
++ * 1). This is NOT the old density hack removed in `makaTheme.ts`, which
++ * expressed density as a root multiplier and silently shrank the icon set.
++ *
++ * A closed allowlist, for the same fail-closed reason as `THEME_PALETTES`: a
++ * malformed persisted value normalizes back to the default rather than driving
++ * an arbitrary root size.
++ */
++export const UI_FONT_SCALES = [0.9, 1, 1.15, 1.3] as const;
++export type UiFontScale = (typeof UI_FONT_SCALES)[number];
++export const DEFAULT_UI_FONT_SCALE: UiFontScale = 1;
++export function isUiFontScale(value: unknown): value is UiFontScale {
++  return typeof value === 'number' && (UI_FONT_SCALES as readonly number[]).includes(value);
++}
++
++/**
++ * Terminal (xterm) font sizes in px, offered as a closed set for the same
++ * fail-closed reason as the palette allowlist above.
++ */
++export const TERMINAL_FONT_SIZES = [12, 14, 16, 18] as const;
++export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
++export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
++export function isTerminalFontSize(value: unknown): value is TerminalFontSize {
++  return typeof value === 'number' && (TERMINAL_FONT_SIZES as readonly number[]).includes(value);
++}
++
+ export interface AppearanceSettings {
+   theme: ThemePreference;
+   /** Optional palette override; missing values normalize to `default`. */
+@@ -372,6 +402,13 @@ export interface AppearanceSettings {
+    * `appIcon` is used in both.
+    */
+   appIconDark?: AppIconChoice;
++  /**
++   * Optional UI font scale (document-root multiplier). Missing normalizes to
++   * `DEFAULT_UI_FONT_SCALE`.
++   */
++  uiFontScale?: UiFontScale;
++  /** Optional terminal font size in px. Missing normalizes to the default. */
++  terminalFontSize?: TerminalFontSize;
+ }
+ 
+ export interface PersonalizationSettings {
+@@ -678,6 +715,8 @@ export function createDefaultSettings(): AppSettings {
+       theme: 'auto',
+       palette: 'default',
+       appIcon: DEFAULT_APP_ICON,
++      uiFontScale: DEFAULT_UI_FONT_SCALE,
++      terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+     },
+     personalization: {
+       displayName: '',
+@@ -864,6 +903,14 @@ export function normalizeSettings(input: unknown): AppSettings {
+       appIcon: isAppIconChoice(base.appearance.appIcon)
+         ? base.appearance.appIcon
+         : DEFAULT_APP_ICON,
++      // Fail-closed to the default on any miss (undefined, non-number, or a
++      // value outside the closed allowlist), same rule as `palette` above.
++      uiFontScale: isUiFontScale(base.appearance.uiFontScale)
++        ? base.appearance.uiFontScale
++        : DEFAULT_UI_FONT_SCALE,
++      terminalFontSize: isTerminalFontSize(base.appearance.terminalFontSize)
++        ? base.appearance.terminalFontSize
++        : DEFAULT_TERMINAL_FONT_SIZE,
+       // Cleared first, then re-set from the RAW input rather than from `base`:
+       // `base` has already been merged over the defaults, which carry a dark
+       // icon, so an existing settings file that predates this option would
+
+From 98f487a5118775463152a52d79e479f336ebcb48 Mon Sep 17 00:00:00 2001
+From: liugddx <liugddx@gmail.com>
+Date: Thu, 27 Aug 2026 21:15:23 +0800
+Subject: [PATCH 2/3] refactor(ui): present font size as Codex-style numeric px
+ steppers
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Replace the segmented tile pickers (紧凑/标准/大/特大 and per-size cards)
+with two NumberInput rows — "UI 字号" and "终端字号" — each a px stepper
+with min/max clamp and a units suffix, matching Codex Desktop's
+Appearance layout.
+
+- Settings model switches from a scale allowlist to a clamped px value:
+  uiFontSize (default 14) and terminalFontSize (default 12). Wrong-typed
+  values still fail closed to the default; out-of-range numbers now clamp
+  to the nearest bound instead of resetting.
+- UI font size maps to the document-root font-size as 16 * px / 14 (the
+  type-scale base), preserving the uniform-zoom behavior.
+- Terminal font size keeps the live subscribe + re-fit path.
+
+Note: Codex's second knob also resizes chat/diff code blocks. In Maka
+those are governed by the type-scale contract, so this keeps the second
+knob scoped to the terminal (xterm), which is outside that contract.
+
+Refs #4021
+
+Generated-by: Claude Opus 4.8
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../locales/settings-preferences-copy.ts      |   7 +-
+ .../settings/appearance-settings-page.tsx     | 141 +++++++-----------
+ apps/desktop/src/renderer/theme.ts            |  59 ++++----
+ .../src/renderer/use-shell-appearance.ts      |   6 +-
+ packages/core/src/__tests__/settings.test.ts  |  44 ++++--
+ packages/core/src/settings.ts                 |  78 +++++-----
+ 6 files changed, 162 insertions(+), 173 deletions(-)
+
+diff --git a/apps/desktop/src/renderer/locales/settings-preferences-copy.ts b/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
+index 857e42ed7f..d78cf14ae2 100644
+--- a/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
++++ b/apps/desktop/src/renderer/locales/settings-preferences-copy.ts
+@@ -111,8 +111,9 @@ export type SettingsPreferencesCopy = {
+     appIconUnavailable: string;
+     fontSize: {
+       uiLabel: string;
++      uiHelp: string;
+       terminalLabel: string;
+-      ui: Record<'compact' | 'default' | 'large' | 'xlarge', string>;
++      terminalHelp: string;
+     };
+   };
+   pets: {
+@@ -315,7 +316,7 @@ const SETTINGS_PREFERENCES_COPY_BY_LOCALE = {
+         write_failed: '无法保存导入的图标',
+       },
+       appIconUnavailable: '无法载入应用图标',
+-      fontSize: { uiLabel: '界面', terminalLabel: '终端', ui: { compact: '紧凑', default: '标准', large: '大', xlarge: '特大' } },
++      fontSize: { uiLabel: 'UI 字号', uiHelp: '调整界面使用的基准字号', terminalLabel: '终端字号', terminalHelp: '调整终端里命令输出与代码使用的字号' },
+     },
+     pets: {
+       import: '导入 PetPack', importing: '正在导入…', loading: '正在载入自定义宠物…',
+@@ -369,7 +370,7 @@ const SETTINGS_PREFERENCES_COPY_BY_LOCALE = {
+       pets: 'Custom pets', petsHelp: 'Manage PetPacks you import yourself. Maka does not bundle or enable any pet by default.',
+     },
+     appearance: {
+-      saveFailed: 'Could not save appearance settings', theme: 'Theme', palette: 'Color palette', themeOptions: { light: { label: 'Light', help: 'Always use the light interface.' }, dark: { label: 'Dark', help: 'Always use the dark interface.' }, auto: { label: 'Follow system', help: 'Match the current system appearance.' } }, paletteLabels: { default: 'Default', onedark: 'One Dark', 'catppuccin-mocha': 'Catppuccin Mocha', 'tokyo-night': 'Tokyo Night', nord: 'Nord', coral: 'Coral', azure: 'Azure', forest: 'Forest', dusk: 'Dusk', sand: 'Sand', mono: 'Monochrome' }, paletteHelp: { default: 'Maka brand-blue accent', onedark: 'Classic dark editor theme', 'catppuccin-mocha': 'Soft purple dark theme', 'tokyo-night': 'Deep-blue editor theme', nord: 'Cool Nordic colors', coral: 'Warm pink and coral accent', azure: 'Clean, calm blue accent', forest: 'Deep moss and warm honey', dusk: 'Deep violet on a cool canvas', sand: 'Amber sand and warm ivory', mono: 'Pure grayscale without color distraction' }, paletteGroups: { editor: 'Editor themes', product: 'Product colors' }, appIconLabels: { default: 'Classic', mono: 'Monochrome', 'sky': 'Sky', 'cyan': 'Cyan', 'ice': 'Ice', 'pale-inverted': 'Inverted', 'ink': 'Ink', 'paper': 'Paper', 'graphite': 'Graphite', 'pencil-kraft': 'Pencil, kraft', 'pencil-sky': 'Pencil, sky', 'pencil-navy': 'Pencil, navy', 'alpine': 'Alpine', 'dusk': 'Dusk', 'night': 'Night', 'midnight': 'Midnight', 'carbon': 'Carbon', 'slate': 'Slate', 'obsidian': 'Obsidian', 'neon-cyan': 'Neon cyan', 'matrix': 'Phosphor', 'magenta': 'Magenta', 'amber-crt': 'Amber CRT', 'clay': 'Clay', 'sage': 'Sage', 'dust': 'Dust', 'fog': 'Fog', 'sunset': 'Sunset', 'amber': 'Amber', 'terracotta': 'Terracotta', 'ocean': 'Ocean', 'moss': 'Moss', 'desert': 'Desert', 'glacier': 'Glacier', 'gold': 'Gold', 'chrome': 'Chrome', 'mono-black': 'Mono black', 'mono-white': 'Mono white', 'hazard': 'Hazard', 'forest': 'Forest' }, appIconHelp: { default: 'The default Maka mark', mono: 'Grayscale, for a quieter dock', 'sky': 'The geometric M mark in brand blue', 'cyan': 'Blue leaning to cyan', 'ice': 'A pale-to-deep blue gradient', 'pale-inverted': 'A deep blue mark on a pale field', 'ink': 'White on black, the highest contrast', 'paper': 'Black on white', 'graphite': 'Black on white with a grey tip', 'pencil-kraft': 'The pencil reading, on kraft paper', 'pencil-sky': 'The pencil reading, on sky blue', 'pencil-navy': 'The pencil reading, on deep navy', 'alpine': 'A snow-capped peak under clear sky', 'dusk': 'A snow-capped peak at dusk', 'night': 'A snow-capped peak at night', 'midnight': 'A bright mark on deep navy; keeps its edge on a dark dock', 'carbon': 'True black, so an OLED panel shows nothing but the mark', 'slate': 'Pale grey on cool slate', 'obsidian': 'Lilac on a violet-black gradient', 'neon-cyan': 'Electric cyan on near-black', 'matrix': 'The green of a phosphor terminal', 'magenta': 'Hot pink on deep violet', 'amber-crt': 'The amber of an early terminal', 'clay': 'Muted terracotta', 'sage': 'Muted grey-green', 'dust': 'Muted dusty rose', 'fog': 'Muted blue-grey', 'sunset': 'An orange-to-pink diagonal', 'amber': 'A dark mark on amber', 'terracotta': 'A brick-red gradient', 'ocean': 'A deep teal gradient', 'moss': 'A deep moss gradient', 'desert': 'A dark mark on desert sand', 'glacier': 'A pale glacial blue', 'gold': 'The mark itself carries a gold gradient', 'chrome': 'The mark itself carries a silver gradient', 'mono-black': 'Black on pure white; prints in one colour', 'mono-white': 'White on pure black', 'hazard': 'Yellow on black, the highest contrast in the set', 'forest': 'A snow-capped peak in green' }, appIconGroups: { mascot: 'Mascot', blue: 'Blues', contrast: 'Black & white', pencil: 'Pencil', mountain: 'Mountain', dark: 'Dark', neon: 'Neon', muted: 'Muted', warm: 'Warm', nature: 'Nature', metal: 'Metal', highContrast: 'High contrast', custom: 'Imported' }, appIconSplitLabel: 'Use a different icon in dark mode', appIconSplitHelp: 'When off, one icon is used in both appearances.', appIconTargets: { light: 'Light', dark: 'Dark' }, appIconCustom: 'Imported icon', appIconCustomHelp: 'An image you imported', appIconImport: 'Import icon…', appIconImporting: 'Importing…', appIconImportHelp: 'A square PNG works best. Leave about 10% transparent margin so it sits the same size as other apps in the dock.', appIconRemove: 'Remove', appIconImportError: 'Could not import the icon', appIconRemoveFailed: 'Could not remove the icon', appIconSelectFailed: 'Could not switch the icon', appIconImportFailed: { too_large: 'That file is too large; pick a smaller image', too_many_pixels: 'That image is too large; 4096×4096 is the maximum', unsupported_format: 'Only PNG and JPEG are supported', unreadable: 'No image could be read from that file', too_small: 'That image is too small; 128×128 is the minimum', write_failed: 'Could not store the imported icon' }, appIconUnavailable: 'Could not load the app icons', fontSize: { uiLabel: 'Interface', terminalLabel: 'Terminal', ui: { compact: 'Compact', default: 'Default', large: 'Large', xlarge: 'Extra large' } },
++      saveFailed: 'Could not save appearance settings', theme: 'Theme', palette: 'Color palette', themeOptions: { light: { label: 'Light', help: 'Always use the light interface.' }, dark: { label: 'Dark', help: 'Always use the dark interface.' }, auto: { label: 'Follow system', help: 'Match the current system appearance.' } }, paletteLabels: { default: 'Default', onedark: 'One Dark', 'catppuccin-mocha': 'Catppuccin Mocha', 'tokyo-night': 'Tokyo Night', nord: 'Nord', coral: 'Coral', azure: 'Azure', forest: 'Forest', dusk: 'Dusk', sand: 'Sand', mono: 'Monochrome' }, paletteHelp: { default: 'Maka brand-blue accent', onedark: 'Classic dark editor theme', 'catppuccin-mocha': 'Soft purple dark theme', 'tokyo-night': 'Deep-blue editor theme', nord: 'Cool Nordic colors', coral: 'Warm pink and coral accent', azure: 'Clean, calm blue accent', forest: 'Deep moss and warm honey', dusk: 'Deep violet on a cool canvas', sand: 'Amber sand and warm ivory', mono: 'Pure grayscale without color distraction' }, paletteGroups: { editor: 'Editor themes', product: 'Product colors' }, appIconLabels: { default: 'Classic', mono: 'Monochrome', 'sky': 'Sky', 'cyan': 'Cyan', 'ice': 'Ice', 'pale-inverted': 'Inverted', 'ink': 'Ink', 'paper': 'Paper', 'graphite': 'Graphite', 'pencil-kraft': 'Pencil, kraft', 'pencil-sky': 'Pencil, sky', 'pencil-navy': 'Pencil, navy', 'alpine': 'Alpine', 'dusk': 'Dusk', 'night': 'Night', 'midnight': 'Midnight', 'carbon': 'Carbon', 'slate': 'Slate', 'obsidian': 'Obsidian', 'neon-cyan': 'Neon cyan', 'matrix': 'Phosphor', 'magenta': 'Magenta', 'amber-crt': 'Amber CRT', 'clay': 'Clay', 'sage': 'Sage', 'dust': 'Dust', 'fog': 'Fog', 'sunset': 'Sunset', 'amber': 'Amber', 'terracotta': 'Terracotta', 'ocean': 'Ocean', 'moss': 'Moss', 'desert': 'Desert', 'glacier': 'Glacier', 'gold': 'Gold', 'chrome': 'Chrome', 'mono-black': 'Mono black', 'mono-white': 'Mono white', 'hazard': 'Hazard', 'forest': 'Forest' }, appIconHelp: { default: 'The default Maka mark', mono: 'Grayscale, for a quieter dock', 'sky': 'The geometric M mark in brand blue', 'cyan': 'Blue leaning to cyan', 'ice': 'A pale-to-deep blue gradient', 'pale-inverted': 'A deep blue mark on a pale field', 'ink': 'White on black, the highest contrast', 'paper': 'Black on white', 'graphite': 'Black on white with a grey tip', 'pencil-kraft': 'The pencil reading, on kraft paper', 'pencil-sky': 'The pencil reading, on sky blue', 'pencil-navy': 'The pencil reading, on deep navy', 'alpine': 'A snow-capped peak under clear sky', 'dusk': 'A snow-capped peak at dusk', 'night': 'A snow-capped peak at night', 'midnight': 'A bright mark on deep navy; keeps its edge on a dark dock', 'carbon': 'True black, so an OLED panel shows nothing but the mark', 'slate': 'Pale grey on cool slate', 'obsidian': 'Lilac on a violet-black gradient', 'neon-cyan': 'Electric cyan on near-black', 'matrix': 'The green of a phosphor terminal', 'magenta': 'Hot pink on deep violet', 'amber-crt': 'The amber of an early terminal', 'clay': 'Muted terracotta', 'sage': 'Muted grey-green', 'dust': 'Muted dusty rose', 'fog': 'Muted blue-grey', 'sunset': 'An orange-to-pink diagonal', 'amber': 'A dark mark on amber', 'terracotta': 'A brick-red gradient', 'ocean': 'A deep teal gradient', 'moss': 'A deep moss gradient', 'desert': 'A dark mark on desert sand', 'glacier': 'A pale glacial blue', 'gold': 'The mark itself carries a gold gradient', 'chrome': 'The mark itself carries a silver gradient', 'mono-black': 'Black on pure white; prints in one colour', 'mono-white': 'White on pure black', 'hazard': 'Yellow on black, the highest contrast in the set', 'forest': 'A snow-capped peak in green' }, appIconGroups: { mascot: 'Mascot', blue: 'Blues', contrast: 'Black & white', pencil: 'Pencil', mountain: 'Mountain', dark: 'Dark', neon: 'Neon', muted: 'Muted', warm: 'Warm', nature: 'Nature', metal: 'Metal', highContrast: 'High contrast', custom: 'Imported' }, appIconSplitLabel: 'Use a different icon in dark mode', appIconSplitHelp: 'When off, one icon is used in both appearances.', appIconTargets: { light: 'Light', dark: 'Dark' }, appIconCustom: 'Imported icon', appIconCustomHelp: 'An image you imported', appIconImport: 'Import icon…', appIconImporting: 'Importing…', appIconImportHelp: 'A square PNG works best. Leave about 10% transparent margin so it sits the same size as other apps in the dock.', appIconRemove: 'Remove', appIconImportError: 'Could not import the icon', appIconRemoveFailed: 'Could not remove the icon', appIconSelectFailed: 'Could not switch the icon', appIconImportFailed: { too_large: 'That file is too large; pick a smaller image', too_many_pixels: 'That image is too large; 4096×4096 is the maximum', unsupported_format: 'Only PNG and JPEG are supported', unreadable: 'No image could be read from that file', too_small: 'That image is too small; 128×128 is the minimum', write_failed: 'Could not store the imported icon' }, appIconUnavailable: 'Could not load the app icons', fontSize: { uiLabel: 'UI font size', uiHelp: 'Base font size used across the interface', terminalLabel: 'Terminal font size', terminalHelp: 'Font size used for terminal output and code' },
+     },
+     pets: {
+       import: 'Import PetPack', importing: 'Importing…', loading: 'Loading custom pets…',
+diff --git a/apps/desktop/src/renderer/settings/appearance-settings-page.tsx b/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
+index de7ed92757..973ecc38ab 100644
+--- a/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
++++ b/apps/desktop/src/renderer/settings/appearance-settings-page.tsx
+@@ -18,29 +18,30 @@
+  */
+ import { useEffect, useRef, useState } from 'react';
+ import { Button, Grid, HStack, SelectableCard, Text, VStack } from '@astryxdesign/core';
+-import { SettingsPage, SettingsSection } from './settings-section';
++import { SettingsPage, SettingsRow, SettingsSection } from './settings-section';
+ import {
+   isAppIcon,
+   type AppIcon,
+   DEFAULT_APP_ICON_DARK,
+   type AppIconChoice,
+   type AppIconTarget,
+-  TERMINAL_FONT_SIZES,
+-  type TerminalFontSize,
++  TERMINAL_FONT_SIZE_MAX,
++  TERMINAL_FONT_SIZE_MIN,
+   type ThemePalette,
+   type ThemePreference,
+-  type UiFontScale,
++  UI_FONT_SIZE_MAX,
++  UI_FONT_SIZE_MIN,
+   type UpdateAppSettingsResult,
+ } from '@maka/core/settings';
+-import { Switch, useMountedRef, useToast, useUiLocale } from '@maka/ui';
++import { NumberInput, Switch, useMountedRef, useToast, useUiLocale } from '@maka/ui';
+ import { settingsActionErrorMessage } from './settings-error-copy';
+ import { getSettingsPreferencesCopy } from '../locales/settings-preferences-copy.js';
+ import { CustomPetSettingsSection } from './custom-pet-settings-section.js';
+ import {
+   applyTerminalFontSize,
+-  applyUiFontScale,
++  applyUiFontSize,
+   getTerminalFontSize,
+-  getUiFontScale,
++  getUiFontSize,
+ } from '../theme';
+ 
+ /**
+@@ -151,20 +152,6 @@ const PALETTE_SECTION_HEADING_ID = 'settings-appearance-palette-heading';
+ const paletteGroupLabelId = (group: 'editor' | 'product') => `settings-appearance-palette-${group}-label`;
+ const appIconGroupLabelId = (group: string) => `settings-appearance-app-icon-${group}-label`;
+ const FONT_SIZE_SECTION_HEADING_ID = 'settings-appearance-font-size-heading';
+-const UI_FONT_SIZE_GROUP_LABEL_ID = 'settings-appearance-ui-font-size-label';
+-const TERMINAL_FONT_SIZE_GROUP_LABEL_ID = 'settings-appearance-terminal-font-size-label';
+-
+-// The UI font scale is a document-root multiplier (see theme.ts). Each tile
+-// maps a stable copy key to one of the closed `UI_FONT_SCALES` values.
+-const UI_FONT_SCALE_OPTIONS: ReadonlyArray<{
+-  key: 'compact' | 'default' | 'large' | 'xlarge';
+-  scale: UiFontScale;
+-}> = [
+-  { key: 'compact', scale: 0.9 },
+-  { key: 'default', scale: 1 },
+-  { key: 'large', scale: 1.15 },
+-  { key: 'xlarge', scale: 1.3 },
+-];
+ 
+ export function AppearanceSettingsPage(props: {
+   themePref: ThemePreference;
+@@ -367,16 +354,16 @@ export function AppearanceSettingsPage(props: {
+   }
+ 
+   // Font sizing has no app-shell state to thread: theme.ts holds the live
+-  // values, so the page seeds its selection from there and applies directly.
++  // values, so the page seeds its inputs from there and applies directly.
+   // Same apply-then-persist shape as theme/palette above.
+-  const [uiFontScale, setUiFontScaleState] = useState<number>(() => getUiFontScale());
++  const [uiFontSize, setUiFontSizeState] = useState<number>(() => getUiFontSize());
+   const [terminalFontSize, setTerminalFontSizeState] = useState<number>(() => getTerminalFontSize());
+-  async function setUiFontScale(next: UiFontScale) {
+-    setUiFontScaleState(next);
+-    applyUiFontScale(next);
+-    await persistAppearance({ uiFontScale: next });
++  async function setUiFontSize(next: number) {
++    setUiFontSizeState(next);
++    applyUiFontSize(next);
++    await persistAppearance({ uiFontSize: next });
+   }
+-  async function setTerminalFontSize(next: TerminalFontSize) {
++  async function setTerminalFontSize(next: number) {
+     setTerminalFontSizeState(next);
+     applyTerminalFontSize(next);
+     await persistAppearance({ terminalFontSize: next });
+@@ -486,66 +473,44 @@ export function AppearanceSettingsPage(props: {
+         title={sections.fontSize}
+         description={sections.fontSizeHelp}
+       >
+-        <VStack gap={3}>
+-          <VStack gap={1.5}>
+-            <Text
+-              id={UI_FONT_SIZE_GROUP_LABEL_ID}
+-              type="supporting"
+-              size="sm"
+-              color="secondary"
+-              weight="medium"
+-            >
+-              {copy.fontSize.uiLabel}
+-            </Text>
+-            <Grid
+-              columns={{ minWidth: 140 }}
+-              gap={2}
+-              role="group"
+-              aria-labelledby={UI_FONT_SIZE_GROUP_LABEL_ID}
+-            >
+-              {UI_FONT_SCALE_OPTIONS.map((option) => (
+-                <SelectableCard
+-                  key={option.key}
+-                  label={copy.fontSize.ui[option.key]}
+-                  isSelected={uiFontScale === option.scale}
+-                  onChange={() => void setUiFontScale(option.scale)}
+-                  padding={2}
+-                >
+-                  <Text type="label" size="sm">{copy.fontSize.ui[option.key]}</Text>
+-                </SelectableCard>
+-              ))}
+-            </Grid>
+-          </VStack>
+-          <VStack gap={1.5}>
+-            <Text
+-              id={TERMINAL_FONT_SIZE_GROUP_LABEL_ID}
+-              type="supporting"
+-              size="sm"
+-              color="secondary"
+-              weight="medium"
+-            >
+-              {copy.fontSize.terminalLabel}
+-            </Text>
+-            <Grid
+-              columns={{ minWidth: 120 }}
+-              gap={2}
+-              role="group"
+-              aria-labelledby={TERMINAL_FONT_SIZE_GROUP_LABEL_ID}
+-            >
+-              {TERMINAL_FONT_SIZES.map((size) => (
+-                <SelectableCard
+-                  key={size}
+-                  label={`${size}px`}
+-                  isSelected={terminalFontSize === size}
+-                  onChange={() => void setTerminalFontSize(size)}
+-                  padding={2}
+-                >
+-                  <Text type="label" size="sm">{`${size}px`}</Text>
+-                </SelectableCard>
+-              ))}
+-            </Grid>
+-          </VStack>
+-        </VStack>
++        <SettingsRow
++          label={copy.fontSize.uiLabel}
++          description={copy.fontSize.uiHelp}
++          end={
++            <NumberInput
++              label={copy.fontSize.uiLabel}
++              isLabelHidden
++              value={uiFontSize}
++              min={UI_FONT_SIZE_MIN}
++              max={UI_FONT_SIZE_MAX}
++              step={1}
++              isIntegerOnly
++              hasNumberSteppers
++              units="px"
++              width={132}
++              onChange={(value) => void setUiFontSize(value)}
++            />
++          }
++        />
++        <SettingsRow
++          label={copy.fontSize.terminalLabel}
++          description={copy.fontSize.terminalHelp}
++          end={
++            <NumberInput
++              label={copy.fontSize.terminalLabel}
++              isLabelHidden
++              value={terminalFontSize}
++              min={TERMINAL_FONT_SIZE_MIN}
++              max={TERMINAL_FONT_SIZE_MAX}
++              step={1}
++              isIntegerOnly
++              hasNumberSteppers
++              units="px"
++              width={132}
++              onChange={(value) => void setTerminalFontSize(value)}
++            />
++          }
++        />
+       </SettingsSection>
+       <SettingsSection
+         variant="bare"
+diff --git a/apps/desktop/src/renderer/theme.ts b/apps/desktop/src/renderer/theme.ts
+index 14fdf54e84..c4b0e737e1 100644
+--- a/apps/desktop/src/renderer/theme.ts
++++ b/apps/desktop/src/renderer/theme.ts
+@@ -26,9 +26,9 @@
+ //
+ import {
+   DEFAULT_TERMINAL_FONT_SIZE,
+-  DEFAULT_UI_FONT_SCALE,
+-  isTerminalFontSize,
+-  isUiFontScale,
++  DEFAULT_UI_FONT_SIZE,
++  normalizeTerminalFontSize,
++  normalizeUiFontSize,
+   type ThemePalette,
+   type ThemePreference,
+ } from '@maka/core/settings';
+@@ -38,32 +38,35 @@ import { compositeScrimOverBackground, parseCssRgbColor } from './titlebar-dim-c
+ const DARK_CLASS = 'dark';
+ 
+ // Persisted alongside the theme/palette caches so the pre-React paint
+-// (cached-theme-bootstrap.ts) can restore a non-default UI scale before the
+-// first frame, and the same rationale as `maka-theme-v1`.
+-const UI_FONT_SCALE_STORAGE_KEY = 'maka-font-scale-v1';
++// (cached-theme-bootstrap.ts) can restore a non-default size before the first
++// frame, same rationale as `maka-theme-v1`.
++const UI_FONT_SIZE_STORAGE_KEY = 'maka-ui-font-size-v1';
+ const TERMINAL_FONT_SIZE_STORAGE_KEY = 'maka-terminal-font-size-v1';
+-// The document root stays at the browser default; every --font-size-* token is
+-// rem, so a scaled root font-size grows text, icons and rem spacing uniformly.
+-const ROOT_FONT_SIZE_PX = 16;
++// The renderer type scale is generated from base 14 and every --font-size-*
++// token is rem, so the root font-size that reproduces a chosen base px is
++// `16 * px / 14`. At 14px that is the 16px browser default (no change); larger
++// values grow text, icons and rem spacing together.
++const BROWSER_ROOT_FONT_SIZE_PX = 16;
++const TYPE_SCALE_BASE_PX = 14;
+ 
+-let currentUiFontScale: number = DEFAULT_UI_FONT_SCALE;
++let currentUiFontSize: number = DEFAULT_UI_FONT_SIZE;
+ let currentTerminalFontSize: number = DEFAULT_TERMINAL_FONT_SIZE;
+ const terminalFontSizeListeners = new Set<(size: number) => void>();
+ 
+-export function getUiFontScale(): number {
+-  return currentUiFontScale;
++export function getUiFontSize(): number {
++  return currentUiFontSize;
+ }
+ 
+ /**
+- * Scale the whole UI by writing the document-root font-size, then persist so
+- * the pre-React paint can restore it next launch. An out-of-range value fails
+- * closed to the default rather than driving an arbitrary root size.
++ * Apply the UI base font size by writing the proportional document-root
++ * font-size, then persist so the pre-React paint can restore it next launch.
++ * Clamps out-of-range / wrong-typed input to a sane value.
+  */
+-export function applyUiFontScale(scale: number): void {
+-  const next = isUiFontScale(scale) ? scale : DEFAULT_UI_FONT_SCALE;
+-  currentUiFontScale = next;
+-  document.documentElement.style.fontSize = `${ROOT_FONT_SIZE_PX * next}px`;
+-  safeLocalStorageSet(UI_FONT_SCALE_STORAGE_KEY, String(next));
++export function applyUiFontSize(size: number): void {
++  const next = normalizeUiFontSize(size);
++  currentUiFontSize = next;
++  document.documentElement.style.fontSize = `${(BROWSER_ROOT_FONT_SIZE_PX * next) / TYPE_SCALE_BASE_PX}px`;
++  safeLocalStorageSet(UI_FONT_SIZE_STORAGE_KEY, String(next));
+ }
+ 
+ export function getTerminalFontSize(): number {
+@@ -76,7 +79,7 @@ export function getTerminalFontSize(): number {
+  * opened later reads `getTerminalFontSize()` at creation.
+  */
+ export function applyTerminalFontSize(size: number): void {
+-  const next = isTerminalFontSize(size) ? size : DEFAULT_TERMINAL_FONT_SIZE;
++  const next = normalizeTerminalFontSize(size);
+   currentTerminalFontSize = next;
+   safeLocalStorageSet(TERMINAL_FONT_SIZE_STORAGE_KEY, String(next));
+   for (const listener of terminalFontSizeListeners) listener(next);
+@@ -91,16 +94,16 @@ export function subscribeTerminalFontSize(listener: (size: number) => void): ()
+ }
+ 
+ /**
+- * Restore the cached UI font scale before React mounts, so a non-default scale
+- * does not paint at 1× and snap once settings.json loads. Mirrors the cached
+- * theme/palette restore in cached-theme-bootstrap.ts. Also seeds the terminal
+- * size cache so an early terminal open uses the right size without a reflow.
++ * Restore the cached UI font size before React mounts, so a non-default size
++ * does not paint at the default and snap once settings.json loads. Mirrors the
++ * cached theme/palette restore in cached-theme-bootstrap.ts. Also seeds the
++ * terminal size cache so an early terminal open uses the right size.
+  */
+ export function applyCachedFontAppearanceBeforeMount(): void {
+-  const cachedScale = Number.parseFloat(safeLocalStorageGet(UI_FONT_SCALE_STORAGE_KEY) ?? '');
+-  if (isUiFontScale(cachedScale)) applyUiFontScale(cachedScale);
++  const cachedUi = Number.parseInt(safeLocalStorageGet(UI_FONT_SIZE_STORAGE_KEY) ?? '', 10);
++  if (Number.isFinite(cachedUi)) applyUiFontSize(cachedUi);
+   const cachedTerminal = Number.parseInt(safeLocalStorageGet(TERMINAL_FONT_SIZE_STORAGE_KEY) ?? '', 10);
+-  if (isTerminalFontSize(cachedTerminal)) currentTerminalFontSize = cachedTerminal;
++  if (Number.isFinite(cachedTerminal)) currentTerminalFontSize = normalizeTerminalFontSize(cachedTerminal);
+ }
+ 
+ let unsubscribeMediaQuery: (() => void) | null = null;
+diff --git a/apps/desktop/src/renderer/use-shell-appearance.ts b/apps/desktop/src/renderer/use-shell-appearance.ts
+index 6524ff184d..9461740f61 100644
+--- a/apps/desktop/src/renderer/use-shell-appearance.ts
++++ b/apps/desktop/src/renderer/use-shell-appearance.ts
+@@ -20,14 +20,14 @@
+ import { useState, type Dispatch, type SetStateAction } from 'react';
+ import {
+   DEFAULT_TERMINAL_FONT_SIZE,
+-  DEFAULT_UI_FONT_SCALE,
++  DEFAULT_UI_FONT_SIZE,
+   type ThemePalette,
+   type ThemePreference,
+ } from '@maka/core/settings';
+ import type { ThinkingLevel } from '@maka/core/model-thinking';
+ import type { UiLocale, UiLocalePreference } from '@maka/core/ui-locale';
+ import { createUiLocaleUpdateGate } from './settings/ui-locale-update-gate';
+-import { applyTerminalFontSize, applyTheme, applyThemePalette, applyUiFontScale } from './theme';
++import { applyTerminalFontSize, applyTheme, applyThemePalette, applyUiFontSize } from './theme';
+ import { getShellCopy, localizedShellErrorMessage } from './locales/shell-copy';
+ 
+ type ToastApi = {
+@@ -101,7 +101,7 @@ export function useShellAppearance({
+       // current values and live terminals subscribe for updates, so applying
+       // here is the whole hydration step. Invalid/absent values fail closed to
+       // the defaults inside the apply functions.
+-      applyUiFontScale(next.appearance.uiFontScale ?? DEFAULT_UI_FONT_SCALE);
++      applyUiFontSize(next.appearance.uiFontSize ?? DEFAULT_UI_FONT_SIZE);
+       applyTerminalFontSize(next.appearance.terminalFontSize ?? DEFAULT_TERMINAL_FONT_SIZE);
+     } else {
+       const copy = getShellCopy(uiLocale).app;
+diff --git a/packages/core/src/__tests__/settings.test.ts b/packages/core/src/__tests__/settings.test.ts
+index 87373210a3..7dde0968c7 100644
+--- a/packages/core/src/__tests__/settings.test.ts
++++ b/packages/core/src/__tests__/settings.test.ts
+@@ -25,11 +25,14 @@ import {
+   DEFAULT_APP_ICON,
+   DEFAULT_APP_ICON_DARK,
+   DEFAULT_TERMINAL_FONT_SIZE,
+-  DEFAULT_UI_FONT_SCALE,
++  DEFAULT_UI_FONT_SIZE,
+   mergeSettings,
+   normalizeSettings,
+   startupAppIcon,
++  TERMINAL_FONT_SIZE_MAX,
+   toAppIconChoice,
++  UI_FONT_SIZE_MAX,
++  UI_FONT_SIZE_MIN,
+ } from '../settings.js';
+ 
+ test('normalizes user-approved subagent presets without widening the catalog', () => {
+@@ -151,28 +154,43 @@ test('an app icon the build does not ship falls back without disturbing the them
+   ).toBe('mono');
+ });
+ 
+-test('font-size appearance defaults, and malformed values fail closed to them', () => {
+-  expect(createDefaultSettings().appearance.uiFontScale).toBe(DEFAULT_UI_FONT_SCALE);
++test('font-size appearance defaults, with wrong types failing closed and out-of-range clamped', () => {
++  expect(createDefaultSettings().appearance.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
+   expect(createDefaultSettings().appearance.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
+ 
+-  // A value outside the closed allowlist (or the wrong type) must not reach the
+-  // renderer as an arbitrary root font-size / xterm size — it drops to the
+-  // default, and, like the app-icon guard above, does not disturb the theme.
+-  for (const bad of [undefined, 0.5, 99, '1.15', null, Number.NaN]) {
++  // A wrong-typed value must not reach the renderer as an arbitrary root /
++  // xterm size — it drops to the default, and, like the app-icon guard above,
++  // does not disturb the theme.
++  for (const bad of [undefined, '14', null, Number.NaN, {}]) {
+     const normalized = normalizeSettings({
+-      appearance: { theme: 'dark', uiFontScale: bad, terminalFontSize: bad } as never,
++      appearance: { theme: 'dark', uiFontSize: bad, terminalFontSize: bad } as never,
+     });
+-    expect(normalized.appearance.uiFontScale).toBe(DEFAULT_UI_FONT_SCALE);
++    expect(normalized.appearance.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
+     expect(normalized.appearance.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
+     expect(normalized.appearance.theme).toBe('dark');
+   }
+ 
+-  // A value on the allowlist survives untouched.
++  // Out-of-range numbers clamp to the nearest bound rather than resetting, so a
++  // large persisted value is honored up to the cap instead of snapping back.
++  expect(
++    normalizeSettings({ appearance: { theme: 'auto', uiFontSize: 999 } as never }).appearance
++      .uiFontSize,
++  ).toBe(UI_FONT_SIZE_MAX);
++  expect(
++    normalizeSettings({ appearance: { theme: 'auto', uiFontSize: 1 } as never }).appearance
++      .uiFontSize,
++  ).toBe(UI_FONT_SIZE_MIN);
++  expect(
++    normalizeSettings({ appearance: { theme: 'auto', terminalFontSize: 999 } as never }).appearance
++      .terminalFontSize,
++  ).toBe(TERMINAL_FONT_SIZE_MAX);
++
++  // A value in range survives, rounded to an integer px.
+   const kept = normalizeSettings({
+-    appearance: { theme: 'auto', uiFontScale: 1.3, terminalFontSize: 16 } as never,
++    appearance: { theme: 'auto', uiFontSize: 16, terminalFontSize: 15 } as never,
+   });
+-  expect(kept.appearance.uiFontScale).toBe(1.3);
+-  expect(kept.appearance.terminalFontSize).toBe(16);
++  expect(kept.appearance.uiFontSize).toBe(16);
++  expect(kept.appearance.terminalFontSize).toBe(15);
+ });
+ 
+ test('imported app icons normalize by id shape, never by path', () => {
+diff --git a/packages/core/src/settings.ts b/packages/core/src/settings.ts
+index 05f43ba744..c7e99cca40 100644
+--- a/packages/core/src/settings.ts
++++ b/packages/core/src/settings.ts
+@@ -362,33 +362,42 @@ export function appIconForTheme(
+ }
+ 
+ /**
+- * UI font scale multipliers applied to the document-root font-size. Every
+- * `--font-size-*` token is `rem`, so writing one scaled root font-size grows
+- * text, icons and rem spacing together — the deliberate "UI zoom" hook (see
+- * `maka-tokens.css`, which keeps the root at the 16px browser default at scale
+- * 1). This is NOT the old density hack removed in `makaTheme.ts`, which
+- * expressed density as a root multiplier and silently shrank the icon set.
++ * UI base font size in px, exposed as a numeric stepper like Codex's
++ * "UI font size". The renderer's type scale is generated from base 14
++ * (`makaTheme.ts`), and every `--font-size-*` token is `rem`, so the applied
++ * document-root font-size scales proportionally as `16 * uiFontSize / 14` —
++ * one value grows text, icons and rem spacing together (the deliberate UI-zoom
++ * hook in `maka-tokens.css`), NOT the density hack removed in `makaTheme.ts`.
+  *
+- * A closed allowlist, for the same fail-closed reason as `THEME_PALETTES`: a
+- * malformed persisted value normalizes back to the default rather than driving
+- * an arbitrary root size.
++ * Continuous within a clamped range: a wrong-typed value fails closed to the
++ * default, an out-of-range number clamps to the nearest bound (a valid intent,
++ * just bounded — so an extreme persisted value can't make the UI unusable).
+  */
+-export const UI_FONT_SCALES = [0.9, 1, 1.15, 1.3] as const;
+-export type UiFontScale = (typeof UI_FONT_SCALES)[number];
+-export const DEFAULT_UI_FONT_SCALE: UiFontScale = 1;
+-export function isUiFontScale(value: unknown): value is UiFontScale {
+-  return typeof value === 'number' && (UI_FONT_SCALES as readonly number[]).includes(value);
++export const UI_FONT_SIZE_MIN = 11;
++export const UI_FONT_SIZE_MAX = 22;
++export const DEFAULT_UI_FONT_SIZE = 14;
++
++/** Terminal (xterm) font size in px, same numeric-stepper treatment. */
++export const TERMINAL_FONT_SIZE_MIN = 9;
++export const TERMINAL_FONT_SIZE_MAX = 24;
++export const DEFAULT_TERMINAL_FONT_SIZE = 12;
++
++function clampFontSize(value: unknown, min: number, max: number, fallback: number): number {
++  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
++  return Math.min(max, Math.max(min, Math.round(value)));
+ }
+ 
+-/**
+- * Terminal (xterm) font sizes in px, offered as a closed set for the same
+- * fail-closed reason as the palette allowlist above.
+- */
+-export const TERMINAL_FONT_SIZES = [12, 14, 16, 18] as const;
+-export type TerminalFontSize = (typeof TERMINAL_FONT_SIZES)[number];
+-export const DEFAULT_TERMINAL_FONT_SIZE: TerminalFontSize = 12;
+-export function isTerminalFontSize(value: unknown): value is TerminalFontSize {
+-  return typeof value === 'number' && (TERMINAL_FONT_SIZES as readonly number[]).includes(value);
++export function normalizeUiFontSize(value: unknown): number {
++  return clampFontSize(value, UI_FONT_SIZE_MIN, UI_FONT_SIZE_MAX, DEFAULT_UI_FONT_SIZE);
++}
++
++export function normalizeTerminalFontSize(value: unknown): number {
++  return clampFontSize(
++    value,
++    TERMINAL_FONT_SIZE_MIN,
++    TERMINAL_FONT_SIZE_MAX,
++    DEFAULT_TERMINAL_FONT_SIZE,
++  );
+ }
+ 
+ export interface AppearanceSettings {
+@@ -402,13 +411,10 @@ export interface AppearanceSettings {
+    * `appIcon` is used in both.
+    */
+   appIconDark?: AppIconChoice;
+-  /**
+-   * Optional UI font scale (document-root multiplier). Missing normalizes to
+-   * `DEFAULT_UI_FONT_SCALE`.
+-   */
+-  uiFontScale?: UiFontScale;
++  /** Optional UI base font size in px. Missing normalizes to the default. */
++  uiFontSize?: number;
+   /** Optional terminal font size in px. Missing normalizes to the default. */
+-  terminalFontSize?: TerminalFontSize;
++  terminalFontSize?: number;
+ }
+ 
+ export interface PersonalizationSettings {
+@@ -715,7 +721,7 @@ export function createDefaultSettings(): AppSettings {
+       theme: 'auto',
+       palette: 'default',
+       appIcon: DEFAULT_APP_ICON,
+-      uiFontScale: DEFAULT_UI_FONT_SCALE,
++      uiFontSize: DEFAULT_UI_FONT_SIZE,
+       terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+     },
+     personalization: {
+@@ -903,14 +909,10 @@ export function normalizeSettings(input: unknown): AppSettings {
+       appIcon: isAppIconChoice(base.appearance.appIcon)
+         ? base.appearance.appIcon
+         : DEFAULT_APP_ICON,
+-      // Fail-closed to the default on any miss (undefined, non-number, or a
+-      // value outside the closed allowlist), same rule as `palette` above.
+-      uiFontScale: isUiFontScale(base.appearance.uiFontScale)
+-        ? base.appearance.uiFontScale
+-        : DEFAULT_UI_FONT_SCALE,
+-      terminalFontSize: isTerminalFontSize(base.appearance.terminalFontSize)
+-        ? base.appearance.terminalFontSize
+-        : DEFAULT_TERMINAL_FONT_SIZE,
++      // Wrong-typed → default; out-of-range number → clamped to bounds, so an
++      // extreme persisted value can't drive an unusable root/terminal size.
++      uiFontSize: normalizeUiFontSize(base.appearance.uiFontSize),
++      terminalFontSize: normalizeTerminalFontSize(base.appearance.terminalFontSize),
+       // Cleared first, then re-set from the RAW input rather than from `base`:
+       // `base` has already been merged over the defaults, which carry a dark
+       // icon, so an existing settings file that predates this option would
+
+From d32399b12308323b38d7fa54832ba192503df13d Mon Sep 17 00:00:00 2001
+From: liugddx <liugddx@gmail.com>
+Date: Fri, 28 Aug 2026 11:11:05 +0800
+Subject: [PATCH 3/3] refactor(ui): single-source the type-scale base and
+ temper the zoom claim
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Review follow-up (Astro-Han on #4024):
+
+- The base `14` existed three times — makaTheme.ts's scale literal,
+  theme.ts's TYPE_SCALE_BASE_PX copy, and DEFAULT_UI_FONT_SIZE. The
+  first two now read one constant in astryx-theme/type-scale.ts (a
+  dependency-free module so the pre-paint bootstrap path does not pull
+  the full theme + icon registry); `astryx theme build` output verified
+  byte-identical. DEFAULT_UI_FONT_SIZE must stay in @maka/core, so a
+  renderer-side test (font-size-type-scale.test.ts) asserts the two
+  agree and that the built --font-size-base token matches.
+
+- Soften "grows text, icons and rem spacing together (the deliberate
+  UI-zoom hook)" in settings.ts and theme.ts: px-literal spacing and
+  control widths far outnumber rem in the renderer, so the root scale
+  moves what is rem-derived (text, Astryx's rem icon atoms) while boxes
+  stay fixed — which is why the range is clamped tightly around the
+  base rather than offered as a free zoom.
+
+Generated-by: Claude Fable 5
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+---
+ .../__tests__/font-size-type-scale.test.ts    | 40 +++++++++++++++++++
+ .../src/renderer/astryx-theme/makaTheme.ts    |  3 +-
+ .../src/renderer/astryx-theme/type-scale.ts   | 32 +++++++++++++++
+ apps/desktop/src/renderer/theme.ts            | 10 +++--
+ packages/core/src/settings.ts                 |  8 ++--
+ 5 files changed, 85 insertions(+), 8 deletions(-)
+ create mode 100644 apps/desktop/src/main/__tests__/font-size-type-scale.test.ts
+ create mode 100644 apps/desktop/src/renderer/astryx-theme/type-scale.ts
+
+diff --git a/apps/desktop/src/main/__tests__/font-size-type-scale.test.ts b/apps/desktop/src/main/__tests__/font-size-type-scale.test.ts
+new file mode 100644
+index 0000000000..d515628525
+--- /dev/null
++++ b/apps/desktop/src/main/__tests__/font-size-type-scale.test.ts
+@@ -0,0 +1,40 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++import assert from 'node:assert/strict';
++import { test } from 'node:test';
++import { DEFAULT_UI_FONT_SIZE } from '@maka/core/settings';
++import { TYPE_SCALE_BASE_PX } from '../../renderer/astryx-theme/type-scale.js';
++import { makaTheme } from '../../renderer/astryx-theme/makaTheme.js';
++
++// `DEFAULT_UI_FONT_SIZE` (in @maka/core, which cannot import renderer code)
++// means "the type scale as designed, no root scaling" — it is only true while
++// it equals the renderer's type-scale base that `applyUiFontSize` divides by.
++// This test makes that cross-package coupling fail loudly instead of silently
++// mis-scaling every size (see the Astro-Han review on PR #4024).
++test('default UI font size equals the renderer type-scale base', () => {
++  assert.equal(DEFAULT_UI_FONT_SIZE, TYPE_SCALE_BASE_PX);
++});
++
++test('makaTheme generates its type scale from the shared base constant', () => {
++  // `--font-size-base` is step 0 of the expanded scale: base px over the 16px
++  // browser root. If makaTheme's scale and TYPE_SCALE_BASE_PX ever diverge,
++  // this stops holding.
++  assert.equal(makaTheme.tokens['--font-size-base'], `${TYPE_SCALE_BASE_PX / 16}rem`);
++});
+diff --git a/apps/desktop/src/renderer/astryx-theme/makaTheme.ts b/apps/desktop/src/renderer/astryx-theme/makaTheme.ts
+index 409de272df..612f966f70 100644
+--- a/apps/desktop/src/renderer/astryx-theme/makaTheme.ts
++++ b/apps/desktop/src/renderer/astryx-theme/makaTheme.ts
+@@ -32,6 +32,7 @@
+ //   npm run astryx:theme
+ import { defineTheme } from '@astryxdesign/core/theme';
+ import { neutralTheme, neutralIconRegistry } from '@astryxdesign/theme-neutral';
++import { TYPE_SCALE_BASE_PX } from './type-scale.js';
+ 
+ export const makaTheme = defineTheme({
+   name: 'maka',
+@@ -89,7 +90,7 @@ export const makaTheme = defineTheme({
+   // stacks in the renderer; the product's own --font-sans / --font-mono names
+   // are gone, and maka-tokens.css reads these directly (#1875).
+   typography: {
+-    scale: { base: 14, ratio: 1.125 },
++    scale: { base: TYPE_SCALE_BASE_PX, ratio: 1.125 },
+     // PR-UI-ALIGN-0's "clean native" feel comes from the SYSTEM font (SF Pro
+     // on macOS), not a bundled geometric face; Geist stays a late fallback.
+     body: {
+diff --git a/apps/desktop/src/renderer/astryx-theme/type-scale.ts b/apps/desktop/src/renderer/astryx-theme/type-scale.ts
+new file mode 100644
+index 0000000000..3872ad9431
+--- /dev/null
++++ b/apps/desktop/src/renderer/astryx-theme/type-scale.ts
+@@ -0,0 +1,32 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++
++// The renderer type-scale base, in px. `makaTheme.ts` (THE type-scale
++// authority — see the long comment there) feeds this into Astryx's
++// `expandTypeScale`, and `theme.ts` divides by it to turn a chosen UI font
++// size into a document-root font-size. It lives in this dependency-free
++// module rather than in `makaTheme.ts` so the pre-paint bootstrap path
++// (`cached-theme-bootstrap.ts` → `theme.ts`) does not pull the full theme
++// (icon registry included) into the first frame.
++//
++// `DEFAULT_UI_FONT_SIZE` in `@maka/core/settings` must equal this value —
++// the default means "the type scale as designed, no root scaling". Core
++// cannot import renderer code, so the coupling is enforced by
++// `font-size-type-scale.test.ts` instead of the type system.
++export const TYPE_SCALE_BASE_PX = 14;
+diff --git a/apps/desktop/src/renderer/theme.ts b/apps/desktop/src/renderer/theme.ts
+index c4b0e737e1..438ad1b85a 100644
+--- a/apps/desktop/src/renderer/theme.ts
++++ b/apps/desktop/src/renderer/theme.ts
+@@ -32,6 +32,7 @@ import {
+   type ThemePalette,
+   type ThemePreference,
+ } from '@maka/core/settings';
++import { TYPE_SCALE_BASE_PX } from './astryx-theme/type-scale.js';
+ import { safeLocalStorageGet, safeLocalStorageSet } from './browser-storage';
+ import { compositeScrimOverBackground, parseCssRgbColor } from './titlebar-dim-color.js';
+ 
+@@ -42,12 +43,13 @@ const DARK_CLASS = 'dark';
+ // frame, same rationale as `maka-theme-v1`.
+ const UI_FONT_SIZE_STORAGE_KEY = 'maka-ui-font-size-v1';
+ const TERMINAL_FONT_SIZE_STORAGE_KEY = 'maka-terminal-font-size-v1';
+-// The renderer type scale is generated from base 14 and every --font-size-*
++// The renderer type scale is generated from TYPE_SCALE_BASE_PX (the same
++// constant makaTheme.ts feeds into expandTypeScale) and every --font-size-*
+ // token is rem, so the root font-size that reproduces a chosen base px is
+-// `16 * px / 14`. At 14px that is the 16px browser default (no change); larger
+-// values grow text, icons and rem spacing together.
++// `16 * px / base`. At the base that is the 16px browser default (no change);
++// other values scale what is rem-derived — text and Astryx's rem icon atoms —
++// while px-literal spacing and widths stay fixed.
+ const BROWSER_ROOT_FONT_SIZE_PX = 16;
+-const TYPE_SCALE_BASE_PX = 14;
+ 
+ let currentUiFontSize: number = DEFAULT_UI_FONT_SIZE;
+ let currentTerminalFontSize: number = DEFAULT_TERMINAL_FONT_SIZE;
+diff --git a/packages/core/src/settings.ts b/packages/core/src/settings.ts
+index c7e99cca40..001bde9aa6 100644
+--- a/packages/core/src/settings.ts
++++ b/packages/core/src/settings.ts
+@@ -365,9 +365,11 @@ export function appIconForTheme(
+  * UI base font size in px, exposed as a numeric stepper like Codex's
+  * "UI font size". The renderer's type scale is generated from base 14
+  * (`makaTheme.ts`), and every `--font-size-*` token is `rem`, so the applied
+- * document-root font-size scales proportionally as `16 * uiFontSize / 14` —
+- * one value grows text, icons and rem spacing together (the deliberate UI-zoom
+- * hook in `maka-tokens.css`), NOT the density hack removed in `makaTheme.ts`.
++ * document-root font-size scales proportionally as `16 * uiFontSize / 14`.
++ * This scales what is rem-derived — text and Astryx's rem-based icon atoms —
++ * while px-literal spacing and control widths stay fixed, which is why the
++ * range is clamped tightly around the base rather than offered as a free
++ * zoom. It is NOT the density hack removed in `makaTheme.ts`.
+  *
+  * Continuous within a clamped range: a wrong-typed value fails closed to the
+  * default, an out-of-range number clamps to the nearest bound (a valid intent,

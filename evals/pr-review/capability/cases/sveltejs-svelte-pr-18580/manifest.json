@@ -1,0 +1,116 @@
+{
+  "additions": 73,
+  "author": "Nic-Polumeyv",
+  "base_sha": "3dde011d3a9e7b9145169da0b75dcd607a378c0e",
+  "body": "The server copy of `createContext` shipped without the `missing_context` throw and #17580 had to hand-mirror the client body back in, so this duplication has already cost a bug. This moves the realm-independent parts, the `createContext` tuple, `get_parent_context`, and `get_or_init_context_map`, into `internal/shared/context.js`, and each realm keeps its public context functions as thin wrappers over its own state. No behavior change, generated types are byte-identical.\n\n### Before submitting the PR, please make sure you do the following\n\n- [ ] It's really useful if your PR references an issue where it is discussed ahead of time. In many cases, features are absent for a reason. For large changes, please create an RFC: https://github.com/sveltejs/rfcs\n- [x] Prefix your PR title with `feat:`, `fix:`, `chore:`, or `docs:`.\n- [x] This message body should clearly illustrate what problems it solves.\n- [ ] Ideally, include a test that fails without this PR but passes with it.\n- [x] If this PR changes code within `packages/svelte/src`, add a changeset (`npx changeset`).\n\n### Tests and linting\n\n- [x] Run the tests with `pnpm test` and lint the project with `pnpm lint`\n",
+  "captured_at": "2026-08-30T10:28:21+00:00",
+  "case_id": "sveltejs-svelte-pr-18580",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, windows-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, macOS-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (20, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (22, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Tests (24, ubuntu-latest)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TestNoAsync",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TSGo",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "vite-ecosystem-ci",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Vercel Agent Review",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "3dde011d3a9e7b9145169da0b75dcd607a378c0e",
+  "deletions": 91,
+  "files": [
+    {
+      "additions": 5,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": ".changeset/shared-context-helpers.md"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 44,
+      "path": "packages/svelte/src/internal/client/context.js"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 47,
+      "path": "packages/svelte/src/internal/server/context.js"
+    },
+    {
+      "additions": 52,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "packages/svelte/src/internal/shared/context.js"
+    }
+  ],
+  "head_sha": "1464c2af88c59a5c4395db1cef9cac9b31010890",
+  "issues": [],
+  "patch_sha256": "11e1f75d23cc6ef3d72837ff4009ec74c779bb0ffff8c830e7c5cfb1fc32d4fc",
+  "pr_number": 18580,
+  "repo": "sveltejs/svelte",
+  "schema_version": 1,
+  "title": "chore: deduplicate client/server context helpers",
+  "url": "https://github.com/sveltejs/svelte/pull/18580"
+}
