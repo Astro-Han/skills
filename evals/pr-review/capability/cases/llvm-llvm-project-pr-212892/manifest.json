@@ -1,0 +1,186 @@
+{
+  "additions": 233,
+  "author": "inbelic",
+  "base_sha": "63cc0c35a7c0538fa500b4d164f29d4debb92486",
+  "body": "This pr adds support to collect the signature element metadata as they are emitted and outputs them to a named metadata node.\r\n\r\nAdds a lit test of the metadata creation.\r\n\r\nResolves https://github.com/llvm/llvm-project/issues/57928",
+  "captured_at": "2026-08-30T11:34:42+00:00",
+  "case_id": "llvm-llvm-project-pr-212892",
+  "changed_files": 9,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Linux${{ (((startsWith(matrix.runs-on, 'depot-ubuntu-24.04-arm') && ' AArch64')) || '') }}",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "greeter",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "buildbot_comment",
+      "status": "COMPLETED",
+      "workflowName": "Add buildbot information to first PRs from new contributors"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Linux AArch64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check LLVM_ABI annotations with ids",
+      "status": "COMPLETED",
+      "workflowName": "Check LLVM ABI annotations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "code_formatter",
+      "status": "COMPLETED",
+      "workflowName": "Check code formatting"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "HLSL-Tests (hlsl-macos) / build",
+      "status": "COMPLETED",
+      "workflowName": "HLSL Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Linux",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "automate-prs-labels",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Graphite / mergeability_check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "f9d6bef0efd7645ce761f794f6fcbb7f88ad2ad9",
+  "deletions": 106,
+  "files": [
+    {
+      "additions": 145,
+      "changeType": "MODIFIED",
+      "deletions": 43,
+      "path": "clang/lib/CodeGen/CGHLSLRuntime.cpp"
+    },
+    {
+      "additions": 28,
+      "changeType": "MODIFIED",
+      "deletions": 18,
+      "path": "clang/lib/CodeGen/CGHLSLRuntime.h"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "clang/test/CodeGenHLSL/semantics/semantic.array.output.hlsl"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "clang/test/CodeGenHLSL/semantics/semantic.input.hlsl"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "clang/test/CodeGenHLSL/semantics/semantic.output.hlsl"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "llvm/include/llvm/Analysis/DXILResource.h"
+    },
+    {
+      "additions": 10,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "llvm/include/llvm/Frontend/HLSL/SemanticSignatures.h"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "llvm/lib/Analysis/DXILResource.cpp"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 44,
+      "path": "llvm/unittests/Frontend/HLSLSemanticSignatureMetadataTest.cpp"
+    }
+  ],
+  "head_sha": "88c76edeaa7a542da9b0aac803c79ce8876bd489",
+  "issues": [
+    {
+      "body": "This issue tracks the work of collecting the `SemanticSignatureElement`s in `emitEntryFunction` as described in [the proposal](https://github.com/llvm/wg-hlsl/blob/main/proposals/0047-semantic-signatures-metadata-schema.md#accumulate-semanticsignatureelements).\n\nAfter collecting the elements it will invoke the packing of the elements and then emit it as metadata using the interfaces from https://github.com/llvm/llvm-project/issues/204878 and https://github.com/llvm/llvm-project/issues/204889.\n\nAC:\n- [ ] `SemanticSignatureElement`s are collected in `emitEntryFunction` and wired up to emit packed metadata\n- [ ] Codegen LIT tests are to be added to ensure the metadata is correctly linked to the correct `llvm.dx.load.input` and `llvm.dx.store.output` intrinsic calls",
+      "number": 57928,
+      "title": "[CGHLSL][DirectX] Generate module metadata for input output signature",
+      "url": "https://github.com/llvm/llvm-project/issues/57928"
+    }
+  ],
+  "patch_sha256": "025552644207fc3d7a9948f9e65b82336dc89e6d9738a71eb40319d7e13e3e98",
+  "pr_number": 212892,
+  "repo": "llvm/llvm-project",
+  "schema_version": 1,
+  "title": "[HLSL] Generate semantic signature metadata",
+  "url": "https://github.com/llvm/llvm-project/pull/212892"
+}

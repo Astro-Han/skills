@@ -1,0 +1,161 @@
+{
+  "additions": 682,
+  "author": "adam-smnk",
+  "base_sha": "7c31d55c29ae0eb60f3ddcec5e1bf35942f6ed94",
+  "body": "Extends the 'structured.tile_using_for' op to accept packed handle containing variable number of tile sizes, and dynamic and packed loop interchange values.\r\n\r\nPacked handles allows for runtime tiling decisions which improves transform schedule flexibility and reusability.\r\nThe extension follows the existing approach used by other tiling ops.\r\n\r\nAssisted-by: Claude",
+  "captured_at": "2026-08-30T11:04:42+00:00",
+  "case_id": "llvm-llvm-project-pr-214539",
+  "changed_files": 7,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Linux${{ (((startsWith(matrix.runs-on, 'depot-ubuntu-24.04-arm') && ' AArch64')) || '') }}",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "greeter",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "buildbot_comment",
+      "status": "COMPLETED",
+      "workflowName": "Add buildbot information to first PRs from new contributors"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Linux AArch64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check LLVM_ABI annotations with ids",
+      "status": "COMPLETED",
+      "workflowName": "Check LLVM ABI annotations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "code_formatter",
+      "status": "COMPLETED",
+      "workflowName": "Check code formatting"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Linux",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build and Test Windows",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "automate-prs-labels",
+      "status": "COMPLETED",
+      "workflowName": "Labelling new pull requests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Compute macOS Projects",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build and Test macOS arm64",
+      "status": "COMPLETED",
+      "workflowName": "CI Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Graphite / mergeability_check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "849c51e082b0958524246a0a880f46d468a55147",
+  "deletions": 75,
+  "files": [
+    {
+      "additions": 35,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "mlir/include/mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.td"
+    },
+    {
+      "additions": 51,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "mlir/include/mlir/Dialect/Transform/Utils/Utils.h"
+    },
+    {
+      "additions": 185,
+      "changeType": "MODIFIED",
+      "deletions": 45,
+      "path": "mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp"
+    },
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "mlir/lib/Dialect/Transform/Utils/Utils.cpp"
+    },
+    {
+      "additions": 46,
+      "changeType": "MODIFIED",
+      "deletions": 13,
+      "path": "mlir/python/mlir/dialects/transform/structured.py"
+    },
+    {
+      "additions": 304,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "mlir/test/Dialect/Linalg/transform-op-tile.mlir"
+    },
+    {
+      "additions": 49,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "mlir/test/python/dialects/transform_structured_ext.py"
+    }
+  ],
+  "head_sha": "5740cf3fca1ede16e83b9b1258bc350e99476ee3",
+  "issues": [],
+  "patch_sha256": "1cbd053cc78c634a467f523f9cdba5e5adf70a32210d98e334a4531d48ed25bd",
+  "pr_number": 214539,
+  "repo": "llvm/llvm-project",
+  "schema_version": 1,
+  "title": "[mlir][linalg] TileUsingFor - variadic tiles and interchange",
+  "url": "https://github.com/llvm/llvm-project/pull/214539"
+}

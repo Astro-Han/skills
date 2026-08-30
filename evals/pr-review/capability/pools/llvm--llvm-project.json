@@ -6300,6 +6300,48 @@
       "state": "MERGED",
       "title": "[flang][Parser][NFC] Don't build a discarded list while scanning identifiers",
       "url": "https://github.com/llvm/llvm-project/pull/219330"
+    },
+    {
+      "additions": 233,
+      "author": {
+        "id": "MDQ6VXNlcjUwNTI5NDA2",
+        "is_bot": false,
+        "login": "inbelic",
+        "name": "Finn Plummer"
+      },
+      "baseRefOid": "63cc0c35a7c0538fa500b4d164f29d4debb92486",
+      "changedFiles": 9,
+      "closedAt": "2026-08-12T16:22:54Z",
+      "createdAt": "2026-07-29T22:32:53Z",
+      "deletions": 106,
+      "headRefOid": "88c76edeaa7a542da9b0aac803c79ce8876bd489",
+      "isDraft": false,
+      "mergedAt": "2026-08-12T16:22:54Z",
+      "number": 212892,
+      "state": "MERGED",
+      "title": "[HLSL] Generate semantic signature metadata",
+      "url": "https://github.com/llvm/llvm-project/pull/212892"
+    },
+    {
+      "additions": 682,
+      "author": {
+        "id": "MDQ6VXNlcjE5NDE1ODIx",
+        "is_bot": false,
+        "login": "adam-smnk",
+        "name": "Adam Siemieniuk"
+      },
+      "baseRefOid": "7c31d55c29ae0eb60f3ddcec5e1bf35942f6ed94",
+      "changedFiles": 7,
+      "closedAt": "2026-08-11T07:55:59Z",
+      "createdAt": "2026-08-06T17:49:09Z",
+      "deletions": 75,
+      "headRefOid": "5740cf3fca1ede16e83b9b1258bc350e99476ee3",
+      "isDraft": false,
+      "mergedAt": "2026-08-11T07:55:59Z",
+      "number": 214539,
+      "state": "MERGED",
+      "title": "[mlir][linalg] TileUsingFor - variadic tiles and interchange",
+      "url": "https://github.com/llvm/llvm-project/pull/214539"
     }
   ],
   "query_limit": 300,

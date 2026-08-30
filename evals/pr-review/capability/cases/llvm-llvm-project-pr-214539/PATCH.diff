@@ -1,0 +1,1266 @@
+From 2f90516632c510ac0a2072359edb3eadb54c794f Mon Sep 17 00:00:00 2001
+From: Adam Siemieniuk <adam.siemieniuk@intel.com>
+Date: Thu, 6 Aug 2026 18:01:26 +0200
+Subject: [PATCH 1/4] [mlir][linalg] TileUsingFor - variadic tiles and
+ interchange
+
+Extends the 'structured.tile_using_for' op to accept packed handle
+containing variable number of tile sizes, and dynamic and packed loop
+interchange values.
+
+Packed handles allows for runtime tiling decisions which improves
+transform schedule flexibility and reusability.
+The extension follows the existing approach used by other tiling ops.
+
+Assisted-by: Claude
+---
+ .../Linalg/TransformOps/LinalgTransformOps.td |  39 ++-
+ .../mlir/Dialect/Transform/Utils/Utils.h      |  55 +++-
+ .../TransformOps/LinalgTransformOps.cpp       | 230 +++++++++++---
+ mlir/lib/Dialect/Transform/Utils/Utils.cpp    |  16 +-
+ .../mlir/dialects/transform/structured.py     |  55 +++-
+ .../Dialect/Linalg/transform-op-tile.mlir     | 299 ++++++++++++++++++
+ .../dialects/transform_structured_ext.py      |  49 +++
+ 7 files changed, 673 insertions(+), 70 deletions(-)
+
+diff --git a/mlir/include/mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.td b/mlir/include/mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.td
+index 09a6c4c4d652f..9a6796f999931 100644
+--- a/mlir/include/mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.td
++++ b/mlir/include/mlir/Dialect/Linalg/TransformOps/LinalgTransformOps.td
+@@ -2246,7 +2246,8 @@ def ContinuousTileSizesOp : Op<Transform_Dialect, "structured.continuous_tile_si
+ //===----------------------------------------------------------------------===//
+ 
+ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+-       [DeclareOpInterfaceMethods<TransformOpInterface>,
++       [AttrSizedOperandSegments,
++        DeclareOpInterfaceMethods<TransformOpInterface>,
+         DeclareOpInterfaceMethods<MemoryEffectsOpInterface>,
+         ReportTrackingListenerFailuresOpTrait]> {
+   let description = [{
+@@ -2270,6 +2271,14 @@ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+     generated loops. The number of loops is the number of tile sizes that are
+     statically known to be non-zero.
+ 
++    Additionally, tile sizes can also be provided as a single handle containing
++    variadic number of values. In that case, all created loops are assigned to
++    a single return handle. For each target, corresponding loops are appended
++    to the return handle in the same order as target operations.
++
++    Loop interchange permutation can be provided as either static attributes,
++    dynamic values or a single handle containing variadic number of values.
++
+     #### Return modes
+ 
+     On success, the resulting handles are associated with co-indexed lists of
+@@ -2295,8 +2304,11 @@ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+ 
+   let arguments = (ins TransformHandleTypeInterface:$target,
+                    Variadic<TransformAnyParamTypeOrAnyHandle>:$dynamic_sizes,
++                   Variadic<TransformAnyParamTypeOrAnyHandle>:$interchange,
++                   Optional<TransformAnyParamTypeOrAnyHandle>:$packed_tile_sizes,
++                   Optional<TransformAnyParamTypeOrAnyHandle>:$packed_interchange,
+                    DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$static_sizes,
+-                   DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$interchange,
++                   DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$static_interchange,
+                    DefaultValuedOptionalAttr<DenseBoolArrayAttr, "{}">:$scalable_sizes,
+                    DefaultValuedOptionalAttr<DenseI64ArrayAttr, "{}">:$inner_tile_alignments);
+   let results = (outs TransformHandleTypeInterface:$tiled_linalg_op,
+@@ -2314,6 +2326,12 @@ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+                    CArg<"ArrayRef<int64_t>", "{}">:$interchange,
+                    CArg<"std::optional<ArrayRef<bool>>", "std::nullopt">:
+                       $scalableSizes)>,
++    OpBuilder<(ins "TypeRange":$loopTypes,
++                   "Value":$target,
++                   "ArrayRef<OpFoldResult>":$mixedTileSizes,
++                   "ArrayRef<OpFoldResult>":$mixedInterchange,
++                   CArg<"std::optional<ArrayRef<bool>>", "std::nullopt">:
++                      $scalableSizes)>,
+     OpBuilder<(ins "Value":$target,
+                    "ArrayRef<int64_t>":$staticTileSizes,
+                    CArg<"ArrayRef<int64_t>", "{}">:$interchange,
+@@ -2324,15 +2342,24 @@ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+                    CArg<"ArrayRef<int64_t>", "{}">:$interchange,
+                    CArg<"std::optional<ArrayRef<bool>>", "std::nullopt">:
+                       $scalableSizes)>,
++    OpBuilder<(ins "Value":$target,
++                   "ArrayRef<OpFoldResult>":$mixedTileSizes,
++                   "ArrayRef<OpFoldResult>":$mixedInterchange,
++                   CArg<"std::optional<ArrayRef<bool>>", "std::nullopt">:
++                      $scalableSizes)>,
+   ];
+ 
+   let assemblyFormat = [{
+     $target
+-      `tile_sizes` custom<DynamicIndexList>(
++      `tile_sizes` custom<PackedOrDynamicIndexList>(
++        $packed_tile_sizes,
+         $dynamic_sizes,
+         $static_sizes,
+         $scalable_sizes)
+-      (`interchange` `=` $interchange^)?
++      (`interchange` `=` custom<PackedOrDynamicIndexList>(
++        $packed_interchange,
++        $interchange,
++        $static_interchange)^)?
+       (`inner_tile_alignments` `=`
+           custom<InnerTileAlignmentArray>($inner_tile_alignments)^)?
+     attr-dict
+@@ -2345,6 +2372,10 @@ def TileUsingForOp : Op<Transform_Dialect, "structured.tile_using_for",
+     /// Returns the list of tile sizes, which may be static (Attribute) or
+     /// dynamic (Value).
+     SmallVector<OpFoldResult> getMixedSizes();
++
++    /// Returns the interchange, which may be static (Attribute) or
++    /// dynamic (Value).
++    SmallVector<OpFoldResult> getMixedInterchange();
+   }];
+ }
+ 
+diff --git a/mlir/include/mlir/Dialect/Transform/Utils/Utils.h b/mlir/include/mlir/Dialect/Transform/Utils/Utils.h
+index be31f5beea8cb..ea7273d7fac79 100644
+--- a/mlir/include/mlir/Dialect/Transform/Utils/Utils.h
++++ b/mlir/include/mlir/Dialect/Transform/Utils/Utils.h
+@@ -36,12 +36,35 @@ class TransformState;
+ void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
+                                    Value packed, Type packedType,
+                                    OperandRange values, TypeRange valueTypes,
++                                   DenseBoolArrayAttr scalableFlags,
+                                    DenseI64ArrayAttr integers);
++inline void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
++                                          Value packed, Type packedType,
++                                          OperandRange values,
++                                          TypeRange valueTypes,
++                                          DenseI64ArrayAttr integers) {
++  printPackedOrDynamicIndexList(printer, op, packed, packedType, values,
++                                valueTypes, DenseBoolArrayAttr(), integers);
++}
+ inline void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
+                                           Value packed, OperandRange values,
++                                          DenseBoolArrayAttr scalableFlags,
+                                           DenseI64ArrayAttr integers) {
+   printPackedOrDynamicIndexList(printer, op, packed, Type(), values,
+-                                TypeRange{}, integers);
++                                TypeRange{}, scalableFlags, integers);
++}
++inline void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
++                                          Value packed, OperandRange values,
++                                          DenseI64ArrayAttr integers,
++                                          DenseBoolArrayAttr scalableFlags) {
++  printPackedOrDynamicIndexList(printer, op, packed, values, scalableFlags,
++                                integers);
++}
++inline void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
++                                          Value packed, OperandRange values,
++                                          DenseI64ArrayAttr integers) {
++  printPackedOrDynamicIndexList(printer, op, packed, Type(), values,
++                                TypeRange{}, DenseBoolArrayAttr(), integers);
+ }
+ 
+ /// Parser hook for custom directive in assemblyFormat.
+@@ -53,14 +76,38 @@ inline void printPackedOrDynamicIndexList(OpAsmPrinter &printer, Operation *op,
+ ParseResult parsePackedOrDynamicIndexList(
+     OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
+     Type &packedType, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+-    SmallVectorImpl<Type> *valueTypes, DenseI64ArrayAttr &integers);
++    DenseBoolArrayAttr &scalableFlags, SmallVectorImpl<Type> *valueTypes,
++    DenseI64ArrayAttr &integers);
++inline ParseResult parsePackedOrDynamicIndexList(
++    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
++    Type &packedType, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
++    SmallVectorImpl<Type> *valueTypes, DenseI64ArrayAttr &integers) {
++  DenseBoolArrayAttr scalableFlags;
++  return parsePackedOrDynamicIndexList(parser, packed, packedType, values,
++                                       scalableFlags, valueTypes, integers);
++}
+ inline ParseResult parsePackedOrDynamicIndexList(
+     OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
+     SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+-    DenseI64ArrayAttr &integers) {
++    DenseBoolArrayAttr &scalableFlags, DenseI64ArrayAttr &integers) {
+   Type packedType;
+   return parsePackedOrDynamicIndexList(parser, packed, packedType, values,
+-                                       nullptr, integers);
++                                       scalableFlags, nullptr, integers);
++}
++inline ParseResult parsePackedOrDynamicIndexList(
++    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
++    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
++    DenseI64ArrayAttr &integers, DenseBoolArrayAttr &scalableFlags) {
++  return parsePackedOrDynamicIndexList(parser, packed, values, scalableFlags,
++                                       integers);
++}
++inline ParseResult parsePackedOrDynamicIndexList(
++    OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
++    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
++    DenseI64ArrayAttr &integers) {
++  DenseBoolArrayAttr scalableFlags;
++  return parsePackedOrDynamicIndexList(parser, packed, values, scalableFlags,
++                                       integers);
+ }
+ } // namespace transform
+ } // namespace mlir
+diff --git a/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp b/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
+index 8c5bd50bd6f8b..e8aa2e5c3b60b 100644
+--- a/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
++++ b/mlir/lib/Dialect/Linalg/TransformOps/LinalgTransformOps.cpp
+@@ -3521,18 +3521,46 @@ void transform::TileUsingForOp::build(
+         scalableSizes);
+ }
+ 
++void transform::TileUsingForOp::build(
++    OpBuilder &builder, OperationState &result, Value target,
++    ArrayRef<OpFoldResult> mixedTileSizes,
++    ArrayRef<OpFoldResult> mixedInterchange,
++    std::optional<ArrayRef<bool>> scalableSizes) {
++  // Loop types are automaticaly splat by the callee, setting up one is
++  // enough.
++  SmallVector<Type> loopTypes(1, builder.getType<transform::AnyOpType>());
++  build(builder, result, loopTypes, target, mixedTileSizes, mixedInterchange,
++        scalableSizes);
++}
++
+ void transform::TileUsingForOp::build(
+     OpBuilder &builder, OperationState &result, TypeRange loopTypes,
+     Value target, ArrayRef<OpFoldResult> mixedTileSizes,
+     ArrayRef<int64_t> interchange,
+     std::optional<ArrayRef<bool>> scalableSizes) {
++  SmallVector<OpFoldResult> mixedInterchange =
++      getAsOpFoldResult(builder.getI64ArrayAttr(interchange));
++  build(builder, result, loopTypes, target, mixedTileSizes, mixedInterchange,
++        scalableSizes);
++}
++
++void transform::TileUsingForOp::build(
++    OpBuilder &builder, OperationState &result, TypeRange loopTypes,
++    Value target, ArrayRef<OpFoldResult> mixedTileSizes,
++    ArrayRef<OpFoldResult> mixedInterchange,
++    std::optional<ArrayRef<bool>> scalableSizes) {
+   SmallVector<int64_t> staticTileSizes;
+   SmallVector<Value> dynamicTileSizes;
++  SmallVector<int64_t> staticInterchange;
++  SmallVector<Value> dynamicInterchange;
+   dispatchIndexOpFoldResults(mixedTileSizes, dynamicTileSizes, staticTileSizes);
++  dispatchIndexOpFoldResults(mixedInterchange, dynamicInterchange,
++                             staticInterchange);
+   // Call the default builder which sets up the proper operands segment sizes
+   // attributes for multiple variadic operands. In the absence of this,
+   // horrible bugs ensue.
+   auto staticTileSizesAttr = builder.getDenseI64ArrayAttr(staticTileSizes);
++  auto staticInterchangeAttr = builder.getDenseI64ArrayAttr(staticInterchange);
+   unsigned numExpectedLoops =
+       staticTileSizes.size() - llvm::count(staticTileSizes, 0);
+   SmallVector<Type> resultTypes;
+@@ -3546,22 +3574,58 @@ void transform::TileUsingForOp::build(
+   SmallVector<bool> expandedScalableSizes(mixedTileSizes.size(), false);
+   if (scalableSizes.has_value())
+     expandedScalableSizes.assign(scalableSizes->begin(), scalableSizes->end());
++  Value packedTileSizes;
+   build(builder, result, /*tiled_linalg_op=*/target.getType(),
+         /*loops=*/resultTypes,
+         /*target=*/target,
+         /*dynamic_sizes=*/dynamicTileSizes,
++        /*interchange=*/dynamicInterchange,
++        /*packed_tile_sizes=*/packedTileSizes,
++        /*packed_interchange=*/Value(),
+         /*static_sizes=*/staticTileSizesAttr,
+-        /*interchange=*/builder.getDenseI64ArrayAttr(interchange),
++        /*static_interchange=*/staticInterchangeAttr,
+         /*scalable_sizes=*/expandedScalableSizes);
+ }
+ 
+ LogicalResult transform::TileUsingForOp::verify() {
++  bool hasPackedTiles = getPackedTileSizes() != Value();
++  bool hasPackedInterchange = getPackedInterchange() != Value();
++  if (!getMixedSizes().empty() && hasPackedTiles)
++    return emitOpError(
++        "tile_sizes and packed_tile_sizes are mutually exclusive");
++  if (!getMixedInterchange().empty() && hasPackedInterchange)
++    return emitOpError(
++        "interchange and packed_interchange are mutually exclusive");
++  if (hasPackedTiles && !getScalableSizes().empty())
++    return emitOpError(
++        "scalable tile_sizes are not supported with packed_tile_sizes");
++
+   if (getMixedSizes().size() != getScalableSizes().size())
+     return emitOpError("expected same number of sizes (")
+            << getMixedSizes().size() << ") and scalable sizes ("
+            << getScalableSizes().size() << ")";
++
++  auto iterspaceRank = getStaticSizes().size();
++  ArrayRef<int64_t> permutation = getStaticInterchange();
++  if (permutation.size() > iterspaceRank)
++    return emitOpError()
++           << "interchange length exceeds iteration space dimensions ("
++           << iterspaceRank << "), found " << getInterchange();
++  SmallVector<bool> seen(iterspaceRank, false);
++  for (int64_t v : permutation) {
++    if (!ShapedType::isDynamic(v)) {
++      if (v < 0 || v >= static_cast<int64_t>(iterspaceRank))
++        return emitOpError() << "expects interchange values to be in range [0, "
++                             << iterspaceRank << "), found: " << v;
++      if (seen[v])
++        return emitOpError() << "found duplicate interchange value: " << v;
++      seen[v] = true;
++    }
++  }
++
+   ArrayRef<int64_t> staticSizes = getStaticSizes();
+-  unsigned numExpectedLoops = staticSizes.size() - llvm::count(staticSizes, 0);
++  unsigned numExpectedLoops =
++      hasPackedTiles ? 1 : staticSizes.size() - llvm::count(staticSizes, 0);
+   if (getLoops().size() != numExpectedLoops)
+     return emitOpError("expected number of loops to tile (")
+            << numExpectedLoops << ") to match number of `loops` results ("
+@@ -3574,65 +3638,102 @@ transform::TileUsingForOp::apply(transform::TransformRewriter &rewriter,
+                                  TransformResults &transformResults,
+                                  TransformState &state) {
+   ArrayRef<int64_t> tileSizes = getStaticSizes();
++  bool hasPackedTiles = getPackedTileSizes() != Value();
++  bool hasPackedInterchange = getPackedInterchange() != Value();
++  auto transformOp = cast<TransformOpInterface>(getOperation());
++
++  SmallVector<OpFoldResult> mixedInterchange;
++  if (hasPackedInterchange) {
++    DiagnosedSilenceableFailure status =
++        unpackSingleIndexResultPayloadOperations(
++            state, transformOp, mixedInterchange, getPackedInterchange());
++    if (!status.succeeded())
++      return status;
++  } else {
++    mixedInterchange = getMixedInterchange();
++  }
++  SmallVector<int64_t> tileInterchange;
++  DiagnosedSilenceableFailure status = reifyMixedParamAndHandleResults(
++      state, transformOp, mixedInterchange, tileInterchange);
++  if (!status.succeeded())
++    return status;
+ 
+   SmallVector<Operation *> targets =
+       llvm::to_vector(state.getPayloadOps(getTarget()));
+   SmallVector<SmallVector<Operation *>> dynamicSizeProducers;
+   SmallVector<SmallVector<int64_t>> paramSizes;
+-  dynamicSizeProducers.reserve(getDynamicSizes().size());
+-  paramSizes.reserve(getDynamicSizes().size());
+-  for (Value transformValue : getDynamicSizes()) {
+-    if (isa<TransformParamTypeInterface>(transformValue.getType())) {
+-      dynamicSizeProducers.push_back({});
+-      ArrayRef<Attribute> params = state.getParams(transformValue);
+-      paramSizes.push_back(llvm::map_to_vector(params, [](Attribute attr) {
+-        return cast<IntegerAttr>(attr).getValue().getSExtValue();
+-      }));
++  SmallVector<OpFoldResult> mixedTileSizes;
++  if (hasPackedTiles) {
++    status = unpackSingleIndexResultPayloadOperations(
++        state, transformOp, mixedTileSizes, getPackedTileSizes());
++    if (!status.succeeded())
++      return status;
++    tileSizes = {};
++  } else {
++    dynamicSizeProducers.reserve(getDynamicSizes().size());
++    paramSizes.reserve(getDynamicSizes().size());
++    for (Value transformValue : getDynamicSizes()) {
++      if (isa<TransformParamTypeInterface>(transformValue.getType())) {
++        dynamicSizeProducers.push_back({});
++        ArrayRef<Attribute> params = state.getParams(transformValue);
++        paramSizes.push_back(llvm::map_to_vector(params, [](Attribute attr) {
++          return cast<IntegerAttr>(attr).getValue().getSExtValue();
++        }));
++
++        if (paramSizes.back().size() != targets.size()) {
++          DiagnosedSilenceableFailure diag =
++              emitSilenceableError()
++              << "expected as many parameter values ("
++              << dynamicSizeProducers.back().size() << ") as target ops ("
++              << targets.size() << ")";
++          diag.attachNote(transformValue.getLoc()) << "for this parameter";
++          return diag;
++        }
+ 
+-      if (paramSizes.back().size() != targets.size()) {
++        continue;
++      }
++      paramSizes.push_back({});
++      dynamicSizeProducers.push_back(
++          llvm::to_vector(state.getPayloadOps(transformValue)));
++
++      if (dynamicSizeProducers.back().size() != targets.size()) {
+         DiagnosedSilenceableFailure diag =
+             emitSilenceableError()
+-            << "expected as many parameter values ("
++            << "expected as many dynamic size-producing operations ("
+             << dynamicSizeProducers.back().size() << ") as target ops ("
+             << targets.size() << ")";
+-        diag.attachNote(transformValue.getLoc()) << "for this parameter";
++        diag.attachNote(transformValue.getLoc()) << "for this handle";
+         return diag;
+       }
+ 
+-      continue;
+-    }
+-    paramSizes.push_back({});
+-    dynamicSizeProducers.push_back(
+-        llvm::to_vector(state.getPayloadOps(transformValue)));
+-
+-    if (dynamicSizeProducers.back().size() != targets.size()) {
+-      DiagnosedSilenceableFailure diag =
+-          emitSilenceableError()
+-          << "expected as many dynamic size-producing operations ("
+-          << dynamicSizeProducers.back().size() << ") as target ops ("
+-          << targets.size() << ")";
+-      diag.attachNote(transformValue.getLoc()) << "for this handle";
+-      return diag;
+-    }
++      for (Operation *op : dynamicSizeProducers.back()) {
++        if (op->getNumResults() == 1 &&
++            isa<IndexType>(op->getResult(0).getType())) {
++          continue;
++        }
+ 
+-    for (Operation *op : dynamicSizeProducers.back()) {
+-      if (op->getNumResults() == 1 &&
+-          isa<IndexType>(op->getResult(0).getType())) {
+-        continue;
++        DiagnosedSilenceableFailure diag =
++            emitSilenceableError() << "expected sizes to be produced by ops "
++                                      "with a single index-type result";
++        diag.attachNote(op->getLoc()) << "size producer op";
++        diag.attachNote(transformValue.getLoc()) << "for this handle";
++        return diag;
+       }
+-
+-      DiagnosedSilenceableFailure diag =
+-          emitSilenceableError() << "expected sizes to be produced by ops "
+-                                    "with a single index-type result";
+-      diag.attachNote(op->getLoc()) << "size producer op";
+-      diag.attachNote(transformValue.getLoc()) << "for this handle";
+-      return diag;
+     }
+   }
+ 
+   SmallVector<Operation *> tiled;
+   SmallVector<SmallVector<Operation *, 4>, 4> loops;
+-  loops.resize(getLoops().size());
++  size_t numLoops =
++      hasPackedTiles
++          ? llvm::count_if(mixedTileSizes,
++                           [](OpFoldResult ofr) {
++                             if (auto attr = dyn_cast<Attribute>(ofr))
++                               return cast<IntegerAttr>(attr).getInt() != 0;
++                             return true;
++                           })
++          : getLoops().size();
++  loops.resize(numLoops);
+   auto scalableSizes = getScalableSizes();
+   for (auto [i, op] : llvm::enumerate(targets)) {
+     auto tilingInterface = dyn_cast<TilingInterface>(op);
+@@ -3643,6 +3744,27 @@ transform::TileUsingForOp::apply(transform::TransformRewriter &rewriter,
+       diag.attachNote(op->getLoc()) << "target op";
+       return diag;
+     }
++
++    int64_t iterspaceRank = tilingInterface.getLoopIteratorTypes().size();
++    if (tileInterchange.size() > static_cast<size_t>(iterspaceRank)) {
++      return emitSilenceableError()
++             << "interchange length exceeds iteration space dimensions ("
++             << iterspaceRank << ")";
++    }
++    SmallVector<bool> seen(iterspaceRank, false);
++    for (int64_t v : tileInterchange) {
++      if (v < 0 || v >= iterspaceRank) {
++        return emitSilenceableError()
++               << "expects interchange values to be in range [0, "
++               << iterspaceRank << "), found: " << v;
++      }
++      if (seen[v]) {
++        return emitSilenceableError()
++               << "found duplicate interchange value: " << v;
++      }
++      seen[v] = true;
++    }
++
+     if (tileSizes.size() > tilingInterface.getLoopIteratorTypes().size()) {
+       DiagnosedSilenceableFailure diag =
+           emitSilenceableError()
+@@ -3654,11 +3776,13 @@ transform::TileUsingForOp::apply(transform::TransformRewriter &rewriter,
+     }
+ 
+     scf::SCFTilingOptions tilingOptions;
+-    if (tileSizes.empty()) {
++    if (!hasPackedTiles && tileSizes.empty()) {
+       tilingOptions.setTileSizeComputationFunction(
+           [](OpBuilder &, Operation *) -> SmallVector<OpFoldResult> {
+             return {};
+           });
++    } else if (hasPackedTiles) {
++      tilingOptions.setTileSizes(mixedTileSizes);
+     } else {
+       tilingOptions.setTileSizeComputationFunction([&, index = i](OpBuilder &b,
+                                                                   Operation *) {
+@@ -3695,7 +3819,7 @@ transform::TileUsingForOp::apply(transform::TransformRewriter &rewriter,
+       });
+     }
+ 
+-    tilingOptions.setInterchange(getInterchange());
++    tilingOptions.setInterchange(tileInterchange);
+     tilingOptions.setInnerTileAlignments(
+         convertInnerTileAlignments(getInnerTileAlignments()));
+     FailureOr<scf::SCFTilingResult> maybeTilingResult =
+@@ -3711,8 +3835,17 @@ transform::TileUsingForOp::apply(transform::TransformRewriter &rewriter,
+   }
+ 
+   transformResults.set(cast<OpResult>(getTiledLinalgOp()), tiled);
+-  for (const auto &en : llvm::enumerate(loops))
+-    transformResults.set(cast<OpResult>(getLoops()[en.index()]), en.value());
++  if (hasPackedTiles) {
++    // For packed sizes all created loops are assigned to a single handle.
++    SmallVector<Operation *> flattenedLoops;
++    for (auto [targetIdx, _] : llvm::enumerate(targets))
++      for (auto [loopIdx, __] : llvm::enumerate(loops))
++        flattenedLoops.push_back(loops[loopIdx][targetIdx]);
++    transformResults.set(cast<OpResult>(getLoops().front()), flattenedLoops);
++  } else {
++    for (const auto &en : llvm::enumerate(loops))
++      transformResults.set(cast<OpResult>(getLoops()[en.index()]), en.value());
++  }
+ 
+   return DiagnosedSilenceableFailure::success();
+ }
+@@ -3734,10 +3867,17 @@ SmallVector<OpFoldResult> transform::TileUsingForOp::getMixedSizes() {
+   return results;
+ }
+ 
++SmallVector<OpFoldResult> transform::TileUsingForOp::getMixedInterchange() {
++  return getMixedValues(getStaticInterchange(), getInterchange(), getContext());
++}
++
+ void transform::TileUsingForOp::getEffects(
+     SmallVectorImpl<MemoryEffects::EffectInstance> &effects) {
+   consumesHandle(getTargetMutable(), effects);
+   onlyReadsHandle(getDynamicSizesMutable(), effects);
++  onlyReadsHandle(getInterchangeMutable(), effects);
++  onlyReadsHandle(getPackedTileSizesMutable(), effects);
++  onlyReadsHandle(getPackedInterchangeMutable(), effects);
+   producesHandle(getOperation()->getOpResults(), effects);
+   modifiesPayload(effects);
+ }
+diff --git a/mlir/lib/Dialect/Transform/Utils/Utils.cpp b/mlir/lib/Dialect/Transform/Utils/Utils.cpp
+index 2ce21fe8a9c12..4aaef36309433 100644
+--- a/mlir/lib/Dialect/Transform/Utils/Utils.cpp
++++ b/mlir/lib/Dialect/Transform/Utils/Utils.cpp
+@@ -16,9 +16,11 @@ using namespace mlir::transform;
+ 
+ void mlir::transform::printPackedOrDynamicIndexList(
+     OpAsmPrinter &printer, Operation *op, Value packed, Type packedType,
+-    OperandRange values, TypeRange valueTypes, DenseI64ArrayAttr integers) {
++    OperandRange values, TypeRange valueTypes, DenseBoolArrayAttr scalableFlags,
++    DenseI64ArrayAttr integers) {
+   if (packed) {
+     assert(values.empty() && (!integers || integers.empty()) &&
++           (!scalableFlags || scalableFlags.empty()) &&
+            "expected no values/integers");
+     printer << "*(" << packed;
+     if (packedType) {
+@@ -27,13 +29,17 @@ void mlir::transform::printPackedOrDynamicIndexList(
+     printer << ")";
+     return;
+   }
+-  printDynamicIndexList(printer, op, values, integers, valueTypes);
++  printDynamicIndexList(printer, op, values, integers,
++                        scalableFlags ? scalableFlags.asArrayRef()
++                                      : ArrayRef<bool>{},
++                        valueTypes);
+ }
+ 
+ ParseResult mlir::transform::parsePackedOrDynamicIndexList(
+     OpAsmParser &parser, std::optional<OpAsmParser::UnresolvedOperand> &packed,
+     Type &packedType, SmallVectorImpl<OpAsmParser::UnresolvedOperand> &values,
+-    SmallVectorImpl<Type> *valueTypes, DenseI64ArrayAttr &integers) {
++    DenseBoolArrayAttr &scalableFlags, SmallVectorImpl<Type> *valueTypes,
++    DenseI64ArrayAttr &integers) {
+   OpAsmParser::UnresolvedOperand packedOperand;
+   if (parser.parseOptionalStar().succeeded()) {
+     if (parser.parseLParen().failed() ||
+@@ -45,8 +51,10 @@ ParseResult mlir::transform::parsePackedOrDynamicIndexList(
+       return failure();
+     packed.emplace(packedOperand);
+     integers = parser.getBuilder().getDenseI64ArrayAttr({});
++    scalableFlags = parser.getBuilder().getDenseBoolArrayAttr({});
+     return success();
+   }
+ 
+-  return parseDynamicIndexList(parser, values, integers, valueTypes);
++  return parseDynamicIndexList(parser, values, integers, scalableFlags,
++                               valueTypes);
+ }
+diff --git a/mlir/python/mlir/dialects/transform/structured.py b/mlir/python/mlir/dialects/transform/structured.py
+index a3c3057ddb834..f4a17e9907927 100644
+--- a/mlir/python/mlir/dialects/transform/structured.py
++++ b/mlir/python/mlir/dialects/transform/structured.py
+@@ -549,8 +549,8 @@ def __init__(
+         loop_types: Union[Type, List[Type]],
+         target: Union[Operation, Value],
+         *,
+-        sizes: Optional[Union[DynamicIndexList, ArrayAttr]] = None,
+-        interchange: OptionalIntList = None,
++        sizes: MixedValues = None,
++        interchange: MixedValues = None,
+         loc=None,
+         ip=None,
+     ):
+@@ -561,8 +561,8 @@ def __init__(
+         self,
+         target: Union[Operation, Value, OpView],
+         *,
+-        sizes: Optional[Union[DynamicIndexList, ArrayAttr]] = None,
+-        interchange: OptionalIntList = None,
++        sizes: MixedValues = None,
++        interchange: MixedValues = None,
+         loc=None,
+         ip=None,
+     ):
+@@ -573,18 +573,44 @@ def __init__(
+         loop_types_or_target: Union[Type, List[Type], Operation, Value],
+         target_or_none: Optional[Union[Operation, Value, OpView]] = None,
+         *,
+-        sizes: Optional[Union[DynamicIndexList, ArrayAttr]] = None,
+-        interchange: OptionalIntList = None,
++        sizes: MixedValues = None,
++        interchange: MixedValues = None,
+         loc=None,
+         ip=None,
+     ):
++        packed_tile_sizes = None
++        if isinstance(sizes, (Operation, Value, OpView)):
++            dynamic_sizes, packed_tile_sizes, static_sizes = _dispatch_mixed_values(sizes)
++            scalable_sizes = []
++        else:
++            has_scalable_sizes = any(
++                isinstance(v, Sequence) and not isinstance(v, (str, bytes, ArrayAttr))
++                for v in (sizes or [])
++            )
++            if has_scalable_sizes:
++                dynamic_sizes, static_sizes, scalable_sizes = _dispatch_dynamic_index_list(
++                    sizes
++                )
++            else:
++                (
++                    dynamic_sizes,
++                    packed_tile_sizes,
++                    static_sizes,
++                ) = _dispatch_mixed_values(sizes)
++                if packed_tile_sizes is None:
++                    _, _, scalable_sizes = _dispatch_dynamic_index_list(sizes)
++                else:
++                    scalable_sizes = []
++        num_loops = (
++            1
++            if packed_tile_sizes is not None
++            else sum(v if v == 0 else 1 for v in static_sizes)
++        )
+         (
+-            dynamic_sizes,
+-            static_sizes,
+-            scalable_sizes,
+-        ) = _dispatch_dynamic_index_list(sizes)
+-
+-        num_loops = sum(v if v == 0 else 1 for v in static_sizes)
++            dynamic_interchange,
++            packed_interchange,
++            static_interchange,
++        ) = _dispatch_mixed_values(interchange)
+ 
+         if isinstance(loop_types_or_target, (Operation, Value, OpView)):
+             loop_types = [transform.AnyOpType.get()] * num_loops
+@@ -605,8 +631,11 @@ def __init__(
+             loop_types,
+             target,
+             dynamic_sizes=dynamic_sizes,
++            packed_tile_sizes=packed_tile_sizes,
+             static_sizes=static_sizes,
+-            interchange=interchange,
++            interchange=dynamic_interchange,
++            packed_interchange=packed_interchange,
++            static_interchange=static_interchange,
+             scalable_sizes=scalable_sizes,
+             loc=loc,
+             ip=ip,
+diff --git a/mlir/test/Dialect/Linalg/transform-op-tile.mlir b/mlir/test/Dialect/Linalg/transform-op-tile.mlir
+index 3e442f311a806..6fecfcbbcc3c8 100644
+--- a/mlir/test/Dialect/Linalg/transform-op-tile.mlir
++++ b/mlir/test/Dialect/Linalg/transform-op-tile.mlir
+@@ -80,6 +80,153 @@ func.func @tile_linalg_matmul_dynamic(
+ 
+ // -----
+ 
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c8 = transform.param.constant 8 : i64 -> !transform.any_param
++    %c16 = transform.param.constant 16 : i64 -> !transform.any_param
++    %tiles = transform.merge_handles %c8, %c16 : !transform.any_param
++    %1, %loops = transform.structured.tile_using_for %0 tile_sizes *(%tiles)
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op)
++    // Verify that correct number of loops is present in packed result.
++    %loop:2 = transform.split_handle %loops : (!transform.any_op)
++      -> (!transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++// CHECK-LABEL: func @tile_linalg_matmul_packed_tile_sizes(
++// CHECK: %[[SZ0:.*]] = arith.constant 8 : index
++// CHECK: %[[SZ1:.*]] = arith.constant 16 : index
++// CHECK: %[[TD0:.*]] = scf.for {{.*}} step %[[SZ0]] iter_args
++// CHECK:   %[[TD1:.*]] = scf.for {{.*}} step %[[SZ1]] iter_args
++// CHECK-NOT:     scf.for
++// CHECK: return %[[TD0]] : tensor<128x128xf32>
++func.func @tile_linalg_matmul_packed_tile_sizes(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c8 = transform.param.constant 8 : i64 -> !transform.any_param
++    %c16 = transform.param.constant 16 : i64 -> !transform.any_param
++    %tiles = transform.merge_handles %c8, %c16 : !transform.any_param
++    // expected-error @below {{op expected number of loops to tile (1) to match number of `loops` results (2)}}
++    %1, %loops:2 = transform.structured.tile_using_for %0 tile_sizes *(%tiles)
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_packed_tile_sizes_loop_result_arity_mismatch(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c8 = transform.param.constant 8 : i64 -> !transform.any_param
++    %c16 = transform.param.constant 16 : i64 -> !transform.any_param
++    %tiles = transform.merge_handles %c8, %c16 : !transform.any_param
++    %1, %loops = transform.structured.tile_using_for %0 tile_sizes *(%tiles)
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op)
++    // Verify that correct number of loops is present in packed result.
++    %loop:4 = transform.split_handle %loops : (!transform.any_op)
++      -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_packed_tile_sizes_multiple_targets(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> (tensor<128x128xf32>, tensor<128x128xf32>) {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  %1 = linalg.matmul  ins(%0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0, %1 : tensor<128x128xf32>, tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c1 = transform.param.constant 1 : i64 -> !transform.any_param
++    %c0 = transform.param.constant 0 : i64 -> !transform.any_param
++    %c2 = transform.param.constant 2 : i64 -> !transform.any_param
++    %interchange = transform.merge_handles %c1, %c0, %c2 : !transform.any_param
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [2, 4, 8] interchange = *(%interchange)
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++// CHECK-LABEL: func @tile_linalg_matmul_packed_interchange(
++// CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
++// CHECK-DAG: %[[C4:.*]] = arith.constant 4 : index
++// CHECK-DAG: %[[C8:.*]] = arith.constant 8 : index
++// CHECK: %[[L0:.*]] = scf.for {{.*}} step %[[C4]] iter_args
++// CHECK:   %[[L1:.*]] = scf.for {{.*}} step %[[C2]] iter_args
++// CHECK:     %[[L2:.*]] = scf.for {{.*}} step %[[C8]] iter_args
++func.func @tile_linalg_matmul_packed_interchange(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c8 = transform.param.constant 8 : i64 -> !transform.any_param
++    %c16 = transform.param.constant 16 : i64 -> !transform.any_param
++    %tiles = transform.merge_handles %c8, %c16 : !transform.any_param
++    %c1 = transform.param.constant 1 : i64 -> !transform.any_param
++    %c0 = transform.param.constant 0 : i64 -> !transform.any_param
++    %interchange = transform.merge_handles %c1, %c0 : !transform.any_param
++    %1, %loops = transform.structured.tile_using_for %0 tile_sizes *(%tiles) interchange = *(%interchange)
++      : (!transform.any_op, !transform.any_param, !transform.any_param) -> (!transform.any_op, !transform.any_op)
++    // Verify that correct number of loops is present in packed result.
++    %loop:2 = transform.split_handle %loops : (!transform.any_op)
++      -> (!transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_packed_tile_sizes_and_packed_interchange(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
+ module attributes {transform.with_named_sequence} {
+   transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
+     %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+@@ -270,6 +417,158 @@ func.func @tile_linalg_matmul(
+ 
+ // -----
+ 
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    // expected-error @below {{interchange length exceeds iteration space dimensions}}
++    %1, %loops:2 = transform.structured.tile_using_for %0 tile_sizes [8, 16] interchange = [0, 1, 2]
++      : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_interchange_length_exceeds_rank(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    // expected-error @below {{expects interchange values to be in range [0, 3), found: 3}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = [0, 3, 1]
++      : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_interchange_out_of_range(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    // expected-error @below {{found duplicate interchange value: 1}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = [0, 1, 1]
++      : (!transform.any_op) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_interchange_duplicate_value(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c3 = transform.param.constant 3 : i64 -> !transform.any_param
++    // expected-error @below {{expects interchange values to be in range [0, 3), found: 3}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = [0, %c3, 1]
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_dynamic_valued_interchange_out_of_range(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c0 = transform.param.constant 0 : i64 -> !transform.any_param
++    // expected-error @below {{found duplicate interchange value: 0}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = [0, %c0, 1]
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_dynamic_valued_interchange_duplicate_value(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %c0a = transform.param.constant 0 : i64 -> !transform.any_param
++    %c0b = transform.param.constant 0 : i64 -> !transform.any_param
++    // expected-error @below {{found duplicate interchange value: 0}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = [%c0a, %c0b, 1]
++      : (!transform.any_op, !transform.any_param, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_dynamic_valued_interchange_duplicate_value_from_two_constant_params(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
++module attributes {transform.with_named_sequence} {
++  transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
++    %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++    %packed = transform.test_produce_param (0.0 : f64) : !transform.any_param
++    // expected-error @below {{expected the parameter to be associated with an integer attribute}}
++    %1, %loops:3 = transform.structured.tile_using_for %0 tile_sizes [8, 16, 4] interchange = *(%packed)
++      : (!transform.any_op, !transform.any_param) -> (!transform.any_op, !transform.any_op, !transform.any_op, !transform.any_op)
++    transform.yield
++  }
++}
++
++func.func @tile_linalg_matmul_packed_interchange_non_integer_param(
++  %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32> {
++  %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
++                     outs(%arg2: tensor<128x128xf32>)
++    -> tensor<128x128xf32>
++  return %0 : tensor<128x128xf32>
++}
++
++// -----
++
+ module attributes {transform.with_named_sequence} {
+   transform.named_sequence @__transform_main(%arg1: !transform.any_op {transform.readonly}) {
+     %0 = transform.structured.match ops{["linalg.matmul"]} in %arg1 : (!transform.any_op) -> !transform.any_op
+diff --git a/mlir/test/python/dialects/transform_structured_ext.py b/mlir/test/python/dialects/transform_structured_ext.py
+index fcede61100e00..dfe798932a238 100644
+--- a/mlir/test/python/dialects/transform_structured_ext.py
++++ b/mlir/test/python/dialects/transform_structured_ext.py
+@@ -511,6 +511,18 @@ def testTileAttributes(target):
+     # CHECK: interchange = [0, 1]
+ 
+ 
++@run
++@create_sequence
++def testTileInterchangeMixed(target):
++    i0 = constant_param(0)
++    i1 = Attribute.parse("1")
++    structured.TileUsingForOp(target, sizes=[4, 8], interchange=[i0, i1])
++    # CHECK-LABEL: TEST: testTileInterchangeMixed
++    # CHECK-DAG: %[[I0:.*]] = transform.param.constant 0
++    # CHECK: %{{.+}}, %{{.+}}:2 = transform.structured.tile_using_for
++    # CHECK-SAME: [4, 8] interchange = [%[[I0]], 1]
++
++
+ @run
+ @create_sequence
+ def testTileZero(target):
+@@ -543,6 +555,43 @@ def testTileDynamic():
+     # CHECK: %{{.+}}, %{{.+}}:3 = transform.structured.tile_using_for %{{.*}}[%[[FIRST]], 3, %[[SECOND]], 0]
+ 
+ 
++@run
++@create_sequence
++def testTilePackedSizes(target):
++    tiles = structured.MatchOp.match_op_names(target, ["arith.constant"])
++    structured.TileUsingForOp(target, sizes=tiles)
++    # CHECK-LABEL: TEST: testTilePackedSizes
++    # CHECK: %[[T:.*]] = transform.structured.match
++    # CHECK: %{{.+}}, %{{.+}} = transform.structured.tile_using_for
++    # CHECK-SAME: tile_sizes *(%[[T]])
++    # CHECK-SAME: (!transform.any_op, !transform.any_op) -> (!transform.any_op, !transform.any_op)
++
++
++@run
++@create_sequence
++def testTilePackedInterchange(target):
++    interchange = structured.MatchOp.match_op_names(target, ["arith.constant"])
++    structured.TileUsingForOp(target, sizes=[4, 8], interchange=interchange)
++    # CHECK-LABEL: TEST: testTilePackedInterchange
++    # CHECK: %[[I:.*]] = transform.structured.match
++    # CHECK: %{{.+}}, %{{.+}}:2 = transform.structured.tile_using_for
++    # CHECK-SAME: [4, 8] interchange = *(%[[I]])
++
++
++@run
++@create_sequence
++def testTilePackedSizesAndInterchange(target):
++    tiles = structured.MatchOp.match_op_names(target, ["arith.constant"])
++    interchange = structured.MatchOp.match_op_names(target, ["arith.constant"])
++    structured.TileUsingForOp(target, sizes=tiles, interchange=interchange)
++    # CHECK-LABEL: TEST: testTilePackedSizesAndInterchange
++    # CHECK: %[[T:.*]] = transform.structured.match
++    # CHECK: %[[I:.*]] = transform.structured.match
++    # CHECK: %{{.+}}, %{{.+}} = transform.structured.tile_using_for
++    # CHECK-SAME: tile_sizes *(%[[T]])
++    # CHECK-SAME: interchange = *(%[[I]])
++
++
+ @run
+ @create_sequence
+ def testTileExplicitLoopTypeSingle(target):
+
+From e915679c3c18873af128973f7fa2158e23e2d90c Mon Sep 17 00:00:00 2001
+From: Adam Siemieniuk <adam.siemieniuk@intel.com>
+Date: Thu, 6 Aug 2026 19:53:44 +0200
+Subject: [PATCH 2/4] Improve test case naming
+
+---
+ .../Dialect/Linalg/transform-op-tile.mlir     | 26 +++++++++----------
+ 1 file changed, 13 insertions(+), 13 deletions(-)
+
+diff --git a/mlir/test/Dialect/Linalg/transform-op-tile.mlir b/mlir/test/Dialect/Linalg/transform-op-tile.mlir
+index 6fecfcbbcc3c8..eaa9d4e56e8fc 100644
+--- a/mlir/test/Dialect/Linalg/transform-op-tile.mlir
++++ b/mlir/test/Dialect/Linalg/transform-op-tile.mlir
+@@ -127,7 +127,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_packed_tile_sizes_loop_result_arity_mismatch(
++func.func @negative_tile_linalg_matmul_packed_tile_sizes_loop_result_arity_mismatch(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -241,7 +241,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul(
++func.func @negative_tile_linalg_matmul_param_value_count_mismatch(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> (tensor<128x128xf32>, tensor<128x128xf32>) {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -268,7 +268,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul(
++func.func @negative_tile_linalg_matmul_size_producer_count_mismatch(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> (tensor<128x128xf32>, tensor<128x128xf32>) {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -378,7 +378,7 @@ module attributes {transform.with_named_sequence} {
+ 
+ // -----
+ 
+-func.func @too_many_tiles(%arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>,
++func.func @negative_too_many_tiles(%arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>,
+                           %arg2: tensor<128x128xf32>) ->  tensor<128x128xf32> {
+   // expected-note @below {{target op}}
+   %0 = linalg.matmul ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -406,7 +406,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul(
++func.func @negative_tile_linalg_matmul_loop_result_arity_mismatch(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -427,7 +427,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_interchange_length_exceeds_rank(
++func.func @negative_tile_linalg_matmul_interchange_length_exceeds_rank(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -448,7 +448,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_interchange_out_of_range(
++func.func @negative_tile_linalg_matmul_interchange_out_of_range(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -469,7 +469,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_interchange_duplicate_value(
++func.func @negative_tile_linalg_matmul_interchange_duplicate_value(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -491,7 +491,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_dynamic_valued_interchange_out_of_range(
++func.func @negative_tile_linalg_matmul_dynamic_valued_interchange_out_of_range(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -513,7 +513,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_dynamic_valued_interchange_duplicate_value(
++func.func @negative_tile_linalg_matmul_dynamic_valued_interchange_duplicate_value(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -536,7 +536,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_dynamic_valued_interchange_duplicate_value_from_two_constant_params(
++func.func @negative_tile_linalg_matmul_dynamic_valued_interchange_duplicate_value_from_two_constant_params(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -558,7 +558,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul_packed_interchange_non_integer_param(
++func.func @negative_tile_linalg_matmul_packed_interchange_non_integer_param(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+@@ -578,7 +578,7 @@ module attributes {transform.with_named_sequence} {
+   }
+ }
+ 
+-func.func @tile_linalg_matmul(
++func.func @negative_tile_linalg_matmul_zero_tiles_loop_result_arity_mismatch(
+   %arg0: tensor<128x128xf32>, %arg1: tensor<128x128xf32>, %arg2: tensor<128x128xf32>)
+     -> tensor<128x128xf32> {
+   %0 = linalg.matmul  ins(%arg0, %arg1: tensor<128x128xf32>, tensor<128x128xf32>)
+
+From c2c135fdb22bae169d95effac88a6b33176e60ac Mon Sep 17 00:00:00 2001
+From: Adam Siemieniuk <adam.siemieniuk@intel.com>
+Date: Fri, 7 Aug 2026 08:37:32 +0200
+Subject: [PATCH 3/4] Python formatting
+
+---
+ mlir/python/mlir/dialects/transform/structured.py | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/mlir/python/mlir/dialects/transform/structured.py b/mlir/python/mlir/dialects/transform/structured.py
+index f4a17e9907927..7f01e59843668 100644
+--- a/mlir/python/mlir/dialects/transform/structured.py
++++ b/mlir/python/mlir/dialects/transform/structured.py
+@@ -580,7 +580,9 @@ def __init__(
+     ):
+         packed_tile_sizes = None
+         if isinstance(sizes, (Operation, Value, OpView)):
+-            dynamic_sizes, packed_tile_sizes, static_sizes = _dispatch_mixed_values(sizes)
++            dynamic_sizes, packed_tile_sizes, static_sizes = _dispatch_mixed_values(
++                sizes
++            )
+             scalable_sizes = []
+         else:
+             has_scalable_sizes = any(
+@@ -588,8 +590,8 @@ def __init__(
+                 for v in (sizes or [])
+             )
+             if has_scalable_sizes:
+-                dynamic_sizes, static_sizes, scalable_sizes = _dispatch_dynamic_index_list(
+-                    sizes
++                dynamic_sizes, static_sizes, scalable_sizes = (
++                    _dispatch_dynamic_index_list(sizes)
+                 )
+             else:
+                 (
+
+From 5740cf3fca1ede16e83b9b1258bc350e99476ee3 Mon Sep 17 00:00:00 2001
+From: Adam Siemieniuk <adam.siemieniuk@intel.com>
+Date: Fri, 7 Aug 2026 08:46:30 +0200
+Subject: [PATCH 4/4] Reformat again
+
+---
+ mlir/python/mlir/dialects/transform/structured.py | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/mlir/python/mlir/dialects/transform/structured.py b/mlir/python/mlir/dialects/transform/structured.py
+index 7f01e59843668..67eca6886c5dc 100644
+--- a/mlir/python/mlir/dialects/transform/structured.py
++++ b/mlir/python/mlir/dialects/transform/structured.py
+@@ -590,9 +590,11 @@ def __init__(
+                 for v in (sizes or [])
+             )
+             if has_scalable_sizes:
+-                dynamic_sizes, static_sizes, scalable_sizes = (
+-                    _dispatch_dynamic_index_list(sizes)
+-                )
++                (
++                    dynamic_sizes,
++                    static_sizes,
++                    scalable_sizes,
++                ) = _dispatch_dynamic_index_list(sizes)
+             else:
+                 (
+                     dynamic_sizes,

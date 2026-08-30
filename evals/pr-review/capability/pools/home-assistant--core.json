@@ -6290,6 +6290,27 @@
       "state": "MERGED",
       "title": "Use device class selector for sql",
       "url": "https://github.com/home-assistant/core/pull/180324"
+    },
+    {
+      "additions": 34,
+      "author": {
+        "id": "MDQ6VXNlcjE0MjQ1OTY=",
+        "is_bot": false,
+        "login": "iMicknl",
+        "name": "Mick Vleeshouwer"
+      },
+      "baseRefOid": "eccfff20b6f0c5ea44345e9545a939d967b8bc94",
+      "changedFiles": 3,
+      "closedAt": "2026-07-20T06:38:24Z",
+      "createdAt": "2026-07-19T21:27:17Z",
+      "deletions": 3,
+      "headRefOid": "a1637a5469173a9f69672e3d647a6c2254b96bee",
+      "isDraft": false,
+      "mergedAt": "2026-07-20T06:38:24Z",
+      "number": 176857,
+      "state": "MERGED",
+      "title": "Update stored host on Overkiz local gateway rediscovery",
+      "url": "https://github.com/home-assistant/core/pull/176857"
     }
   ],
   "query_limit": 300,

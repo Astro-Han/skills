@@ -26,3 +26,8 @@ Later reverts, follow-up fixes, reports, or production failures may identify can
 required finding counts only when the frozen fixture itself contains a supported entry, responsible
 owner, observable consequence, and reachable evidence. Hindsight alone is not gold. Case selection
 and independent gold begin only after the candidate commit is frozen.
+
+The repository stores only [`gold-attestation.json`](gold-attestation.json). The answer key remains
+outside the executor workspace. Repository pool snapshots are supplemented only with exact metadata
+for older in-window candidates found through later failure signals; the later evidence is excluded
+from fixtures and gold review.

@@ -24,10 +24,10 @@
       "change_type": "representation-transformation-serialization"
     },
     {
-      "repo": "sveltejs/svelte",
-      "number": 18720,
-      "title": "fix: render `selected` options for `<select multiple>` with an array `value` on the server",
-      "url": "https://github.com/sveltejs/svelte/pull/18720",
+      "repo": "nushell/nushell",
+      "number": 18620,
+      "title": "feat(date): add new commands `date floor` and `date ceil`",
+      "url": "https://github.com/nushell/nushell/pull/18620",
       "change_type": "representation-transformation-serialization"
     },
     {
@@ -52,10 +52,10 @@
       "change_type": "ownership-composition-launch"
     },
     {
-      "repo": "apache/maka",
-      "number": 3813,
-      "title": "refactor(runtime-host): unify local deployment handoffs",
-      "url": "https://github.com/apache/maka/pull/3813",
+      "repo": "llvm/llvm-project",
+      "number": 212892,
+      "title": "[HLSL] Generate semantic signature metadata",
+      "url": "https://github.com/llvm/llvm-project/pull/212892",
       "change_type": "ownership-composition-launch"
     },
     {
@@ -122,10 +122,10 @@
       "change_type": "trust-boundary-validation-permissions"
     },
     {
-      "repo": "microsoft/vscode",
-      "number": 332789,
-      "title": "mcp: match allowed server URLs to the fetch destination",
-      "url": "https://github.com/microsoft/vscode/pull/332789",
+      "repo": "home-assistant/core",
+      "number": 176857,
+      "title": "Update stored host on Overkiz local gateway rediscovery",
+      "url": "https://github.com/home-assistant/core/pull/176857",
       "change_type": "trust-boundary-validation-permissions"
     },
     {
@@ -150,10 +150,10 @@
       "change_type": "dependency-api-version-contract"
     },
     {
-      "repo": "home-assistant/core",
-      "number": 180358,
-      "title": "Add support for priority to SMTP integration",
-      "url": "https://github.com/home-assistant/core/pull/180358",
+      "repo": "llvm/llvm-project",
+      "number": 214539,
+      "title": "[mlir][linalg] TileUsingFor - variadic tiles and interchange",
+      "url": "https://github.com/llvm/llvm-project/pull/214539",
       "change_type": "dependency-api-version-contract"
     },
     {

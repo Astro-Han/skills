@@ -1,0 +1,137 @@
+{
+  "additions": 289,
+  "author": "pyz4",
+  "base_sha": "b70fc60a8ea2bb329b4f818f392643c1f72abf1b",
+  "body": "<!--\nThanks for contributing to Nushell!\n\nBefore submitting, please read the contributing guide:\nhttps://github.com/nushell/nushell/blob/main/CONTRIBUTING.md\n\nThis template helps reviewers understand your changes and allows us to generate high-quality release notes.\n-->\n\n## Description\n<!--\nExplain what this PR does and why.\n\nThis section is intentionally flexible:\n- Describe the problem\n- Explain your approach\n- Include technical details if relevant\n\nGood examples:\n- \"In this PR, I fixed...\"\n- \"In this PR, I added support for...\"\n- \"This change improves X by...\"\n\nWrite as much or as little as needed for reviewers to understand your changes.\n-->\nThis PR adds two new commands `date floor` and `date ceil` that rounds a date value down and up, respectively, to a specified duration boundary. See examples\n\n## User-facing changes (Release notes)\n<!--\nThis section is used (mostly as-is) for https://www.nushell.sh/blog/\n\nDescribe how Nushell behavior changes from a user's perspective.\nDo NOT describe internal Rust changes here.\n\nWrite in a release note style, for example:\n- \"Added support for...\"\n- \"Fixed an issue where...\"\n- \"Nushell now supports...\"\n- \"Improved performance of...\"\n\nIf your changes do NOT affect users (internal refactors, cleanup, etc.),\njust write:\n- \"n/a\"\n- \"nan\"\n- or similar\n\nThis tells us the change should not appear in the changelog.\n\nTips:\n- Focus on observable behavior\n- Include examples if helpful\n- Keep it concise\n\nYou can:\n- Write a short paragraph (will appear as a bullet point), OR\n- Use headings (###) if your change needs more structure\n\nAvoid writing things like:\n- \"In this PR, I refactored...\"\n- \"This updates internal code...\"\n\nYou may leave this blank until the PR is ready.\n-->\n### Added `date floor` and `date ceil` commands\n\nUsers will have access to two new commands `date floor` and `date ceil` that rounds a date value down and up, respectively, to a specified duration boundary.\n```nushell\n#  Round down to the nearest hour\n  > 2026-07-15T12:11:10-04:00 | date floor 1hr\n  Wed, 15 Jul 2026 12:00:00 -0400\n\n# Round list of dates down to the nearest 2day boundary\n  > [2026-07-10T00:00:00-04:00 2026-07-15T00:00:00-04:00] | date floor 2day\n  \u256d\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n  \u2502 0 \u2502 07/10/2026 12:00:00AM \u2502\n  \u2502 1 \u2502 07/14/2026 12:00:00AM \u2502\n  \u2570\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n\n#  Round date up to nearest hour\n  > 2026-07-15T12:11:10-04:00 | date ceil 1hr\n  Wed, 15 Jul 2026 12:59:59 -0400\n\n#  Round list of dates up to nearest 2day boundary\n  > [2026-07-10T00:00:00-04:00 2026-07-15T00:00:00-04:00] | date ceil 2day\n  \u256d\u2500\u2500\u2500\u252c\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256e\n  \u2502 0 \u2502 07/11/2026 11:59:59PM \u2502\n  \u2502 1 \u2502 07/15/2026 11:59:59PM \u2502\n  \u2570\u2500\u2500\u2500\u2534\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u256f\n```\n\n## Additional notes\n<!--\nOptional.\n\nExamples:\n- fixes #123\n- closes #456\n- related #789\n\nAnything else reviewers should know.\nRemove this section if not needed.\n-->\r\n",
+  "captured_at": "2026-08-30T11:04:52+00:00",
+  "case_id": "nushell-nushell-pr-18620",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "Milestone Update",
+      "status": "COMPLETED",
+      "workflowName": "Milestone Action"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Spell Check with Typos",
+      "status": "COMPLETED",
+      "workflowName": "Typos"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (Ubuntu)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-parser/fuzz (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in nu-path/fuzz (MacOS)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "`cargo` in root (WASM)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (ubuntu-22.04, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (macos-latest, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "std-lib-and-python-virtualenv (windows-latest, py)",
+      "status": "COMPLETED",
+      "workflowName": "continuous-integration"
+    }
+  ],
+  "comparison_base_sha": "7278ef34dd79016721be72f30c64a70dc3fd999c",
+  "deletions": 0,
+  "files": [
+    {
+      "additions": 143,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "crates/nu-command/src/date/ceil.rs"
+    },
+    {
+      "additions": 140,
+      "changeType": "ADDED",
+      "deletions": 0,
+      "path": "crates/nu-command/src/date/floor.rs"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/nu-command/src/date/mod.rs"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/nu-command/src/default_context.rs"
+    }
+  ],
+  "head_sha": "8c90a5dd762d62649b2572055d5fb5ce999db094",
+  "issues": [],
+  "patch_sha256": "ff2688d6b1eff796b8ec17ed9952d72c9cd2397dc3c97e27bb5811a3039aec27",
+  "pr_number": 18620,
+  "repo": "nushell/nushell",
+  "schema_version": 1,
+  "title": "feat(date): add new commands `date floor` and `date ceil`",
+  "url": "https://github.com/nushell/nushell/pull/18620"
+}

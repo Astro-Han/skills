@@ -1,19 +1,14 @@
 # Frozen pull request snapshot
 
-- PR: https://github.com/home-assistant/core/pull/180358 — `Add support for priority to SMTP integration`
-- Author: tr4nt0r
-- Target base head: `3320b683eb0e5891e86ef847afcedb351d5b373c`
-- Comparison base: `3cdbf029a7c79fa25595d083b7a3b658b7feec0c`
-- Exact source head: `91162d5f2851cec8c1066b0c843cb666b6074f9b`
-- Diff: 49 additions, 2 deletions, 7 files
+- PR: https://github.com/home-assistant/core/pull/176857 — `Update stored host on Overkiz local gateway rediscovery`
+- Author: iMicknl
+- Target base head: `eccfff20b6f0c5ea44345e9545a939d967b8bc94`
+- Comparison base: `eccfff20b6f0c5ea44345e9545a939d967b8bc94`
+- Exact source head: `a1637a5469173a9f69672e3d647a6c2254b96bee`
+- Diff: 34 additions, 3 deletions, 3 files
 - Live mergeability and review state: intentionally unavailable in this historical fixture
 
 ## Pull request body
-
-<!--
-  You are amazing! Thanks for contributing to our project!
-  Please, DO NOT DELETE ANY TEXT from this template! (unless instructed).
--->
 
 ## Proposed change
 <!--
@@ -22,8 +17,10 @@
   or resolves a feature request, be sure to link to that issue in the
   additional information section.
 -->
-Adds priority support to the `smtp.send_message` action and includes the X-Priority header in outgoing emails.
 
+When an Overkiz gateway in developer mode (`_kizboxdev` zeroconf) is rediscovered, the flow aborted as `already_configured` without refreshing the stored host. Developer mode stores the advertised host and port (rather than deriving them from the static gateway id like the `_kizbox`/DHCP paths), so a changed port left `CONF_HOST` stale.
+
+This now passes the advertised host through `_abort_if_unique_id_configured(updates=...)` to keep it current. The derived `_kizbox`/DHCP and cloud paths are left unchanged.
 
 ## Type of change
 <!--
@@ -36,10 +33,10 @@ Adds priority support to the `smtp.send_message` action and includes the X-Prior
 - [ ] Dependency upgrade
 - [ ] Bugfix (non-breaking change which fixes an issue)
 - [ ] New integration (thank you!)
-- [x] New feature (which adds functionality to an existing integration)
+- [ ] New feature (which adds functionality to an existing integration)
 - [ ] Deprecation (breaking change to happen in the future)
 - [ ] Breaking change (fix/feature causing existing functionality to break)
-- [ ] Code quality improvements to existing code or addition of tests
+- [x] Code quality improvements to existing code or addition of tests
 
 ## Additional information
 <!--
@@ -49,7 +46,7 @@ Adds priority support to the `smtp.send_message` action and includes the X-Prior
 
 - This PR fixes or closes issue: fixes #
 - This PR is related to issue: 
-- Link to documentation pull request: https://github.com/home-assistant/home-assistant.io/pull/47645
+- Link to documentation pull request: 
 - Link to developer documentation pull request: 
 - Link to frontend pull request: 
 
@@ -61,11 +58,10 @@ Adds priority support to the `smtp.send_message` action and includes the X-Prior
   for before merging your code.
 
   AI tools are welcome, but contributors are responsible for *fully*
-  understanding the code before submitting a PR. Please follow our AI policy:
-  https://developers.home-assistant.io/docs/ai_policy
+  understanding the code before submitting a PR.
 -->
 
-- [ ] I understand the code I am submitting and can explain how it works.
+- [x] I understand the code I am submitting and can explain how it works.
 - [x] The code change is tested and works locally.
 - [x] Local tests pass. **Your PR cannot be merged unless tests pass**
 - [x] There is no commented out code in this PR.
@@ -73,11 +69,11 @@ Adds priority support to the `smtp.send_message` action and includes the X-Prior
 - [x] I have followed the [perfect PR recommendations][perfect-pr]
 - [x] The code has been formatted using Ruff (`ruff format homeassistant tests`)
 - [x] Tests have been added to verify that the new code works.
-- [ ] Any generated code has been carefully reviewed for correctness and compliance with project standards.
+- [x] Any generated code has been carefully reviewed for correctness and compliance with project standards.
 
 If user exposed functionality or configuration variables are added/changed:
 
-- [x] Documentation added/updated for [www.home-assistant.io][docs-repository]
+- [ ] Documentation added/updated for [www.home-assistant.io][docs-repository]
 
 If the code communicates with devices, web services, or third-party tools:
 
@@ -121,7 +117,6 @@ To help with the load of incoming pull requests:
 [docs-repository]: https://github.com/home-assistant/home-assistant.io
 [perfect-pr]: https://developers.home-assistant.io/docs/review-process/#creating-the-perfect-pr
 
-
 ## Linked issues
 
 No closing Issue was linked in the frozen PR metadata.
@@ -136,7 +131,6 @@ No closing Issue was linked in the frozen PR metadata.
 - Check script/hassfest/docker/Dockerfile: SUCCESS
 - Prepare dependencies (3.14.5): SUCCESS
 - Check copilot instructions: SUCCESS
-- Check recorder database versions: SKIPPED
 - Check hassfest: SUCCESS
 - Check all requirements: SUCCESS
 - Dependency review: SKIPPED
@@ -147,8 +141,7 @@ No closing Issue was linked in the frozen PR metadata.
 - Split tests for full run: SKIPPED
 - Run ${{ matrix.mariadb-group }} tests Python ${{ matrix.python-version }}: SKIPPED
 - Run ${{ matrix.postgresql-group }} tests Python ${{ matrix.python-version }}: SKIPPED
-- Run SQLite ${{ matrix.sqlite-group.version }} tests Python ${{ matrix.python-version }}: SKIPPED
-- Run tests Python 3.14.5 (smtp): SUCCESS
+- Run tests Python 3.14.5 (overkiz): SUCCESS
 - Run tests Python ${{ matrix.python-version }} (${{ matrix.group }}): SKIPPED
 - Upload test coverage to Codecov (partial suite): SUCCESS
 - Upload test coverage to Codecov (full suite): SKIPPED
@@ -170,10 +163,6 @@ No closing Issue was linked in the frozen PR metadata.
 
 ## Changed files
 
-- `homeassistant/components/smtp/const.py`: +1/-0
-- `homeassistant/components/smtp/notify.py`: +12/-0
-- `homeassistant/components/smtp/services.py`: +4/-0
-- `homeassistant/components/smtp/services.yaml`: +14/-0
-- `homeassistant/components/smtp/strings.json`: +13/-0
-- `tests/components/smtp/snapshots/test_notify.ambr`: +2/-1
-- `tests/components/smtp/test_notify.py`: +3/-1
+- `homeassistant/components/overkiz/config_flow.py`: +7/-2
+- `homeassistant/components/overkiz/quality_scale.yaml`: +1/-1
+- `tests/components/overkiz/test_config_flow.py`: +26/-0
