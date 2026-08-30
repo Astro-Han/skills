@@ -1,0 +1,93 @@
+{
+  "iteration": "diverse-luna-high-v1",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "repositories": 9,
+  "candidate_prs": 60,
+  "cases": 24,
+  "paired_model_runs": 48,
+  "runner_failures": 0,
+  "skill_isolation": {
+    "candidate_loaded_isolated_skill": "24/24",
+    "baseline_loaded_isolated_skill": "0/24",
+    "user_level_skill_visible": "0/48"
+  },
+  "gold": {
+    "independent_reviewers": 2,
+    "cases_verified": "24/24",
+    "clean_cases": 21,
+    "required_findings": {
+      "P0": 0,
+      "P1": 2,
+      "P2": 1,
+      "P3": 0,
+      "total": 3
+    },
+    "canonical_digest": "9141ac4afac414b5e4d1da4a1a54b1794d9f3b84a7907b403807f028d2dd70bb"
+  },
+  "metrics": {
+    "validated_decision_critical_finding_recall": {
+      "with_skill": "1/3",
+      "without_skill": "2/3",
+      "difference_percentage_points": -33.3
+    },
+    "responses_with_unsupported_p1_p2": {
+      "with_skill": "8/24",
+      "without_skill": "11/24",
+      "difference_percentage_points": -12.5,
+      "paired_outcomes": {
+        "with_skill_better": 3,
+        "without_skill_better": 0,
+        "ties": 21
+      }
+    },
+    "unsupported_p1_p2_claims": {
+      "with_skill": 8,
+      "without_skill": 12,
+      "paired_outcomes": {
+        "with_skill_better": 4,
+        "without_skill_better": 0,
+        "ties": 20
+      }
+    },
+    "decision_ready_reviews": {
+      "with_skill": "14/24",
+      "without_skill": "11/24",
+      "difference_percentage_points": 12.5,
+      "paired_outcomes": {
+        "with_skill_better": 3,
+        "without_skill_better": 0,
+        "ties": 21
+      }
+    }
+  },
+  "secondary_pass_counts": {
+    "problem_and_scenario_match": {
+      "with_skill": "24/24",
+      "without_skill": "23/24"
+    },
+    "production_owner_match": {
+      "with_skill": "24/24",
+      "without_skill": "24/24"
+    },
+    "simplification_and_test_judgment_match": {
+      "with_skill": "14/24",
+      "without_skill": "11/24"
+    },
+    "reachability_and_severity_match": {
+      "with_skill": "14/24",
+      "without_skill": "12/24"
+    },
+    "recommendation_match": {
+      "with_skill": "14/24",
+      "without_skill": "11/24"
+    }
+  },
+  "required_finding_diagnosis": {
+    "maka_3958": "The baseline found the production text-result corruption; the Skill arm missed it and reported a different unsupported P2.",
+    "tailscale_20673": "Both arms found the supported Clear-versus-NewFlow race and both added one unsupported P1.",
+    "neovim_41328": "Both arms traced the production context path but missed the normal :bcd target-buffer regression and incorrectly accepted the patch."
+  },
+  "decision": "The run supports fewer unsupported P1/P2 findings and more decision-ready reviews. It does not support higher core-finding recall: the Skill arm found one of three required findings and the baseline found two. The one-finding recall difference is too small to treat as a stable negative effect, but it blocks any claim that this Skill has proved better core issue discovery.",
+  "public_claim": "Claim only improved review discipline and calibration from the combined evidence. Do not claim a stable percentage improvement or increased core bug discovery."
+}

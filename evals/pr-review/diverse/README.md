@@ -122,3 +122,31 @@ A/B output existed: 21 clean cases and three required findings (two P1, one P2).
 validated every key and the final reconciliation. [`gold-manifest.json`](gold-manifest.json)
 records counts, attestations, Skill hashes, and the canonical private-gold digest without exposing
 the answer keys.
+
+## First paired execution
+
+The `diverse-luna-high-v1` execution completed all 48 model calls without runner failures. The
+candidate loaded only the isolated Skill in 24/24 runs, the baseline loaded it in 0/24, and neither
+arm could see the user-level Skill. Two reviewers built and reconciled gold before outputs were
+opened, then independently scored randomized A/B outputs. They agreed on the decision-critical
+metrics after reconciling one decision-readiness judgment.
+
+| Metric | With Skill | Without Skill | Paired result |
+| --- | ---: | ---: | --- |
+| Required finding recall | 1/3 | 2/3 | one fewer finding |
+| Responses with unsupported P1/P2 | 8/24 | 11/24 | 3 wins, 0 losses, 21 ties |
+| Unsupported P1/P2 claims | 8 | 12 | 4 wins, 0 losses, 20 ties |
+| Decision-ready reviews | 14/24 | 11/24 | 3 wins, 0 losses, 21 ties |
+
+The Skill again improved review discipline: it reduced unsupported high-severity findings and made
+more conclusions usable for a merge decision. It did not improve core issue discovery. The Skill
+arm missed a production text-result corruption in Maka #3958 that the baseline found; both arms
+found the supported Tailscale #20673 race; and both missed the normal `:bcd` target-buffer regression
+in Neovim #41328 after tracing the relevant production path.
+
+This run therefore supports only a calibration and decision-quality claim. Three required findings
+are too few to estimate a stable recall effect, but the lower observed recall blocks a claim that
+the current Skill has proved better at discovering core bugs. Do not change the Skill from these
+cases: they are now opened evaluation evidence. Diagnose the repeated production-transition miss,
+then test any general method on new holdouts. The machine-readable record is
+[`results/diverse-luna-high-v1.json`](results/diverse-luna-high-v1.json).
