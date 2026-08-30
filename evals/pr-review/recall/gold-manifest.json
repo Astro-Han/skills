@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "case_count": 16,
+  "clean_case_count": 8,
+  "required_finding_count": 8,
+  "required_findings_by_severity": {
+    "P0": 1,
+    "P1": 6,
+    "P2": 1,
+    "P3": 0
+  },
+  "independent_reviewers": 2,
+  "initial_disagreement_cases": 3,
+  "reconciliation": {
+    "upheld": 1,
+    "rejected": 2,
+    "reviewers_agreed_after_recheck": true
+  },
+  "digests": {
+    "selection_sha256": "f5f03318dff99f422d54c2493fd5c3e34da61b479cde3038e90165bab6dfdc23",
+    "decision_sha256": "e2bcdd89d5b3c4e38b7795aecf748c8a98ff8ab3473adfbeaf6855db643c5cac",
+    "case_manifests_sha256": "d2938283e32241c62cd7af03ecc683c02956dd987ca58279b3c4f16fdd07fafb",
+    "private_consensus_gold_sha256": "ac0ea593eb6ab66294f1d871302872f85f7255cea6081d4a5ae08b6f63cd6611",
+    "baseline_skill_sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "candidate_skill_sha256": "6bf6c3c100fa7310e0f4b16fcea86c5478a6747c6ede7ce75bc929e0f30e35cc"
+  },
+  "attestations": {
+    "gold_completed_before_model_execution": true,
+    "candidate_frozen_before_new_case_code_was_opened": true,
+    "reviewers_did_not_design_candidate": true,
+    "reviewers_did_not_use_pr_review_skill": true,
+    "reviewers_did_not_see_model_outputs": true,
+    "private_gold_is_outside_executor_workspaces": true
+  }
+}
