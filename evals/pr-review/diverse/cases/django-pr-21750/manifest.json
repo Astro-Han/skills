@@ -1,0 +1,254 @@
+{
+  "additions": 88,
+  "author": "adamchainz",
+  "base_sha": "4ee04972e7f9163dbdf5a7c36330e3379187e187",
+  "body": "#### Trac ticket number\r\n\r\nticket-37260\r\n\r\n#### Branch description\r\n\r\nRegression in 0c487aa3a7b2417481bf48c1e5355c855873e210.\r\n\r\nSupport for database-level delete options removed \"on_delete\" from `Field.non_db_attrs` because changes to or from the new `DB_CASCADE`, `DB_SET_DEFAULT`, and `DB_SET_NULL` options require schema changes. As a consequence, an `AlterField` changing only a Python-level `on_delete` option (such as `CASCADE` to `PROTECT`) performs unnecessary schema changes when it was previously a no-op at the database level.\r\n\r\nThis commit makes `ForeignObject.non_db_attrs` a property that includes `\"on_delete\"`only when the option is not a database-level one, so that:\r\n\r\n- Python-level to Python-level changes skip DDL again,\r\n- changes to, from, or between database-level options still alter the field.\r\n\r\n#### AI Assistance Disclosure (REQUIRED)\r\n\r\n- [ ] **No AI tools were used** in preparing this PR.\r\n- [x] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\r\n\r\nClaude 5 Fable did nearly all the work here, discovering the bug and writing the commit. I made minor edits. I agree with the report and approach.\r\n\r\n#### Checklist\r\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\r\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\r\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\r\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\r\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\r\n\r\n<!-- Leave the following items unchecked if not applicable. -->\r\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\r\n- [x] I have added or updated relevant tests.\r\n- [x] I have added or updated relevant docs, including release notes if applicable.\r\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\r\n",
+  "captured_at": "2026-08-30T01:09:41+00:00",
+  "case_id": "django-pr-21750",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run_benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-commit-prefix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Coverage Tests (PostgreSQL)",
+      "status": "COMPLETED",
+      "workflowName": "Coverage Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL ${{ matrix.pg_major }}, Python ${{ matrix.python }}",
+      "status": "COMPLETED",
+      "workflowName": "GeoDjango Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "define-matrix",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "SQLite",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Screenshots",
+      "status": "COMPLETED",
+      "workflowName": "Visual Regression Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check test migrations",
+      "status": "COMPLETED",
+      "workflowName": "Check migrations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs",
+      "status": "COMPLETED",
+      "workflowName": "Docs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "flake8",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Quality Checks on a PR",
+      "status": "COMPLETED",
+      "workflowName": "PR Quality Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows, SQLite, Python 3.14",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "python",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-commit-suffix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "isort",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Ubuntu, SQLite, Python 3.14t",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "black",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "JavaScript tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scripts tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "biome",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "PENDING"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "4ee04972e7f9163dbdf5a7c36330e3379187e187",
+  "deletions": 1,
+  "files": [
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "django/db/models/fields/related.py"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "docs/releases/6.1.1.txt"
+    },
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/migrations/test_operations.py"
+    },
+    {
+      "additions": 48,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "tests/schema/tests.py"
+    }
+  ],
+  "head_sha": "e4900fe6743fd262e30b2d6a88d986644649fe07",
+  "issues": [],
+  "patch_sha256": "e4685c1e01012f0b4e8685469cd4c8e45fd007f2828212f55fe09064e799f230",
+  "pr_number": 21750,
+  "repo": "django/django",
+  "schema_version": 1,
+  "title": "Fixed #37260 -- Avoided DDL when altering only Python-level on_delete options.",
+  "url": "https://github.com/django/django/pull/21750"
+}

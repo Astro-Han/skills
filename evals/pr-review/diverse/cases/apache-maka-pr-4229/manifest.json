@@ -1,0 +1,71 @@
+{
+  "additions": 29,
+  "author": "M4n5ter",
+  "base_sha": "827b3fdf940f0bb5d309548a1f099104ec25da87",
+  "body": "<details open>\n<summary>English</summary>\n\n## Summary\n\nEnable automatic coordination relay discovery for the Desktop-owned Peer Mesh endpoint and its direct-peer fallback. Existing Meshes keep their identity and state; their normal reconciliation picks up accepted reservations, and newly created invitations include them.\n\nWhen discovery has not produced a reservation yet, the invitation view now states that the code contains direct routes only and may not work across NATs.\n\nThe verified invitation below contains two accepted `coordinationRelays` (the code view is scrolled past its one-time secret):\n\n![](https://github.com/apache/maka/blob/ee7a6de68d5e79147dd0c7cf1dc8381ddaf3b207/desktop-peer-mesh-relays.png?raw=true)\n\n## Verification\n\n- `node --test --test-name-pattern='development uses the native peer addon only for the peer-enabled launch' apps/desktop/dist/main/__tests__/runtime-host-peer-client.test.js`\n- `npm run lint`\n- `npm run format:check`\n- `npm run build`\n- `npm run typecheck`\n- `npx knip --workspace apps/desktop`\n- Real Desktop run with the release peer native addon: an existing Mesh acquired two accepted coordination relays, and a newly generated invitation contained both addresses\n\n## AI use\n\n- [ ] No generative tool made a substantive contribution\n- [x] Generative tooling made a substantive contribution\n\nTool(s) and scope: OpenAI Codex implemented the change and ran the checks under the contributor's direction. The contributor will review and decide whether to merge it.\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary above\n- [ ] No\n\n</details>\n\n<details>\n<summary>\u4e2d\u6587</summary>\n\n## \u6458\u8981\n\n\u4e3a Desktop \u81ea\u5df1\u6301\u6709\u7684 Peer Mesh endpoint \u53ca\u5176 direct-peer \u964d\u7ea7\u8def\u5f84\u542f\u7528\u81ea\u52a8\u534f\u8c03\u8282\u70b9\u53d1\u73b0\u3002\u5df2\u6709 Mesh \u4fdd\u6301\u539f\u6709 identity \u548c\u72b6\u6001\uff0c\u7531\u73b0\u6709 reconciliation \u63a5\u6536\u6210\u529f\u7684 reservation\uff1b\u4e4b\u540e\u751f\u6210\u7684\u9080\u8bf7\u7801\u4f1a\u5305\u542b\u8fd9\u4e9b\u5730\u5740\u3002\n\n\u5982\u679c discovery \u5c1a\u672a\u53d6\u5f97 reservation\uff0c\u9080\u8bf7\u754c\u9762\u4f1a\u660e\u786e\u8bf4\u660e\u8be5\u4ee3\u7801\u53ea\u5305\u542b\u76f4\u63a5\u5730\u5740\uff0c\u8de8 NAT \u65f6\u53ef\u80fd\u65e0\u6cd5\u8fde\u63a5\u3002\n\n\u4e0b\u56fe\u4e2d\u5df2\u9a8c\u8bc1\u7684\u9080\u8bf7\u7801\u5305\u542b\u4e24\u4e2a\u6210\u529f\u7684 `coordinationRelays`\uff08\u4ee3\u7801\u89c6\u56fe\u5df2\u6eda\u8fc7\u4e00\u6b21\u6027 secret\uff09\uff1a\n\n![](https://github.com/apache/maka/blob/ee7a6de68d5e79147dd0c7cf1dc8381ddaf3b207/desktop-peer-mesh-relays.png?raw=true)\n\n## \u9a8c\u8bc1\n\n- `node --test --test-name-pattern='development uses the native peer addon only for the peer-enabled launch' apps/desktop/dist/main/__tests__/runtime-host-peer-client.test.js`\n- `npm run lint`\n- `npm run format:check`\n- `npm run build`\n- `npm run typecheck`\n- `npx knip --workspace apps/desktop`\n- \u4f7f\u7528 release peer native addon \u771f\u5b9e\u8fd0\u884c Desktop\uff1a\u5df2\u6709 Mesh \u6210\u529f\u53d6\u5f97\u4e24\u4e2a\u534f\u8c03\u8282\u70b9 reservation\uff0c\u65b0\u751f\u6210\u7684\u9080\u8bf7\u7801\u5305\u542b\u8fd9\u4e24\u4e2a\u5730\u5740\n\n## AI \u4f7f\u7528\n\n- [ ] \u6ca1\u6709\u751f\u6210\u5f0f\u5de5\u5177\u4f5c\u51fa\u5b9e\u8d28\u6027\u8d21\u732e\n- [x] \u751f\u6210\u5f0f\u5de5\u5177\u4f5c\u51fa\u4e86\u5b9e\u8d28\u6027\u8d21\u732e\n\n\u5de5\u5177\u4e0e\u8303\u56f4\uff1aOpenAI Codex \u5728\u8d21\u732e\u8005\u6307\u5bfc\u4e0b\u5b9e\u73b0\u6539\u52a8\u5e76\u6267\u884c\u68c0\u67e5\uff1b\u8d21\u732e\u8005\u5c06\u5ba1\u6838\u5e76\u51b3\u5b9a\u662f\u5426\u5408\u5e76\u3002\n\n## \u68c0\u67e5\u6e05\u5355\n\n- [x] \u6d4b\u8bd5\u8986\u76d6\u672c\u6b21\u6539\u52a8\uff0c\u4e14\u5728\u7f3a\u5c11\u6539\u52a8\u65f6\u4f1a\u5931\u8d25\n- [x] lint\u3001\u683c\u5f0f\u3001\u7c7b\u578b\u68c0\u67e5\u53ca\u76f8\u5173\u6d4b\u8bd5\u5df2\u5728\u672c\u5730\u901a\u8fc7\n\n\u672c PR \u662f\u5426\u6539\u53d8\u884c\u4e3a\uff1f\n\n- [x] \u662f\u2014\u2014\u5df2\u5728\u4e0a\u65b9\u6458\u8981\u8bf4\u660e\n- [ ] \u5426\n\n</details>\n",
+  "captured_at": "2026-08-30T01:09:28+00:00",
+  "case_id": "apache-maka-pr-4229",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "PR effort label"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "PR effort label"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "package",
+      "status": "COMPLETED",
+      "workflowName": "Release Windows check"
+    }
+  ],
+  "comparison_base_sha": "827b3fdf940f0bb5d309548a1f099104ec25da87",
+  "deletions": 4,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/main/__tests__/runtime-host-peer-client.test.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/main/runtime-host-boot.ts"
+    },
+    {
+      "additions": 11,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "apps/desktop/src/main/runtime-host-peer-client.ts"
+    },
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "apps/desktop/src/renderer/settings/runtime-host-peer-mesh-dialog.tsx"
+    }
+  ],
+  "head_sha": "cac9e4ab6c81a834639d757492307618a1b8b688",
+  "issues": [],
+  "patch_sha256": "2bf1466c3943103edd03116efe44416cbfdd71eba5c82bacf4d26c9ac7e770c5",
+  "pr_number": 4229,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(desktop): enable relay discovery for Peer Mesh",
+  "url": "https://github.com/apache/maka/pull/4229"
+}

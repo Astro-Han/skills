@@ -1,0 +1,690 @@
+{
+  "additions": 94,
+  "author": "Kayvan-Zahiri",
+  "base_sha": "7ae99e21bbc6176cbd23cb9abc7b7e3fb507bdf9",
+  "body": "`uvx git+https://github.com/uPesy/easyeda2kicad.py` fails with \"Not a valid package or extra name\".\n\n`has_python_script_ext` calls `Path::extension()` on the raw argument, so any URL whose last segment ends in `.py` is read as a script path. uv then parses the whole URL as a package name, which is where the message comes from.\n\nThis skips the script check when the argument carries a scheme `Scheme::parse` recognises. Pairing `split_scheme` with `Scheme::parse` is deliberate and matches the existing use in `verbatim_url.rs`: a bare `split_scheme` would read the `C:` in `C:\\script.py` as a scheme and break script detection on Windows.\n\nBefore:\n\n```console\n$ uv tool run --offline git+https://github.com/uPesy/easyeda2kicad.py\nerror: Not a valid package or extra name: \"git+https://github.com/uPesy/easyeda2kicad.py\"\n```\n\nAfter, it reaches the git fetch and stops only on `--offline`:\n\n```console\nUpdating https://github.com/uPesy/easyeda2kicad.py (HEAD)\nerror: ... Remote Git fetches are not allowed because network connectivity is disabled\n```\n\nTwo tests added beside the existing script tests. They use `--offline`, so they exercise the parse without touching the network. Both fail without the change with the exact error above. The existing `script.py`, missing-`script.py` and `--from script.py` behaviours are unchanged.\n\nCloses #21141",
+  "captured_at": "2026-08-30T01:09:30+00:00",
+  "case_id": "astral-uv-pr-21144",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "plan / plan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / rust",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / prettier",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-fmt / python",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "review",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / ruff",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / ty",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / shellcheck",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / validate-pyproject",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / readme",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / clippy on linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / clippy on windows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / hawk",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / cargo shear",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lint / typos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-docs / mkdocs",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-zizmor / zizmor",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-publish / cargo publish dry-run",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-release / dist plan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-lock / uv lockfiles",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-generated-files / cargo dev generate-all",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 1 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 2 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test / cargo test on windows 3 of 3",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / check windows crate version",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-windows-trampolines / check binary",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / check on x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / check on i686",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / check on aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / test on x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / test on i686",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-windows-trampolines / test on aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux libc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux armv7 gnueabihf",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / linux musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / macos aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / macos x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / windows x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / windows aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / msrv",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / android aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-dev-binaries / freebsd",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / sdist",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / x86_64-apple-darwin",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / aarch64-apple-darwin",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / x86_64-pc-windows-msvc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / i686-pc-windows-msvc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / aarch64-pc-windows-msvc",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / i686-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / x86_64-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / aarch64-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / armv7-unknown-linux-gnueabihf",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / arm-unknown-linux-musleabihf",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / s390x-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / powerpc64le-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / riscv64gc-unknown-linux-gnu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / x86_64-unknown-linux-musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / i686-unknown-linux-musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / aarch64-unknown-linux-musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / armv7-unknown-linux-musleabihf",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / riscv64gc-unknown-linux-musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-release-binaries / check wheel contents",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / plan",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build uv",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build alpine:3.23,alpine3.23,alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build alpine:3.22,alpine3.22",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build debian:trixie-slim,trixie-slim,debian-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build buildpack-deps:trixie,trixie,debian",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.14-alpine3.23,python3.14-alpine3.23,python3.14-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.13-alpine3.23,python3.13-alpine3.23,python3.13-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.12-alpine3.23,python3.12-alpine3.23,python3.12-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.11-alpine3.23,python3.11-alpine3.23,python3.11-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.10-alpine3.23,python3.10-alpine3.23,python3.10-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.9-alpine3.22,python3.9-alpine3.22,python3.9-alpine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.14-trixie,python3.14-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.13-trixie,python3.13-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.12-trixie,python3.12-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.11-trixie,python3.11-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.10-trixie,python3.10-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.9-trixie,python3.9-trixie",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.14-slim-trixie,python3.14-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.13-slim-trixie,python3.13-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.12-slim-trixie,python3.12-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.11-slim-trixie,python3.11-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.10-slim-trixie,python3.10-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build-docker / build python:3.9-slim-trixie,python3.9-trixie-slim",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build-docker / annotate uv",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / walltime build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / simulated",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "bench / walltime on aarch64 linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / linux musl",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / windows x86_64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-smoke / windows aarch64",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-integration",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-system",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / prefecthq/prefect",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / pallets/flask",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-ecosystem / pydantic/pydantic-core",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test uv publish",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "all required jobs passed",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodSpeed Performance Analysis",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "7ae99e21bbc6176cbd23cb9abc7b7e3fb507bdf9",
+  "deletions": 6,
+  "files": [
+    {
+      "additions": 23,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "crates/uv/src/commands/tool/run.rs"
+    },
+    {
+      "additions": 71,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "crates/uv/tests/tool/tool_run.rs"
+    }
+  ],
+  "head_sha": "e9b370ece55957369f2319383fc03b5aa5d7e0ff",
+  "issues": [
+    {
+      "body": "### Summary\n\nUsing `uvx` with a git repo url that ends with `.py` causes an error:\n```\n$ uvx git+https://github.com/uPesy/easyeda2kicad.py\nerror: Not a valid package or extra name: \"git+https://github.com/uPesy/easyeda2kicad.py\". Names must start and end with\n       a letter or digit and may only contain -, _, ., and alphanumeric characters.\n```\n\nSame behavior when using `--from`:\n```\n$ uvx --from git+https://github.com/uPesy/easyeda2kicad.py easyeda2kicad\nerror: Not a valid package or extra name: \"git+https://github.com/uPesy/easyeda2kicad.py\". Names must start and end with\n       a letter or digit and may only contain -, _, ., and alphanumeric characters.\n```\n\nHere is the check that causes the issue:\nhttps://github.com/astral-sh/uv/blob/210d1f6785e95a8c8c0d53e284408c9be1134700/crates/uv/src/commands/tool/run.rs#L127-L130\n\n...which is invoked from here:\nhttps://github.com/astral-sh/uv/blob/210d1f6785e95a8c8c0d53e284408c9be1134700/crates/uv/src/commands/tool/run.rs#L175-L193\n\n### Platform\n\nOpenSuse Tumbleweed 7.1.3-1-default x86_64 GNU/Linux\n\n### Version\n\n0.12.4\n\n### Python version\n\nPython 3.12.13",
+      "number": 21141,
+      "title": "uvx: git url is rejected when the repository name ends in .py",
+      "url": "https://github.com/astral-sh/uv/issues/21141"
+    }
+  ],
+  "patch_sha256": "f75b71a5efa6e83fd2e47fb77c6877e407a08e85a86b9a2e8cafe9de38fac4b3",
+  "pr_number": 21144,
+  "repo": "astral-sh/uv",
+  "schema_version": 1,
+  "title": "Do not treat a URL ending in `.py` as a script path",
+  "url": "https://github.com/astral-sh/uv/pull/21144"
+}

@@ -1,0 +1,178 @@
+From ea088d64c2c437f7c79f10b6b641b47fe252c052 Mon Sep 17 00:00:00 2001
+From: Jacob Walls <jacobtylerwalls@gmail.com>
+Date: Fri, 14 Aug 2026 16:21:12 -0400
+Subject: [PATCH] Fixed #37278 -- Made QuerySet.totally_ordered understand
+ aliases to pure Col/ColPairs.
+
+Thanks Simon Charette for the review.
+---
+ django/db/models/query.py           | 50 +++++++++++++++++++++--------
+ tests/composite_pk/test_order_by.py |  6 ++++
+ tests/ordering/models.py            |  2 ++
+ tests/ordering/tests.py             | 31 ++++++++++++++++++
+ 4 files changed, 75 insertions(+), 14 deletions(-)
+
+diff --git a/django/db/models/query.py b/django/db/models/query.py
+index 748a0508b2ee..222b1c28d95f 100644
+--- a/django/db/models/query.py
++++ b/django/db/models/query.py
+@@ -26,7 +26,16 @@
+ from django.db.models import AutoField, DateField, DateTimeField, Field, Max, sql
+ from django.db.models.constants import LOOKUP_SEP, OnConflict
+ from django.db.models.deletion import Collector
+-from django.db.models.expressions import Case, DatabaseDefault, F, OrderBy, Value, When
++from django.db.models.expressions import (
++    Case,
++    Col,
++    ColPairs,
++    DatabaseDefault,
++    F,
++    OrderBy,
++    Value,
++    When,
++)
+ from django.db.models.fetch_modes import FETCH_ONE
+ from django.db.models.functions import Cast, Trunc
+ from django.db.models.query_utils import PROHIBITED_FILTER_KWARGS, FilteredRelation, Q
+@@ -2048,7 +2057,7 @@ def totally_ordered(self):
+             return False
+         opts = self.model._meta
+         pk_fields = {f.attname for f in opts.pk_fields}
+-        ordering_fields = set()
++        candidate_fields = set()
+         for part in ordering:
+             # Search for single field providing a total ordering.
+             field_name = None
+@@ -2058,7 +2067,17 @@ def totally_ordered(self):
+                 field_name = part.name
+             elif isinstance(part, OrderBy) and isinstance(part.expression, F):
+                 field_name = part.expression.name
+-            if field_name:
++            if annotation_col := self.query.annotations.get(field_name):
++                if isinstance(annotation_col, Col):
++                    if annotation_col.alias == self.query.base_table:
++                        candidate_fields.add(annotation_col.target)
++                elif isinstance(annotation_col, ColPairs):
++                    candidate_fields |= {
++                        c.target
++                        for c in annotation_col.get_cols()
++                        if c.alias == self.query.base_table
++                    }
++            elif field_name:
+                 if field_name == "pk":
+                     return True
+                 # Normalize attname references by using get_field().
+@@ -2068,18 +2087,21 @@ def totally_ordered(self):
+                     # Could be "?" for random ordering or a related field
+                     # lookup. Skip this part of introspection for now.
+                     continue
+-                # Ordering by a related field name orders by the referenced
+-                # model's ordering. Skip this part of introspection for now.
+-                if field.remote_field and field_name == field.name:
+-                    continue
+-                if field.attname in pk_fields and len(pk_fields) == 1:
+-                    return True
+-                if field.unique and not field.null:
+-                    return True
+-                ordering_fields.add(field.attname)
++                else:
++                    # Ordering by a related field name orders by the referenced
++                    # model's ordering. Skip this introspection for now.
++                    if field.remote_field and field_name == field.name:
++                        continue
++                    candidate_fields.add(field)
++
++        candidate_attnames = set()
++        for field in candidate_fields:
++            if field.unique and not field.null:
++                return True
++            candidate_attnames.add(field.attname)
+ 
+         # Account for members of a CompositePrimaryKey.
+-        if ordering_fields.issuperset(pk_fields):
++        if candidate_attnames.issuperset(pk_fields):
+             return True
+         # No single total ordering field, try unique_together and total
+         # unique constraints.
+@@ -2097,7 +2119,7 @@ def totally_ordered(self):
+             # cannot ensure total ordering.
+             if any(field.null for field in fields):
+                 continue
+-            if ordering_fields.issuperset(field.attname for field in fields):
++            if candidate_attnames.issuperset(field.attname for field in fields):
+                 return True
+ 
+         return False
+diff --git a/tests/composite_pk/test_order_by.py b/tests/composite_pk/test_order_by.py
+index f17d6b55e4bc..9dc29aef204a 100644
+--- a/tests/composite_pk/test_order_by.py
++++ b/tests/composite_pk/test_order_by.py
+@@ -70,3 +70,9 @@ def test_order_comments_by_pk_expr(self):
+             Comment.objects.order_by("-pk"),
+             Comment.objects.order_by(F("pk").desc(nulls_last=True)),
+         )
++
++    def test_alias_totally_ordered(self):
++        self.assertIs(
++            Comment.objects.alias(my_pk=F("pk")).order_by("my_pk").totally_ordered,
++            True,
++        )
+diff --git a/tests/ordering/models.py b/tests/ordering/models.py
+index a4e4b82d4079..3d7bd5d37a11 100644
+--- a/tests/ordering/models.py
++++ b/tests/ordering/models.py
+@@ -85,10 +85,12 @@ class OrderedByExpressionGrandChild(models.Model):
+ 
+ class BarcodedArticle(models.Model):
+     rank = models.IntegerField(unique=True, null=True)
++    unique_rank = models.IntegerField(unique=True)
+     headline = models.CharField(max_length=100)
+     slug = models.CharField(max_length=100, default="slug")
+     pub_date = models.DateField(null=True)
+     barcode = models.CharField(max_length=30, default="bar")
++    parent = models.ForeignKey("self", models.SET_NULL, null=True)
+ 
+     class Meta:
+         required_db_features = {"supports_partial_indexes"}
+diff --git a/tests/ordering/tests.py b/tests/ordering/tests.py
+index c4ffc7a89de6..1ab332f70420 100644
+--- a/tests/ordering/tests.py
++++ b/tests/ordering/tests.py
+@@ -726,6 +726,37 @@ def test_conditional_constraints(self):
+         self.assertIs(BarcodedArticle.objects.order_by("rank").totally_ordered, False)
+         self.assertIs(BarcodedArticle.objects.order_by("barcode").totally_ordered, True)
+ 
++    def test_alias(self):
++        self.assertIs(
++            Author.objects.alias(my_pk=F("pk")).order_by("my_pk").totally_ordered, True
++        )
++        self.assertIs(
++            Author.objects.alias(my_pk=F("name")).order_by("my_pk").totally_ordered,
++            False,
++        )
++
++    def test_alias_relation(self):
++        self.assertIs(
++            Author.objects.alias(my_editor=F("editor__pk"))
++            .order_by("my_editor")
++            .totally_ordered,
++            False,
++        )
++
++    def test_alias_self_relation(self):
++        self.assertIs(
++            BarcodedArticle.objects.alias(my_unique_rank=F("unique_rank"))
++            .order_by("my_unique_rank")
++            .totally_ordered,
++            True,
++        )
++        self.assertIs(
++            BarcodedArticle.objects.alias(parent_unique_rank=F("parent__unique_rank"))
++            .order_by("parent_unique_rank")
++            .totally_ordered,
++            False,
++        )
++
+     def test_totally_ordered_none(self):
+         qs = Author.objects.order_by().none()
+         self.assertIs(qs.totally_ordered, False)

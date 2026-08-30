@@ -1,0 +1,395 @@
+{
+  "additions": 211,
+  "author": "franbull",
+  "base_sha": "902f5c414a3e0324c934222048779062ae136ee5",
+  "body": "The connector struct holds a map of peer+transitIP -> destinationIP that it uses for routing traffic. The client registers new entries in the map over the peer API.\r\n\r\nStop the transitIPs map from growing indefinitely by expiring entries after 1 hour.\r\n\r\nUpdates tailscale/corp#38261",
+  "captured_at": "2026-08-30T01:09:43+00:00",
+  "case_id": "tailscale-pr-20841",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "prepare",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "gomod-cache",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "deploy",
+      "status": "COMPLETED",
+      "workflowName": "Dockerfile build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checklocks",
+      "status": "COMPLETED",
+      "workflowName": "checklocks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "EasyEasy",
+      "status": "COMPLETED",
+      "workflowName": "natlab-basic"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "vet",
+      "status": "COMPLETED",
+      "workflowName": "tailscale.com/cmd/vet"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "matrix.test",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzz",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (1/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (2/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (3/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (4/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 1/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 2/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 3/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (benchmarks)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (1/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (2/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "privileged",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, 386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, loong64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 7)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (freebsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (openbsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ios",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (plan9, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (aix, ppc64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (solaris, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (illumos, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "android",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tailscale_go",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "depaware",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "go_generate",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "make_tidy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "licenses",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (macOS)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (1/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (2/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (3/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (4/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "notify_slack",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "merge_blocker",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability_strict",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "902f5c414a3e0324c934222048779062ae136ee5",
+  "deletions": 15,
+  "files": [
+    {
+      "additions": 112,
+      "changeType": "MODIFIED",
+      "deletions": 13,
+      "path": "feature/conn25/conn25.go"
+    },
+    {
+      "additions": 99,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "feature/conn25/conn25_test.go"
+    }
+  ],
+  "head_sha": "c53c21cd4fb270ab75cc659807376efb6bb71202",
+  "issues": [],
+  "patch_sha256": "68e3238dbcaf69e0d6f996be522528e9c405f3bced0ca614a77c9a92a466bdcb",
+  "pr_number": 20841,
+  "repo": "tailscale/tailscale",
+  "schema_version": 1,
+  "title": "feature/conn25: expire connector state",
+  "url": "https://github.com/tailscale/tailscale/pull/20841"
+}

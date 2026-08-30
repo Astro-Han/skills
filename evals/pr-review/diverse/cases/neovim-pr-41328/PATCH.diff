@@ -1,0 +1,165 @@
+From aeae2ff9577dc8784a13f6132284264ec40eec37 Mon Sep 17 00:00:00 2001
+From: "Justin M. Keyes" <justinkz@gmail.com>
+Date: Sat, 15 Aug 2026 16:41:33 +0200
+Subject: [PATCH] fix(cwd): nvim_win_set_buf changes global CWD
+
+Problem:
+nvim_win_set_buf() on a non-current win, while the current win has
+a win-local dir, changes the global CWD:
+
+    :vsplit | lcd ..
+    :call nvim_win_set_buf(other_win, buf)
+    :wincmd l
+    :verbose pwd
+    [global] /parent        " expected: the initial cwd
+
+Analysis:
+`globaldir` is where to return when no local dir applies; NULL means the
+process CWD is already there. Switching to a window with no local dir
+makes update_cwd() chdir back to `globaldir` and clear it. kCtxKeepCwd
+restores the process CWD but not that bookkeeping, so the restored
+window-local dir is mistaken for the global one.
+
+Solution:
+Save/restore `globaldir` with the CWD.
+---
+ src/nvim/context.c                  | 25 +++++++++++++++++++------
+ src/nvim/context_defs.h             |  5 +++--
+ test/functional/ex_cmds/cd_spec.lua | 23 +++++++++++++++++++++--
+ 3 files changed, 43 insertions(+), 10 deletions(-)
+
+diff --git a/src/nvim/context.c b/src/nvim/context.c
+index 7afab8d891594f..27fa060de63b88 100644
+--- a/src/nvim/context.c
++++ b/src/nvim/context.c
+@@ -311,13 +311,14 @@ static void ctx_localdirs_restore(CtxSwitch *cs, win_T *cwp, tabpage_T *tp, bool
+   if (!(persist && cs->cs_globaldir == NULL && globaldir != NULL)) {
+     xfree(globaldir);
+     globaldir = cs->cs_globaldir;
++    cs->cs_globaldir = NULL;
+   }
+ }
+ 
+ /// Saves the dir state to be restored by ctx_dirs_restore():
+-/// - kCtxKeepCwd or kCtxKeepDirs: the CWD, so any directory change caused by switching to `wp`
+-///   ('autochdir', win/tab-local directories) can be undone.
+-/// - kCtxKeepDirs: also copies of the target context's dir scopes (w/b/tp-local, global).
++/// - kCtxKeepCwd or kCtxKeepDirs: the CWD and `globaldir`, so any directory change caused by
++///   switching to `wp` ('autochdir', win/tab-local directories) can be undone.
++/// - kCtxKeepDirs: also copies of the target context's dir scopes (w/b/tp-local).
+ static void ctx_dirs_save(CtxSwitch *cs, win_T *wp, tabpage_T *tp, buf_T *buf)
+   FUNC_ATTR_NONNULL_ARG(1, 2, 3)
+ {
+@@ -325,6 +326,9 @@ static void ctx_dirs_save(CtxSwitch *cs, win_T *wp, tabpage_T *tp, buf_T *buf)
+     return;
+   }
+ 
++  // `globaldir` is where to return when no local dir applies (NULL: the CWD is already there).
++  cs->cs_globaldir = globaldir == NULL ? NULL : xstrdup(globaldir);
++
+   // kCtxKeepDirs: also save copies of the target context's dir scopes.
+   if (cs->cs_flags & kCtxKeepDirs) {
+     buf_T *target_buf = buf != NULL ? buf : wp->w_buffer;
+@@ -332,7 +336,6 @@ static void ctx_dirs_save(CtxSwitch *cs, win_T *wp, tabpage_T *tp, buf_T *buf)
+     cs->cs_w_localdir = wp->w_localdir == NULL ? NULL : xstrdup(wp->w_localdir);
+     cs->cs_b_localdir = target_buf->b_localdir == NULL ? NULL : xstrdup(target_buf->b_localdir);
+     cs->cs_tp_localdir = tp->tp_localdir == NULL ? NULL : xstrdup(tp->tp_localdir);
+-    cs->cs_globaldir = globaldir == NULL ? NULL : xstrdup(globaldir);
+   }
+ 
+   // Getting and setting directory can be slow on some systems, only do this when the current or
+@@ -367,8 +370,12 @@ static void ctx_dirs_save(CtxSwitch *cs, win_T *wp, tabpage_T *tp, buf_T *buf)
+ /// target window/buffer/tab may have been closed meanwhile.
+ static void ctx_dirs_restore(CtxSwitch *cs)
+ {
+-  // kCtxKeepDirs: restore the saved dir scopes. But not for hidden buf (ctx_win).
+-  if ((cs->cs_flags & kCtxKeepDirs) && cs->cs_ctxwin_idx < 0) {
++  if (cs->cs_ctxwin_idx >= 0) {
++    return;  // Hidden-buffer target: ctx_localdirs_restore() already restored dirs.
++  }
++
++  // kCtxKeepDirs: restore the saved dir scopes.
++  if (cs->cs_flags & kCtxKeepDirs) {
+     tabpage_T *dirs_tab = NULL;
+     FOR_ALL_TABS(tp) {
+       if (tp->handle == cs->cs_dirs_tab) {
+@@ -377,7 +384,13 @@ static void ctx_dirs_restore(CtxSwitch *cs)
+       }
+     }
+     ctx_localdirs_restore(cs, NULL, dirs_tab, false);
++  } else if (cs->cs_cwd != NULL && !_ctx_did_chdir) {
++    // Pairs with the CWD restore below.
++    xfree(globaldir);
++    globaldir = cs->cs_globaldir;
++    cs->cs_globaldir = NULL;
+   }
++  XFREE_CLEAR(cs->cs_globaldir);
+ 
+   // Restore the CWD itself.
+   if (cs->cs_apply_acd) {
+diff --git a/src/nvim/context_defs.h b/src/nvim/context_defs.h
+index c45e744fec058a..ad933437002d5b 100644
+--- a/src/nvim/context_defs.h
++++ b/src/nvim/context_defs.h
+@@ -106,9 +106,10 @@ typedef struct {
+   // State kept across the switch:
+   bool cs_did_chdir;              ///< saved `ctx_did_chdir` of the enclosing context
+   handle_T cs_dirs_tab;           ///< kCtxKeepDirs: tabpage that owns cs_tp_localdir.
+-  // Saved dir state. Two users:
++  // Saved dir state. Three users:
+   // 1. hidden-buffer target always saves b/tp/globaldir (so the temp context starts dir-neutral)
+-  // 2. kCtxKeepDirs saves copies of all four.
++  // 2. kCtxKeepCwd saves globaldir.
++  // 3. kCtxKeepDirs also saves w/b/tp-localdir.
+   char *cs_w_localdir;            ///< Saved w_localdir of the target window
+   char *cs_b_localdir;            ///< Saved b_localdir of the target buffer
+   char *cs_tp_localdir;           ///< Saved tp_localdir
+diff --git a/test/functional/ex_cmds/cd_spec.lua b/test/functional/ex_cmds/cd_spec.lua
+index 59ddd678709968..fb1193379d2953 100644
+--- a/test/functional/ex_cmds/cd_spec.lua
++++ b/test/functional/ex_cmds/cd_spec.lua
+@@ -543,6 +543,14 @@ describe('cd during temp context-switch', function()
+     eq({ 1, windir, startdir }, { lwd(2), cwd(2), cwd() })
+     command('only')
+ 
++    -- Entering a hidden buffer must not consume the global dir.
++    command('lcd ' .. windir)
++    exec_lua(function(b)
++      vim.api.nvim_buf_call(b, function() end)
++    end, hidden)
++    eq({ windir, startdir }, { cwd(), cwd(-1, -1) })
++    command('lcd!')
++
+     -- An autocmd handler targeting a hidden buffer can set its buffer-local dir; the caller's
+     -- cwd is unchanged.
+     local hidden2 = hidden_buf('Xtest-cd-hidden2')
+@@ -558,9 +566,10 @@ describe('cd during temp context-switch', function()
+     end, hidden2, bufdir)
+     eq({ 1, bufdir, startdir }, { lwd(-1, -1, hidden2), cwd(-1, -1, hidden2), cwd() })
+ 
+-    -- :tcd via nvim_buf_call() persists, and the tab scope claims the new cwd.
++    -- :tcd targets the tabpage, shared with the temp context: it persists and changes the caller's
++    -- cwd. `globaldir` (the pre-switch cwd, set by :tcd) is kept, so :tcd! can return to it.
+     cd_in_buf_call(hidden, 'tcd', tabdir)
+-    eq({ 1, tabdir, tabdir }, { tlwd(), tcwd(), cwd() })
++    eq({ 1, tabdir, tabdir, startdir }, { tlwd(), tcwd(), cwd(), cwd(-1, -1) })
+   end)
+ 
+   it("nvim_open_win / nvim_win_set_buf keep the caller's cwd", function()
+@@ -584,6 +593,16 @@ describe('cd during temp context-switch', function()
+     call('nvim_win_close', float, true)
+     eq(bufdir, cwd())
+     command('bcd!')
++
++    -- Switching to a window with no local dir must not consume the global dir. #41238
++    local windir = join(startdir, directories.window)
++    command('split')
++    command('lcd ' .. windir)
++    call('nvim_win_set_buf', call('win_getid', 2), call('nvim_create_buf', true, true))
++    eq({ windir, startdir }, { cwd(), cwd(-1, -1) })
++    command('wincmd w')
++    eq({ startdir, startdir }, { cwd(), cwd(-1, -1) })
++    command('only')
+   end)
+ end)
+ 

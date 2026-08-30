@@ -1,0 +1,585 @@
+{
+  "additions": 47,
+  "author": "Viicos",
+  "base_sha": "5922459fcf33d9a8767fd0fd25a982bbf0d7668d",
+  "body": "<!-- Thank you for your contribution! -->\r\n<!-- Unless your change is trivial, please create an issue to discuss the change before creating a PR -->\r\n\r\n## Change Summary\r\n\r\nFollow up on https://github.com/pydantic/pydantic/pull/12785. Fixes https://github.com/pydantic/pydantic/issues/13599.\r\n\r\n<!-- Please give a short summary of the changes. -->\r\n\r\n## Related issue number\r\n\r\n<!-- WARNING: please use \"fix #123\" style references so the issue is closed when this PR is merged. -->\r\n\r\n## Checklist\r\n\r\n* [ ] The pull request title is a good summary of the changes - it will be used in the changelog\r\n* [ ] Unit tests for the changes exist\r\n* [ ] Tests pass on CI\r\n* [ ] Documentation reflects the changes where applicable\r\n* [ ] My PR is ready to review, **please add a comment including the phrase \"please review\" to assign reviewers**\r\n",
+  "captured_at": "2026-08-30T01:09:56+00:00",
+  "case_id": "pydantic-pr-13604",
+  "changed_files": 3,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-assignment",
+      "status": "COMPLETED",
+      "workflowName": "Enforce issue assignment"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test FastAPI (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.10",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodSpeed profiling",
+      "status": "COMPLETED",
+      "workflowName": "codspeed"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.12",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.13",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.14",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test SQLModel (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Build sdist",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "core / Build on ${{ matrix.os }} (${{ matrix.target }} - ${{ (matrix.interpreter || 'all') }}${{ (((matrix.os == 'linux') && format(' - {0}', (((matrix.manylinux == 'auto') && 'manylinux') || matrix.manylinux))) || '') }})",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Beanie (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "core / Build PGO-optimized on ${{ matrix.platform.os }} / ${{ matrix.interpreter }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test openapi-python-client (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Pandera (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Build PyEmscripten (3.14)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test ODMantic (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Run Rust benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Polar (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test on ubuntu",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test on macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test on windows",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test BentoML (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test MSRV",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Semantic Kernel (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test with debug build (3.13)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "core / Test with debug build (pypy3.11)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build-pydantic",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test LangChain (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Dify (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs-build",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Cadwyn (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test memray",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test pydantic-xml (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.10",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.12",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.13",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.14",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / 3.15t",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test ubuntu-latest / pypy3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.10",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.12",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.13",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.14",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / 3.15t",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-latest / pypy3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.10",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.12",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.13",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.14",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / 3.15t",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test windows-latest / pypy3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-15-intel / 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test macos-15-intel / 3.15t",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Redis OM Python (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test Pydantic plugin",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test Django Ninja (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Mypy typechecking tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test FastDepends (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Typechecking integration tests",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test MCP Python SDK (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.10",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.11",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.12",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.13",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.14",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test typing-extensions (`main` branch) on Python 3.15",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "core / Test build on ${{ matrix.target }}-${{ matrix.distro }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Test FastMCP (main branch) on Python ${{ matrix.python-version }}",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "core / Test build on ${{ matrix.platform.os }}",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create an issue if tests failed",
+      "status": "COMPLETED",
+      "workflowName": "Third party tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Test build on PyEmscripten (Pyodide) (3.14)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "coverage-combine",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "coverage-pr-comment",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "release-pydantic-core",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "release-pydantic",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Send tweet",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Cloudflare Pages",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodSpeed Performance Analysis",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Macroscope - Correctness Check",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Veria AI - PR Review",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "5922459fcf33d9a8767fd0fd25a982bbf0d7668d",
+  "deletions": 13,
+  "files": [
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "pydantic/_internal/_discriminated_union.py"
+    },
+    {
+      "additions": 25,
+      "changeType": "MODIFIED",
+      "deletions": 12,
+      "path": "pydantic/types.py"
+    },
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/types/unions/test_discriminated_union.py"
+    }
+  ],
+  "head_sha": "0575cb8e4396393420d5b4ced88da37de80e69b8",
+  "issues": [
+    {
+      "body": "### Initial Checks\n\n- [x] I confirm that I'm using Pydantic V2\n\n### Description\n\nNew type aliases prefixed with the type keyword are not supported as the type annotation for a callable discriminator.\n\nM1, M2, M4 ok\nM3\n```\npydantic.errors.PydanticUserError: `Tag` not provided for choice {'type': 'definition-ref', 'schema_ref': '__main__.TaggedAnyA:2210408548368'} used with `Discriminator`\n```\n\nExample Code from #12843 also doesn\u2019t work.\n\n### Example Code\n\n```Python\nimport traceback\nfrom sys import stderr\n\nfrom pydantic import BaseModel, Discriminator, Field, Tag\nfrom typing_extensions import Annotated, Any, Literal, TypeAlias\n\n\nclass A(BaseModel):\n    type_: str\n\nclass A1(A):\n    type_: Literal['A1'] = Field(alias='type')\n\nclass A2(A):\n    type_: Literal['A2'] = Field(alias='type')\n\ndef _discriminator(data: Any) -> str:\n    if isinstance(data, dict):\n        return data['type']\n    return data.type_\n\ndiscriminator = Discriminator(_discriminator)\n\ntype AnyA = A1 | A2\nAnyA_old: TypeAlias = A1 | A2\n\ntype TaggedAnyA = Annotated[A1, Tag('A1')] | Annotated[A2, Tag('A2')]\nTaggedAnyA_old: TypeAlias = Annotated[A1, Tag('A1')] | Annotated[A2, Tag('A2')]\n\n\n_data = {\"a\" : {'type': 'A1'}}\ntry:\n    class M1(BaseModel):\n        a: AnyA = Field(discriminator='type_')\n\n    M1.model_validate(_data)\nexcept Exception as e:\n    traceback.print_exc()\nelse:\n    print(\"OK\", file=stderr)\n\ntry:\n    class M2(BaseModel):\n        a: AnyA_old = Field(discriminator='type_')\n\n    M2.model_validate(_data)\nexcept Exception as e:\n    traceback.print_exc()\nelse:\n    print(\"OK\", file=stderr)\n\ntry:\n    class M3(BaseModel):\n        a: TaggedAnyA = Field(discriminator=discriminator)\n\n    M3.model_validate(_data)\nexcept Exception as e:\n    traceback.print_exc()\nelse:\n    print(\"OK\", file=stderr)\n\ntry:\n    class M4(BaseModel):\n        a: TaggedAnyA_old = Field(discriminator=discriminator)\n\n    M4.model_validate(_data)\nexcept Exception as e:\n    traceback.print_exc()\nelse:\n    print(\"OK\", file=stderr)\n```\n\n### Python, Pydantic & OS Version\n\n```Text\npydantic version: 2.13.4\n        pydantic-core version: 2.46.4\n          pydantic-core build: profile=release pgo=false\n               python version: 3.14.7 (tags/v3.14.7:823f032, Aug  5 2026, 10:51:32) [MSC v.1944 64 bit (AMD64)]\n                     platform: Windows-11-10.0.26200-SP0\n             related packages: mypy-2.3.0 typing_extensions-4.16.0\n                       commit: unknown\n```",
+      "number": 13599,
+      "title": "PEP 695 type aliases don't work with callable discriminators",
+      "url": "https://github.com/pydantic/pydantic/issues/13599"
+    }
+  ],
+  "patch_sha256": "c6f39a84b3a1aba752b65f0e2a5aee1adf23e527ba00d1721915f791ed5445fa",
+  "pr_number": 13604,
+  "repo": "pydantic/pydantic",
+  "schema_version": 1,
+  "title": "Fix support for callable discriminators with PEP 695 type aliases",
+  "url": "https://github.com/pydantic/pydantic/pull/13604"
+}

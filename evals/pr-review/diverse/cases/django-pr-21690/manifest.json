@@ -1,0 +1,236 @@
+{
+  "additions": 64,
+  "author": "vishy0",
+  "base_sha": "cef2346abf8d6e9e61a5a3599fbcf72163e6a6e5",
+  "body": "#### Trac ticket number\r\n<!-- Replace XXXXX with the corresponding Trac ticket number. -->\r\n<!-- Or delete the line and write \"N/A - typo\" for typo fixes. -->\r\n\r\nticket-37224\r\n\r\n#### Branch description\r\nShort-circuits the migration questioner for unmanaged models when adding NOT NULL fields or altering null to NOT NULL, since unmanaged models don't own their database schema and no DDL is executed for them.\r\n\r\n#### AI Assistance Disclosure (REQUIRED)\r\n<!-- Select exactly ONE of the following: -->\r\n- [x] **No AI tools were used** in preparing this PR.\r\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\r\n<!-- If AI tools were used, provide which tools were used here. -->\r\n\r\n#### Checklist\r\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\r\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\r\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\r\n- [x] The commit message is written in past tense, mentions the ticket number (if applicable), and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\r\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\r\n\r\n<!-- Leave the following items unchecked if not applicable. -->\r\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\r\n- [x] I have added or updated relevant tests.\r\n- [x] I have added or updated relevant docs, including release notes if applicable.\r\n- [ ] I have attached screenshots in both light and dark modes for any UI changes.\r\n",
+  "captured_at": "2026-08-30T01:09:42+00:00",
+  "case_id": "django-pr-21690",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run_benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-commit-prefix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Coverage Tests (PostgreSQL)",
+      "status": "COMPLETED",
+      "workflowName": "Coverage Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL ${{ matrix.pg_major }}, Python ${{ matrix.python }}",
+      "status": "COMPLETED",
+      "workflowName": "GeoDjango Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "define-matrix",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "SQLite",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Screenshots",
+      "status": "COMPLETED",
+      "workflowName": "Visual Regression Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check test migrations",
+      "status": "COMPLETED",
+      "workflowName": "Check migrations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "flake8",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Quality Checks on a PR",
+      "status": "COMPLETED",
+      "workflowName": "PR Quality Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows, SQLite, Python 3.14",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "python",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-commit-suffix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "isort",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Ubuntu, SQLite, Python 3.14t",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "black",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "JavaScript tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scripts tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "biome",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "3d34265d5d1b83fee5df3c1b6f55087b1a6a1ded",
+  "deletions": 1,
+  "files": [
+    {
+      "additions": 14,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "django/db/migrations/autodetector.py"
+    },
+    {
+      "additions": 50,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/migrations/test_autodetector.py"
+    }
+  ],
+  "head_sha": "34248cdceba3d8155f60dd6b33b0ca87b004239f",
+  "issues": [],
+  "patch_sha256": "bbc4579841bee53bd2c6dbc6e273a354e45f7b12b688ff83fa2f467e1499009e",
+  "pr_number": 21690,
+  "repo": "django/django",
+  "schema_version": 1,
+  "title": "Fixed #37224 -- Skipped questioner for changes on unmanaged model fields.",
+  "url": "https://github.com/django/django/pull/21690"
+}

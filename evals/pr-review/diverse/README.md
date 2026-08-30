@@ -85,3 +85,13 @@ python3 evals/pr-review/real_fixture.py verify-diverse-selection \
 The selection is not yet runnable evaluation evidence. The next gate is two independent private
 answer keys for all 24 cases, followed by reconciliation and immutable case capture. Do not inspect
 model outputs or change the Skill while preparing those keys.
+
+Each selected case is captured with `real_fixture.py capture` under [`cases/`](cases/). Verify every
+manifest and patch digest and require the captured `(repository, PR number)` set to equal the frozen
+selection:
+
+```bash
+python3 evals/pr-review/real_fixture.py verify-diverse-cases \
+  --cases-root evals/pr-review/diverse/cases \
+  --selection evals/pr-review/diverse/selection.json
+```

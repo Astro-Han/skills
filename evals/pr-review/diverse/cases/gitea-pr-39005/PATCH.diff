@@ -1,0 +1,202 @@
+From 1607586a2302d8b98039d56b15b6f5a35a891047 Mon Sep 17 00:00:00 2001
+From: bircni <bircni@icloud.com>
+Date: Thu, 20 Aug 2026 21:40:32 +0200
+Subject: [PATCH] fix(actions): enforce fork pull request trust boundaries
+
+Assisted-by: Codex:GPT-5
+---
+ .../access/actions_repo_permission_test.go    | 12 ++++++++
+ models/perm/access/repo_permission.go         |  2 +-
+ services/actions/job_emitter.go               |  5 ++++
+ services/actions/job_emitter_test.go          | 29 +++++++++++++++++++
+ services/actions/notifier.go                  |  3 +-
+ services/actions/notifier_helper.go           | 13 +++++++++
+ services/actions/notifier_helper_test.go      | 24 +++++++++++++++
+ 7 files changed, 85 insertions(+), 3 deletions(-)
+
+diff --git a/models/perm/access/actions_repo_permission_test.go b/models/perm/access/actions_repo_permission_test.go
+index 9fdd8ae7f43d9..c833adc64d16b 100644
+--- a/models/perm/access/actions_repo_permission_test.go
++++ b/models/perm/access/actions_repo_permission_test.go
+@@ -122,6 +122,18 @@ func TestGetActionsUserRepoPermission(t *testing.T) {
+ 		require.NoError(t, err)
+ 		assert.False(t, perm.CanRead(unit.TypeCode))
+ 
++		// Reusable workflows use a separate authorization path and must enforce
++		// the same fork-PR restriction.
++		run := &actions_model.ActionRun{RepoID: repo2.ID, IsForkPullRequest: true}
++		allowed, err := CanReadWorkflowCrossRepo(ctx, repo15, run)
++		require.NoError(t, err)
++		assert.False(t, allowed)
++
++		run.IsForkPullRequest = false
++		allowed, err = CanReadWorkflowCrossRepo(ctx, repo15, run)
++		require.NoError(t, err)
++		assert.True(t, allowed)
++
+ 		// Restore state for subsequent subtests.
+ 		task53.IsForkPullRequest = false
+ 		require.NoError(t, actions_model.UpdateTask(ctx, task53, "is_fork_pull_request"))
+diff --git a/models/perm/access/repo_permission.go b/models/perm/access/repo_permission.go
+index a59838c4fa975..7bf0fa4a6f966 100644
+--- a/models/perm/access/repo_permission.go
++++ b/models/perm/access/repo_permission.go
+@@ -685,7 +685,7 @@ func CanReadWorkflowCrossRepo(ctx context.Context, targetRepo *repo_model.Reposi
+ 	// logs in a publicly visible run; requiring a private caller keeps private content flowing private -> private.
+ 	// This is intentionally stricter than GitHub, which gates on the target repo's access setting (introduced in #32562):
+ 	// https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository#allowing-access-to-components-in-a-private-repository
+-	if run.Repo.IsPrivate {
++	if run.Repo.IsPrivate && !run.IsForkPullRequest {
+ 		if actionsUnit, err := targetRepo.GetUnit(ctx, unit.TypeActions); err == nil {
+ 			if actionsUnit.ActionsConfig().IsCollaborativeOwner(run.Repo.OwnerID) {
+ 				return true, nil
+diff --git a/services/actions/job_emitter.go b/services/actions/job_emitter.go
+index 577bc66d89e91..3f93a32d7a1fa 100644
+--- a/services/actions/job_emitter.go
++++ b/services/actions/job_emitter.go
+@@ -243,6 +243,11 @@ func checkRunConcurrency(ctx context.Context, run *actions_model.ActionRun) (*jo
+ 
+ // checkJobsOfCurrentRunAttempt resolves blocked jobs of the run's latest attempt.
+ func checkJobsOfCurrentRunAttempt(ctx context.Context, run *actions_model.ActionRun) (*jobsCheckResult, error) {
++	// Approval is the only transition allowed to release an approval-pending run.
++	if run.NeedApproval {
++		return &jobsCheckResult{}, nil
++	}
++
+ 	jobs, err := actions_model.GetRunJobsByRunAndAttemptID(ctx, run.ID, run.LatestAttemptID)
+ 	if err != nil {
+ 		return nil, err
+diff --git a/services/actions/job_emitter_test.go b/services/actions/job_emitter_test.go
+index b852cab90946e..6458a3e11cbb9 100644
+--- a/services/actions/job_emitter_test.go
++++ b/services/actions/job_emitter_test.go
+@@ -496,6 +496,35 @@ jobs:
+ 	assert.Equal(t, actions_model.StatusBlocked, refreshed.Status)
+ }
+ 
++func Test_checkJobsOfCurrentRunAttempt_NeedApprovalKeepsJobsBlocked(t *testing.T) {
++	assert.NoError(t, unittest.PrepareTestDatabase())
++	ctx := t.Context()
++
++	run := &actions_model.ActionRun{
++		RepoID: 4, OwnerID: 1, TriggerUserID: 1,
++		WorkflowID: "test.yml", Index: 9913, Ref: "refs/heads/main",
++		Status: actions_model.StatusBlocked, NeedApproval: true,
++	}
++	assert.NoError(t, db.Insert(ctx, run))
++	attempt := &actions_model.ActionRunAttempt{
++		RepoID: 4, RunID: run.ID, Attempt: 1, Status: actions_model.StatusBlocked,
++	}
++	assert.NoError(t, db.Insert(ctx, attempt))
++	_, err := db.Exec(ctx, "UPDATE `action_run` SET latest_attempt_id = ? WHERE id = ?", attempt.ID, run.ID)
++	assert.NoError(t, err)
++	run.LatestAttemptID = attempt.ID
++	job := &actions_model.ActionRunJob{
++		RunID: run.ID, RunAttemptID: attempt.ID, AttemptJobID: 1,
++		RepoID: 4, OwnerID: 1, JobID: "job1", Name: "job1", Status: actions_model.StatusBlocked,
++	}
++	assert.NoError(t, db.Insert(ctx, job))
++
++	result, err := checkJobsOfCurrentRunAttempt(ctx, run)
++	assert.NoError(t, err)
++	assert.Empty(t, result.UpdatedJobs)
++	assert.Equal(t, actions_model.StatusBlocked, unittest.AssertExistsAndLoadBean(t, &actions_model.ActionRunJob{ID: job.ID}).Status)
++}
++
+ // Test_checkRunConcurrency_HeldGroupDoesNotWake verifies that only an unoccupied concurrency group can wake up a blocked run/job.
+ func Test_checkRunConcurrency_HeldGroupDoesNotWake(t *testing.T) {
+ 	assert.NoError(t, unittest.PrepareTestDatabase())
+diff --git a/services/actions/notifier.go b/services/actions/notifier.go
+index ae8ff2b0e7d41..a9f8f9a4200b7 100644
+--- a/services/actions/notifier.go
++++ b/services/actions/notifier.go
+@@ -459,8 +459,7 @@ func (n *actionsNotifier) PullRequestReview(ctx context.Context, pr *issues_mode
+ 		return
+ 	}
+ 
+-	newNotifyInput(review.Issue.Repo, review.Reviewer, reviewHookType).
+-		WithRef(review.CommitID).
++	newPullRequestReviewNotifyInput(review.Issue.Repo, review.Reviewer, reviewHookType, review.CommitID, pr).
+ 		WithPayload(&api.PullRequestPayload{
+ 			Action:      api.HookIssueReviewed,
+ 			Index:       review.Issue.Index,
+diff --git a/services/actions/notifier_helper.go b/services/actions/notifier_helper.go
+index 2955e5f2dc803..dc91e8bdba2db 100644
+--- a/services/actions/notifier_helper.go
++++ b/services/actions/notifier_helper.go
+@@ -82,6 +82,12 @@ func newNotifyInputForSchedules(repo *repo_model.Repository) *notifyInput {
+ 	return newNotifyInput(repo, user_model.NewActionsUser(), webhook_module.HookEventSchedule)
+ }
+ 
++func newPullRequestReviewNotifyInput(repo *repo_model.Repository, reviewer *user_model.User, event webhook_module.HookEventType, commitID string, pr *issues_model.PullRequest) *notifyInput {
++	return newNotifyInput(repo, reviewer, event).
++		WithRef(commitID).
++		WithPullRequest(pr)
++}
++
+ func (input *notifyInput) WithDoer(doer *user_model.User) *notifyInput {
+ 	input.Doer = doer
+ 	return input
+@@ -411,6 +417,9 @@ func handleFilteredWorkflows(ctx context.Context, input *notifyInput, filteredWo
+ 		return
+ 	}
+ 	for _, dwf := range filteredWorkflows {
++		if !shouldCreateSkippedCommitStatusForFilteredWorkflow(input, dwf) {
++			continue
++		}
+ 		if err := CreateSkippedCommitStatusForFilteredWorkflow(ctx, input.Repo, input.Event, dwf.TriggerEvent.Name, dwf.EntryName, dwf.Content, input.Payload, "", requiredGlobs); err != nil {
+ 			log.Error("repo %s: skipped commit status for workflow %s: %v", input.Repo.FullName(), dwf.EntryName, err)
+ 			continue
+@@ -418,6 +427,10 @@ func handleFilteredWorkflows(ctx context.Context, input *notifyInput, filteredWo
+ 	}
+ }
+ 
++func shouldCreateSkippedCommitStatusForFilteredWorkflow(input *notifyInput, workflow *actions_module.DetectedWorkflow) bool {
++	return !isForkPullRequestInput(input) || workflow.TriggerEvent.Name == actions_module.GithubEventPullRequestTarget
++}
++
+ func newNotifyInputFromIssue(issue *issues_model.Issue, event webhook_module.HookEventType) *notifyInput {
+ 	return newNotifyInput(issue.Repo, issue.Poster, event)
+ }
+diff --git a/services/actions/notifier_helper_test.go b/services/actions/notifier_helper_test.go
+index 3e33f344d9cc9..47b21aed5b502 100644
+--- a/services/actions/notifier_helper_test.go
++++ b/services/actions/notifier_helper_test.go
+@@ -9,9 +9,11 @@ import (
+ 	"testing"
+ 
+ 	actions_model "gitea.dev/models/actions"
++	issues_model "gitea.dev/models/issues"
+ 	repo_model "gitea.dev/models/repo"
+ 	user_model "gitea.dev/models/user"
+ 	actions_module "gitea.dev/modules/actions"
++	"gitea.dev/modules/actions/jobparser"
+ 
+ 	"github.com/stretchr/testify/assert"
+ 	"github.com/stretchr/testify/require"
+@@ -100,3 +102,25 @@ func TestIfNeedApproval(t *testing.T) {
+ 		assert.False(t, called, "permission check must not run for restricted user")
+ 	})
+ }
++
++func TestFilteredWorkflowCommitStatusForForkPullRequest(t *testing.T) {
++	forkPR := &issues_model.PullRequest{
++		Flow:       issues_model.PullRequestFlowGithub,
++		BaseRepoID: 1,
++		HeadRepoID: 2,
++	}
++	input := newPullRequestReviewNotifyInput(&repo_model.Repository{ID: 1}, &user_model.User{ID: 2}, actions_module.GithubEventPullRequest, "refs/pull/1/head", forkPR)
++
++	assert.True(t, isForkPullRequestInput(input))
++	assert.Equal(t, "refs/pull/1/head", input.Ref.String())
++	assert.False(t, shouldCreateSkippedCommitStatusForFilteredWorkflow(input, &actions_module.DetectedWorkflow{
++		TriggerEvent: &jobparser.Event{Name: actions_module.GithubEventPullRequest},
++	}))
++	assert.True(t, shouldCreateSkippedCommitStatusForFilteredWorkflow(input, &actions_module.DetectedWorkflow{
++		TriggerEvent: &jobparser.Event{Name: actions_module.GithubEventPullRequestTarget},
++	}))
++
++	assert.True(t, shouldCreateSkippedCommitStatusForFilteredWorkflow(newNotifyInput(&repo_model.Repository{ID: 1}, &user_model.User{ID: 2}, actions_module.GithubEventPullRequest), &actions_module.DetectedWorkflow{
++		TriggerEvent: &jobparser.Event{Name: actions_module.GithubEventPullRequest},
++	}))
++}

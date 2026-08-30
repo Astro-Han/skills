@@ -1,0 +1,83 @@
+From 35e2ae33d1a9745210bb82f3395358bc8544d85e Mon Sep 17 00:00:00 2001
+From: bircni <bircni@icloud.com>
+Date: Fri, 21 Aug 2026 23:54:43 +0200
+Subject: [PATCH] fix(packages): bound Alpine metadata entries
+
+Assisted-by: Codex:GPT-5
+---
+ modules/packages/alpine/metadata.go      | 15 ++++++++++++---
+ modules/packages/alpine/metadata_test.go | 10 ++++++++++
+ 2 files changed, 22 insertions(+), 3 deletions(-)
+
+diff --git a/modules/packages/alpine/metadata.go b/modules/packages/alpine/metadata.go
+index d7e30e7108f27..524dfc7412dc0 100644
+--- a/modules/packages/alpine/metadata.go
++++ b/modules/packages/alpine/metadata.go
+@@ -18,9 +18,10 @@ import (
+ )
+ 
+ var (
+-	ErrMissingPKGINFOFile = util.NewInvalidArgumentErrorf("PKGINFO file is missing")
+-	ErrInvalidName        = util.NewInvalidArgumentErrorf("package name is invalid")
+-	ErrInvalidVersion     = util.NewInvalidArgumentErrorf("package version is invalid")
++	ErrMissingPKGINFOFile  = util.NewInvalidArgumentErrorf("PKGINFO file is missing")
++	ErrInvalidName         = util.NewInvalidArgumentErrorf("package name is invalid")
++	ErrInvalidVersion      = util.NewInvalidArgumentErrorf("package version is invalid")
++	ErrPackageInfoTooLarge = util.NewInvalidArgumentErrorf("PKGINFO contains too many entries")
+ )
+ 
+ const (
+@@ -36,6 +37,8 @@ const (
+ 	RepositoryVersion = "_repository"
+ 
+ 	NoArch = "noarch"
++
++	maxPackageInfoEntries = 1024
+ )
+ 
+ // https://wiki.alpinelinux.org/wiki/Apk_spec
+@@ -185,10 +188,16 @@ func ParsePackageInfo(r io.Reader) (*Package, error) {
+ 			p.FileMetadata.InstallIf = value
+ 		case "provides":
+ 			if value != "" {
++				if len(p.FileMetadata.Provides)+len(p.FileMetadata.Dependencies) >= maxPackageInfoEntries {
++					return nil, ErrPackageInfoTooLarge
++				}
+ 				p.FileMetadata.Provides = append(p.FileMetadata.Provides, value)
+ 			}
+ 		case "depend":
+ 			if value != "" {
++				if len(p.FileMetadata.Provides)+len(p.FileMetadata.Dependencies) >= maxPackageInfoEntries {
++					return nil, ErrPackageInfoTooLarge
++				}
+ 				p.FileMetadata.Dependencies = append(p.FileMetadata.Dependencies, value)
+ 			}
+ 		case "provider_priority":
+diff --git a/modules/packages/alpine/metadata_test.go b/modules/packages/alpine/metadata_test.go
+index 2a3c48ffb9a27..3b985b8cad666 100644
+--- a/modules/packages/alpine/metadata_test.go
++++ b/modules/packages/alpine/metadata_test.go
+@@ -8,6 +8,7 @@ import (
+ 	"bytes"
+ 	"compress/gzip"
+ 	"io"
++	"strings"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/assert"
+@@ -97,6 +98,15 @@ func TestParsePackage(t *testing.T) {
+ 
+ 		assert.Equal(t, "Q1SRYURM5+uQDqfHSwTnNIOIuuDVQ=", p.FileMetadata.Checksum)
+ 	})
++
++	t.Run("TooManyDependencyEntries", func(t *testing.T) {
++		data := append(createPKGINFOContent(packageName, packageVersion), []byte("\ndepend = item")...)
++		data = append(data, []byte(strings.Repeat("\ndepend = item", maxPackageInfoEntries))...)
++
++		p, err := ParsePackageInfo(bytes.NewReader(data))
++		assert.Nil(t, p)
++		assert.ErrorIs(t, err, ErrPackageInfoTooLarge)
++	})
+ }
+ 
+ func TestParsePackageInfo(t *testing.T) {

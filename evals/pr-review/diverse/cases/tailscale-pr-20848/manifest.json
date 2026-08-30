@@ -1,0 +1,417 @@
+{
+  "additions": 262,
+  "author": "cmol",
+  "base_sha": "5a1066f494d482a4e9c573a4a334fb91418da3cd",
+  "body": "Our desktop detection was using \"wayland-1\" as a search string for\ndetecting wayland desktops, but many desktops use other indexes for the\nsession. Additionally we did not detect mir or gamescope.\n\nAdd a new detection method that leans on systemd-logind (if available)\nand fall back to using the existing method of looking for open unix\nsockets, but add search strings and tail the index off of the wayland\nsession detection.\n\nFixes #20847\n\nSigned-off-by: Claus Lensb\u00f8l <claus@tailscale.com>\n",
+  "captured_at": "2026-08-30T01:09:43+00:00",
+  "case_id": "tailscale-pr-20848",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "prepare",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "gomod-cache",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "deploy",
+      "status": "COMPLETED",
+      "workflowName": "Dockerfile build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checklocks",
+      "status": "COMPLETED",
+      "workflowName": "checklocks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "EasyEasy",
+      "status": "COMPLETED",
+      "workflowName": "natlab-basic"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "vet",
+      "status": "COMPLETED",
+      "workflowName": "tailscale.com/cmd/vet"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "matrix.test",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzz",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (1/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (2/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (3/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (4/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 1/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 2/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 3/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (benchmarks)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (1/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (2/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "privileged",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, 386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, loong64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 7)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (freebsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (openbsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ios",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (plan9, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (aix, ppc64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (solaris, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (illumos, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "android",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tailscale_go",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "depaware",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "go_generate",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "make_tidy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "licenses",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (macOS)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (1/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (2/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (3/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (4/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "notify_slack",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "merge_blocker",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability_strict",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "d200b3f18f0ee4cff1f6819a78a9fe8e6a7367f2",
+  "deletions": 12,
+  "files": [
+    {
+      "additions": 27,
+      "changeType": "MODIFIED",
+      "deletions": 11,
+      "path": "hostinfo/hostinfo.go"
+    },
+    {
+      "additions": 96,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "hostinfo/hostinfo_linux.go"
+    },
+    {
+      "additions": 139,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "hostinfo/hostinfo_linux_test.go"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "hostinfo/hostinfo_test.go"
+    }
+  ],
+  "head_sha": "efb3c35cae23d06988a564e5d7073f1cf0a892ca",
+  "issues": [
+    {
+      "body": "Our Linux wayland detection looks for \"wayland-1\" but that string does not exist in that file for a standard Ubuntu 26.04 install. The system does end up detecting as having a desktop, but only because xWayland is running and our detection for x11 works on xWayland too.\n\nThat might work for some installs, but for wayland only systems, this is will likely fail.\n\nOn top of that, we do not detect mir or gamescope (the compositor of SteamOS).",
+      "number": 20847,
+      "title": "Linux desktop detection looks for wrong wayland string",
+      "url": "https://github.com/tailscale/tailscale/issues/20847"
+    }
+  ],
+  "patch_sha256": "56a58ba92268c220ea7a20ae9b4e1f6205d3b1327d25fd7efbf362a8587ff73f",
+  "pr_number": 20848,
+  "repo": "tailscale/tailscale",
+  "schema_version": 1,
+  "title": "hostinfo: improve detection of linux desktops",
+  "url": "https://github.com/tailscale/tailscale/pull/20848"
+}

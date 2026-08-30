@@ -1,0 +1,194 @@
+{
+  "additions": 46,
+  "author": "silverwind",
+  "base_sha": "ed4d7ea08df377463e288af7378318e198e3e34e",
+  "body": "Improve various UI elements while in [forced color mode](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/@media/forced-colors). Tested in Firefox and Chrome, untestable in Safari as it does not implement forced color mode currently.\r\n\r\nBefore and after screenshots from Chrome's color emulation mode:\r\n\r\n<img width=\"280\" alt=\"dark-BEFORE\" src=\"https://github.com/user-attachments/assets/7d7579fc-3abb-40f3-8b5a-0b66565104af\" />\r\n<img width=\"280\" alt=\"dark-AFTER\" src=\"https://github.com/user-attachments/assets/d1d889e2-717a-4e4a-aa00-6b5e27c1c8b9\" />\r\n\r\n<img width=\"280\" alt=\"chromium-light-BEFORE\" src=\"https://github.com/user-attachments/assets/00172deb-1934-45a7-8fb2-07cd7cc867aa\" />\r\n<img width=\"280\" alt=\"chromium-light-AFTER\" src=\"https://github.com/user-attachments/assets/5cb04c12-bf86-45db-a476-237314fdbe61\" />\r\n\r\n\r\n",
+  "captured_at": "2026-08-30T01:09:29+00:00",
+  "case_id": "gitea-pr-38991",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "labeler",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "lint-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-pgsql-shard-1",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-amd64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-e2e",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "pr-title",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-pgsql-shard-2",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-arm64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-on-demand",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "checks-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-sqlite",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-riscv64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-unit",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "frontend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-mysql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "test-mssql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "ed4d7ea08df377463e288af7378318e198e3e34e",
+  "deletions": 0,
+  "files": [
+    {
+      "additions": 10,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web_src/css/base.css"
+    },
+    {
+      "additions": 23,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web_src/css/modules/checkbox.css"
+    },
+    {
+      "additions": 7,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web_src/css/modules/label.css"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "web_src/css/repo.css"
+    }
+  ],
+  "head_sha": "d686146222b2b1cd02b3de91c313b8897adebb17",
+  "issues": [],
+  "patch_sha256": "75bbf901144f23cf9dd63f578796e5a2c6dd10a7f36424a1e92e26b1af99db2b",
+  "pr_number": 38991,
+  "repo": "go-gitea/gitea",
+  "schema_version": 1,
+  "title": "enhance(ui): forced colors mode enhancements",
+  "url": "https://github.com/go-gitea/gitea/pull/38991"
+}

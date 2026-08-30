@@ -1,0 +1,821 @@
+From 151d2582f221457bf93c805ebd41fc16813fbdf0 Mon Sep 17 00:00:00 2001
+From: Naman Sood <mail@nsood.in>
+Date: Wed, 29 Jul 2026 15:03:25 -0400
+Subject: [PATCH 1/4] feature/conn25: clear address assignments, flow tables on
+ profile switch
+
+On switching from one tailnet with Connectors 2025 enabled to another,
+clear the address assignments and flow tables from the previous tailnet.
+They will not be useful in the new one (since the tailnet configuration
+and nodes are different), and could blackhole traffic if both tailnets
+happen to have a connector for the same domain.
+
+Fixes tailscale/corp#45619.
+
+Signed-off-by: Naman Sood <mail@nsood.in>
+---
+ feature/conn25/addrAssignments.go      |  14 ++++
+ feature/conn25/addrAssignments_test.go |  46 +++++++++++
+ feature/conn25/conn25.go               |  52 +++++++++---
+ feature/conn25/conn25_test.go          | 108 +++++++++++++++++++++++++
+ feature/conn25/datapath.go             |   8 ++
+ feature/conn25/flowtable.go            |  17 ++++
+ feature/conn25/flowtable_test.go       |  39 +++++++++
+ 7 files changed, 274 insertions(+), 10 deletions(-)
+
+diff --git a/feature/conn25/addrAssignments.go b/feature/conn25/addrAssignments.go
+index 3c05b8cc7d52f..92e1b09dc6215 100644
+--- a/feature/conn25/addrAssignments.go
++++ b/feature/conn25/addrAssignments.go
+@@ -164,6 +164,20 @@ func (a *addrAssignments) updateExpiry(as *addrs, expiresIn time.Duration) {
+ 	heap.Init(&a.byExpiresAt)
+ }
+ 
++// expireAllBreakingFlows expires all address assignments, including those
++// that refer to existing flows. This should only be used in situations where
++// the flows themselves will no longer meaningfully exist, for example when
++// switching to another tailnet.
++// It returns the address assignments that were expired.
++func (a *addrAssignments) expireAllBreakingFlows() []*addrs {
++	expired := a.byExpiresAt
++	a.byMagicIP = nil
++	a.byTransitIP = nil
++	a.byDomainDst = nil
++	a.byExpiresAt = nil
++	return expired
++}
++
+ type addrsHeap []*addrs
+ 
+ func (h addrsHeap) Len() int           { return len(h) }
+diff --git a/feature/conn25/addrAssignments_test.go b/feature/conn25/addrAssignments_test.go
+index ce26b80a132a8..dcadb2bc391a9 100644
+--- a/feature/conn25/addrAssignments_test.go
++++ b/feature/conn25/addrAssignments_test.go
+@@ -6,6 +6,7 @@ package conn25
+ import (
+ 	"fmt"
+ 	"net/netip"
++	"slices"
+ 	"testing"
+ 	"time"
+ 
+@@ -174,3 +175,48 @@ func TestPopExpiredHandlesExpiresAtChanges(t *testing.T) {
+ 		t.Fatalf("expected assignments to be exhausted")
+ 	}
+ }
++
++func TestExpireAllBreakingFlows(t *testing.T) {
++	clock := tstest.NewClock(tstest.ClockOpts{Start: time.Now()})
++	assignments := addrAssignments{clock: clock}
++	// This helps make sure we get both packets before and after the dead flow
++	// wait timeout.
++	expiryInterval := deadFlowWaitTimeout / 4
++	makeAndAddAddrs := func(i int) *addrs {
++		t.Helper()
++		as := &addrs{
++			dst:     netip.MustParseAddr(fmt.Sprintf("192.0.2.%d", i)),
++			magic:   netip.MustParseAddr(fmt.Sprintf("100.100.100.%d", i)),
++			transit: netip.MustParseAddr(fmt.Sprintf("10.0.25.%d", i)),
++			app:     "an-application-on-the-internet",
++			domain:  "an-application-on-the-internet.example.",
++			// Get some packets with "active flows" and some without.
++			activeFlowCount: i % 2,
++		}
++		err := assignments.insertWithExpiry(as, time.Duration(i+1)*expiryInterval)
++		if err != nil {
++			t.Errorf("insertWithExpiry(%d): %v", i, err)
++		}
++		return as
++	}
++	wantAddresses := []*addrs{}
++	for i := range 8 {
++		wantAddresses = append(wantAddresses, makeAndAddAddrs(i))
++	}
++	gotAddresses := assignments.expireAllBreakingFlows()
++	// We don't guarantee ordering of `expireAllBreakingFlows`, so order the
++	// addresses we got by destination IP (which will in turn order them by
++	// the loop variable `i`, the same ordering as `wantAddresses`).
++	slices.SortFunc(gotAddresses, func(a, b *addrs) int { return a.dst.Compare(b.dst) })
++	if diff := cmp.Diff(
++		wantAddresses,
++		gotAddresses,
++		cmp.AllowUnexported(addrs{}),
++		cmpopts.EquateComparable(netip.Addr{}),
++	); diff != "" {
++		t.Errorf("incorrect addresses returned (-want +got):\n%s", diff)
++	}
++	if len(assignments.byMagicIP) != 0 {
++		t.Errorf("expected assignments to be exhausted")
++	}
++}
+diff --git a/feature/conn25/conn25.go b/feature/conn25/conn25.go
+index 3ba94e0d4cfea..9bb4fc56d2991 100644
+--- a/feature/conn25/conn25.go
++++ b/feature/conn25/conn25.go
+@@ -118,8 +118,9 @@ func handleHookReplyToDNSQueries(h ipnlocal.PeerAPIHandler) bool {
+ // extension is an [ipnext.Extension] managing the connector on platforms
+ // that import this package.
+ type extension struct {
+-	conn25  *Conn25            // safe for concurrent access and only set at creation
+-	backend ipnext.SafeBackend // safe for concurrent access and only set at creation
++	conn25                *Conn25            // safe for concurrent access and only set at creation
++	backend               ipnext.SafeBackend // safe for concurrent access and only set at creation
++	clearAllDatapathFlows func()             // safe for concurrent access and only set at creation
+ 
+ 	host      ipnext.Host             // set in Init, read-only after
+ 	ctxCancel context.CancelCauseFunc // cancels sendLoop goroutine
+@@ -227,6 +228,11 @@ func (e *extension) installHooks(dph *datapathHandler) error {
+ 		e.conn25.client.resendTransitIPMapping(pkt.Dst.Addr())
+ 	}
+ 
++	// The profile state change hook needs to clear all active flows on a
++	// major change (eg. switching tailnets), so make that hook accessible
++	// to it.
++	e.clearAllDatapathFlows = dph.ClearAllActiveFlows
++
+ 	// Manage how we react to changes to the current node,
+ 	// including property changes (e.g. HostInfo, Capabilities, CapMap).
+ 	e.host.Hooks().OnSelfChange.Add(e.onSelfChange)
+@@ -395,6 +401,20 @@ func (e *extension) profileStateChange(loginProfile ipn.LoginProfileView, prefs
+ 	// TODO(mzb): Handle node changes. Wipe out all config?
+ 	// We'll need to look at the ordering of this hook and onSelfChange.
+ 	e.conn25.prefsAdvertiseConnector.Store(prefs.AppConnector().Advertise)
++
++	// If a client changes profiles and becomes a different node, all of its
++	// existing flows lose meaning, and we should delete them so that the
++	// settings of our new environment can take over.
++	// TODO(naman): also do something for connectors that change profiles?
++	if !sameNode {
++		if e.clearAllDatapathFlows != nil {
++			e.clearAllDatapathFlows()
++		}
++		expired := e.conn25.client.assignments.expireAllBreakingFlows()
++		if err := e.conn25.client.returnAddrs(expired...); err != nil {
++			e.conn25.logf("returning expired magic/transit IPs: %v", err)
++		}
++	}
+ }
+ 
+ func (e *extension) extraWireGuardAllowedIPs(k key.NodePublic) views.Slice[netip.Prefix] {
+@@ -793,6 +813,24 @@ func (c *client) isKnownTransitIP(tip netip.Addr) bool {
+ 	return ok
+ }
+ 
++// returnAddrs returns the magic and transit IPs of many address assignments
++// at the same time.
++func (c *client) returnAddrs(addrs ...*addrs) error {
++	var errs []error
++	for _, a := range addrs {
++		if a.is4() {
++			errs = append(errs, c.v4MagicIPPool.returnAddr(a.magic))
++			errs = append(errs, c.v4TransitIPPool.returnAddr(a.transit))
++		} else if a.is6() {
++			errs = append(errs, c.v6MagicIPPool.returnAddr(a.magic))
++			errs = append(errs, c.v6TransitIPPool.returnAddr(a.transit))
++		} else {
++			errs = append(errs, fmt.Errorf("destination IP neither v4 nor v6: %q", a.dst))
++		}
++	}
++	return errors.Join(errs...)
++}
++
+ func (c *client) reconfig() {
+ 	c.mu.Lock()
+ 	defer c.mu.Unlock()
+@@ -862,14 +900,8 @@ func (c *client) reserveAddresses(appName string, domain dnsname.FQDN, dst netip
+ 		if a == nil {
+ 			break
+ 		}
+-		if a.is4() {
+-			c.v4MagicIPPool.returnAddr(a.magic)
+-			c.v4TransitIPPool.returnAddr(a.transit)
+-		} else if a.is6() {
+-			c.v6MagicIPPool.returnAddr(a.magic)
+-			c.v6TransitIPPool.returnAddr(a.transit)
+-		} else {
+-			return nil, errors.New("unexpected neither 4 nor 6")
++		if err := c.returnAddrs(a); err != nil {
++			return nil, err
+ 		}
+ 	}
+ 
+diff --git a/feature/conn25/conn25_test.go b/feature/conn25/conn25_test.go
+index 05ba31e00258b..47732b1c1ee46 100644
+--- a/feature/conn25/conn25_test.go
++++ b/feature/conn25/conn25_test.go
+@@ -2519,6 +2519,114 @@ func TestIsKnownTransitIP(t *testing.T) {
+ 	}
+ }
+ 
++func TestReturnAddrs(t *testing.T) {
++	c := newConn25(t.Logf)
++
++	c.reconfig(&config{
++		ipSets: ipSets{
++			v4Magic:   mustIPSetFromPrefix("100.64.0.0/24"),
++			v6Magic:   mustIPSetFromPrefix("fd7a:115c:a1e0:a99c:0100::/80"),
++			v4Transit: mustIPSetFromPrefix("169.254.0.0/24"),
++			v6Transit: mustIPSetFromPrefix("fd7a:115c:a1e0:a99c:0200::/80"),
++		},
++		isConfigured: true,
++	})
++
++	t.Run("return-ok-v4", func(t *testing.T) {
++		magic, err := c.client.v4MagicIPPool.next()
++		if err != nil {
++			t.Errorf("get v4 magic ip: %v", err)
++		}
++		transit, err := c.client.v4TransitIPPool.next()
++		if err != nil {
++			t.Errorf("get v4 transit ip: %v", err)
++		}
++		addrs := &addrs{
++			magic:   magic,
++			transit: transit,
++			dst:     netip.MustParseAddr("192.0.2.42"),
++			domain:  dnsname.FQDN("utilized-and-returnable.example."),
++		}
++		if err := c.client.assignments.insert(addrs); err != nil {
++			t.Errorf("inserting assignment: %v", err)
++		}
++		if err := c.client.returnAddrs(addrs); err != nil {
++			t.Errorf("returnAddr: expected no error, got: %v", err)
++		}
++		if c.client.v4MagicIPPool.inUse.Contains(magic) {
++			t.Errorf("found magic ip that should have been returned: %s", magic)
++		}
++		if c.client.v4TransitIPPool.inUse.Contains(transit) {
++			t.Errorf("found transit ip that should have been returned: %s", transit)
++		}
++	})
++
++	t.Run("return-not-in-use-v4", func(t *testing.T) {
++		// In the range but not marked inUse by next().
++		magic := netip.MustParseAddr("100.64.0.1")
++		transit := netip.MustParseAddr("169.254.0.1")
++		addrs := &addrs{
++			magic:   magic,
++			transit: transit,
++			dst:     netip.MustParseAddr("192.0.2.42"),
++			domain:  dnsname.FQDN("wild-undomesticated-addr.example."),
++		}
++		if err := c.client.assignments.insert(addrs); err != nil {
++			t.Errorf("inserting assignment: %v", err)
++		}
++		if err := c.client.returnAddrs(addrs); !errors.Is(err, errAddrExists) {
++			t.Errorf("returnAddr: expected error %v, got none", errAddrExists)
++		}
++	})
++
++	t.Run("return-ok-v6", func(t *testing.T) {
++		magic, err := c.client.v6MagicIPPool.next()
++		if err != nil {
++			t.Errorf("get v6 magic ip: %v", err)
++		}
++		transit, err := c.client.v6TransitIPPool.next()
++		if err != nil {
++			t.Errorf("get v6 transit ip: %v", err)
++		}
++		addrs := &addrs{
++			magic:   magic,
++			transit: transit,
++			dst:     netip.MustParseAddr("3fff::1"),
++			domain:  dnsname.FQDN("utilized-and-returnable.example."),
++		}
++		if err := c.client.assignments.insert(addrs); err != nil {
++			t.Errorf("inserting assignment: %v", err)
++		}
++		if err := c.client.returnAddrs(addrs); err != nil {
++			t.Errorf("returnAddr: expected no error, got: %v", err)
++		}
++		if c.client.v6MagicIPPool.inUse.Contains(magic) {
++			t.Errorf("found magic ip that should have been returned: %s", magic)
++		}
++		if c.client.v6TransitIPPool.inUse.Contains(transit) {
++			t.Errorf("found transit ip that should have been returned: %s", transit)
++		}
++	})
++
++	t.Run("return-not-in-use-v6", func(t *testing.T) {
++		// In the range but not marked inUse by next().
++		magic := netip.MustParseAddr("fd7a:115c:a1e0:a99c:0100::1")
++		transit := netip.MustParseAddr("fd7a:115c:a1e0:a99c:0200::1")
++		addrs := &addrs{
++			magic:   magic,
++			transit: transit,
++			dst:     netip.MustParseAddr("3fff::1"),
++			domain:  dnsname.FQDN("wild-undomesticated-addr.example."),
++		}
++		if err := c.client.assignments.insert(addrs); err != nil {
++			t.Errorf("inserting assignment: %v", err)
++		}
++		if err := c.client.returnAddrs(addrs); !errors.Is(err, errAddrExists) {
++			t.Errorf("returnAddr: expected error %v, got none", errAddrExists)
++		}
++	})
++}
++
+ func TestLinkLocalAllow(t *testing.T) {
+ 	knownTip := netip.MustParseAddr("100.64.0.41")
+ 
+diff --git a/feature/conn25/datapath.go b/feature/conn25/datapath.go
+index 573add7303da1..bd6711e6b6257 100644
+--- a/feature/conn25/datapath.go
++++ b/feature/conn25/datapath.go
+@@ -304,3 +304,11 @@ func (dh *datapathHandler) debugLogf(msg string, args ...any) {
+ 		dh.logf(msg, args...)
+ 	}
+ }
++
++// ClearAllActiveFlows removes all active flows from the datapath handler. This
++// is useful when all active flows lose meaning; for example, when switching
++// tailnets.
++func (dh *datapathHandler) ClearAllActiveFlows() {
++	dh.clientFlowTable.Clear()
++	dh.connectorFlowTable.Clear()
++}
+diff --git a/feature/conn25/flowtable.go b/feature/conn25/flowtable.go
+index 5cd8831512671..1142146f1c5c1 100644
+--- a/feature/conn25/flowtable.go
++++ b/feature/conn25/flowtable.go
+@@ -301,3 +301,20 @@ func (t *FlowTable) removeFlowLocked(ele *list.Element) func() {
+ 
+ 	return flow.data.OnRemove
+ }
++
++// Clear empties the entire FlowTable, losing track of all active flows. This
++// is used when all current flows between this and all other nodes cease to
++// exist; for example, when switching tailnets.
++func (t *FlowTable) Clear() {
++	var onRemoves []func()
++	t.mu.Lock()
++	for ele := t.lru.Back(); ele != nil; ele = t.lru.Back() {
++		onRemoves = append(onRemoves, t.removeFlowLocked(ele))
++	}
++	t.mu.Unlock()
++	for _, onRemove := range onRemoves {
++		if onRemove != nil {
++			onRemove()
++		}
++	}
++}
+diff --git a/feature/conn25/flowtable_test.go b/feature/conn25/flowtable_test.go
+index 7fbfc074f328a..ab915e2ea7a2b 100644
+--- a/feature/conn25/flowtable_test.go
++++ b/feature/conn25/flowtable_test.go
+@@ -515,3 +515,42 @@ func TestFlowTable_OnRemove(t *testing.T) {
+ 		assertFlowHit(t, ft, FromTun, tun2)
+ 	})
+ }
++
++func TestFlowTable_Clear(t *testing.T) {
++	ft := NewFlowTable(0)
++
++	flowN := 5
++	flows := make([]FlowData, 0, flowN)
++
++	onRemovesRan := 0
++
++	for i := range flowN {
++		from := fmt.Sprintf("10.0.0.%d:6767", i)
++		to := fmt.Sprintf("192.0.2.%d:443", i)
++		tun := mkTuple(from, to)
++		wg := mkTuple(to, from)
++		flow := mkFlow(tun, wg)
++		flow.OnRemove = func() {
++			onRemovesRan++
++		}
++		ft.NewFlow(flow)
++		flows = append(flows, flow)
++	}
++
++	// The flows are installed.
++	for _, f := range flows {
++		assertFlowHit(t, ft, FromTun, f.FromTun.Tuple)
++	}
++
++	ft.Clear()
++
++	// The flows are no longer installed after clearing.
++	for _, f := range flows {
++		assertFlowMiss(t, ft, FromTun, f.FromTun.Tuple)
++	}
++
++	// The OnRemoves ran.
++	if onRemovesRan != flowN {
++		t.Errorf("expected %d flows to have OnRemove() called, got %d", flowN, onRemovesRan)
++	}
++}
+
+From 51ff7d5bc3c2048c87a533b68dc498d00f676f7b Mon Sep 17 00:00:00 2001
+From: Naman Sood <mail@nsood.in>
+Date: Thu, 30 Jul 2026 14:01:35 -0400
+Subject: [PATCH 2/4] review feedback
+
+Signed-off-by: Naman Sood <mail@nsood.in>
+---
+ feature/conn25/addrAssignments.go      |  14 ----
+ feature/conn25/addrAssignments_test.go |  46 -----------
+ feature/conn25/conn25.go               |  76 ++++++++++-------
+ feature/conn25/conn25_test.go          | 108 -------------------------
+ 4 files changed, 46 insertions(+), 198 deletions(-)
+
+diff --git a/feature/conn25/addrAssignments.go b/feature/conn25/addrAssignments.go
+index 92e1b09dc6215..3c05b8cc7d52f 100644
+--- a/feature/conn25/addrAssignments.go
++++ b/feature/conn25/addrAssignments.go
+@@ -164,20 +164,6 @@ func (a *addrAssignments) updateExpiry(as *addrs, expiresIn time.Duration) {
+ 	heap.Init(&a.byExpiresAt)
+ }
+ 
+-// expireAllBreakingFlows expires all address assignments, including those
+-// that refer to existing flows. This should only be used in situations where
+-// the flows themselves will no longer meaningfully exist, for example when
+-// switching to another tailnet.
+-// It returns the address assignments that were expired.
+-func (a *addrAssignments) expireAllBreakingFlows() []*addrs {
+-	expired := a.byExpiresAt
+-	a.byMagicIP = nil
+-	a.byTransitIP = nil
+-	a.byDomainDst = nil
+-	a.byExpiresAt = nil
+-	return expired
+-}
+-
+ type addrsHeap []*addrs
+ 
+ func (h addrsHeap) Len() int           { return len(h) }
+diff --git a/feature/conn25/addrAssignments_test.go b/feature/conn25/addrAssignments_test.go
+index dcadb2bc391a9..ce26b80a132a8 100644
+--- a/feature/conn25/addrAssignments_test.go
++++ b/feature/conn25/addrAssignments_test.go
+@@ -6,7 +6,6 @@ package conn25
+ import (
+ 	"fmt"
+ 	"net/netip"
+-	"slices"
+ 	"testing"
+ 	"time"
+ 
+@@ -175,48 +174,3 @@ func TestPopExpiredHandlesExpiresAtChanges(t *testing.T) {
+ 		t.Fatalf("expected assignments to be exhausted")
+ 	}
+ }
+-
+-func TestExpireAllBreakingFlows(t *testing.T) {
+-	clock := tstest.NewClock(tstest.ClockOpts{Start: time.Now()})
+-	assignments := addrAssignments{clock: clock}
+-	// This helps make sure we get both packets before and after the dead flow
+-	// wait timeout.
+-	expiryInterval := deadFlowWaitTimeout / 4
+-	makeAndAddAddrs := func(i int) *addrs {
+-		t.Helper()
+-		as := &addrs{
+-			dst:     netip.MustParseAddr(fmt.Sprintf("192.0.2.%d", i)),
+-			magic:   netip.MustParseAddr(fmt.Sprintf("100.100.100.%d", i)),
+-			transit: netip.MustParseAddr(fmt.Sprintf("10.0.25.%d", i)),
+-			app:     "an-application-on-the-internet",
+-			domain:  "an-application-on-the-internet.example.",
+-			// Get some packets with "active flows" and some without.
+-			activeFlowCount: i % 2,
+-		}
+-		err := assignments.insertWithExpiry(as, time.Duration(i+1)*expiryInterval)
+-		if err != nil {
+-			t.Errorf("insertWithExpiry(%d): %v", i, err)
+-		}
+-		return as
+-	}
+-	wantAddresses := []*addrs{}
+-	for i := range 8 {
+-		wantAddresses = append(wantAddresses, makeAndAddAddrs(i))
+-	}
+-	gotAddresses := assignments.expireAllBreakingFlows()
+-	// We don't guarantee ordering of `expireAllBreakingFlows`, so order the
+-	// addresses we got by destination IP (which will in turn order them by
+-	// the loop variable `i`, the same ordering as `wantAddresses`).
+-	slices.SortFunc(gotAddresses, func(a, b *addrs) int { return a.dst.Compare(b.dst) })
+-	if diff := cmp.Diff(
+-		wantAddresses,
+-		gotAddresses,
+-		cmp.AllowUnexported(addrs{}),
+-		cmpopts.EquateComparable(netip.Addr{}),
+-	); diff != "" {
+-		t.Errorf("incorrect addresses returned (-want +got):\n%s", diff)
+-	}
+-	if len(assignments.byMagicIP) != 0 {
+-		t.Errorf("expected assignments to be exhausted")
+-	}
+-}
+diff --git a/feature/conn25/conn25.go b/feature/conn25/conn25.go
+index 9bb4fc56d2991..185d8c4b97af2 100644
+--- a/feature/conn25/conn25.go
++++ b/feature/conn25/conn25.go
+@@ -398,22 +398,26 @@ func (e *extension) onSelfChange(selfNode tailcfg.NodeView) {
+ 
+ // profileStateChange implements the [ipnext.Hooks.ProfileStateChange] hook.
+ func (e *extension) profileStateChange(loginProfile ipn.LoginProfileView, prefs ipn.PrefsView, sameNode bool) {
+-	// TODO(mzb): Handle node changes. Wipe out all config?
+-	// We'll need to look at the ordering of this hook and onSelfChange.
+ 	e.conn25.prefsAdvertiseConnector.Store(prefs.AppConnector().Advertise)
+ 
+-	// If a client changes profiles and becomes a different node, all of its
+-	// existing flows lose meaning, and we should delete them so that the
+-	// settings of our new environment can take over.
+-	// TODO(naman): also do something for connectors that change profiles?
+ 	if !sameNode {
++		// If a client changes profiles and becomes a different node, all of its
++		// existing flows lose meaning, and we should delete them so that the
++		// settings of our new environment can take over.
+ 		if e.clearAllDatapathFlows != nil {
+ 			e.clearAllDatapathFlows()
+ 		}
+-		expired := e.conn25.client.assignments.expireAllBreakingFlows()
+-		if err := e.conn25.client.returnAddrs(expired...); err != nil {
+-			e.conn25.logf("returning expired magic/transit IPs: %v", err)
+-		}
++
++		// Load an empty configuration to disable conn25 entirely, since we
++		// don't yet know that it is configured on the new profile. We will
++		// know once [extension.onSelfChange] is called with a new
++		// configuration, if any.
++		e.conn25.reconfig(&config{})
++
++		// Clear internal state, like address assignments for clients and
++		// transit IP mappings for connectors.
++		e.conn25.client.reset()
++		e.conn25.connector.reset()
+ 	}
+ }
+ 
+@@ -813,24 +817,6 @@ func (c *client) isKnownTransitIP(tip netip.Addr) bool {
+ 	return ok
+ }
+ 
+-// returnAddrs returns the magic and transit IPs of many address assignments
+-// at the same time.
+-func (c *client) returnAddrs(addrs ...*addrs) error {
+-	var errs []error
+-	for _, a := range addrs {
+-		if a.is4() {
+-			errs = append(errs, c.v4MagicIPPool.returnAddr(a.magic))
+-			errs = append(errs, c.v4TransitIPPool.returnAddr(a.transit))
+-		} else if a.is6() {
+-			errs = append(errs, c.v6MagicIPPool.returnAddr(a.magic))
+-			errs = append(errs, c.v6TransitIPPool.returnAddr(a.transit))
+-		} else {
+-			errs = append(errs, fmt.Errorf("destination IP neither v4 nor v6: %q", a.dst))
+-		}
+-	}
+-	return errors.Join(errs...)
+-}
+-
+ func (c *client) reconfig() {
+ 	c.mu.Lock()
+ 	defer c.mu.Unlock()
+@@ -843,6 +829,21 @@ func (c *client) reconfig() {
+ 	c.v6TransitIPPool = c.v6TransitIPPool.reconfig(ipSets.v6Transit)
+ }
+ 
++// reset clears all internal state of [client], that are not configuration
++// passed into it.
++func (c *client) reset() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	ipSets := c.getIPSets()
++	c.v4MagicIPPool = newIPPool(ipSets.v4Magic)
++	c.v4TransitIPPool = newIPPool(ipSets.v4Transit)
++	c.v6MagicIPPool = newIPPool(ipSets.v6Magic)
++	c.v6TransitIPPool = newIPPool(ipSets.v6Transit)
++	c.assignments = addrAssignments{clock: c.assignments.clock}
++	c.byConnKey = nil
++}
++
+ // getAppsForConnectorDomain returns the slice of app names which match the
+ // provided domain. Apps which match the domain exactly are preferred,
+ // otherwise the list of apps comes from the wildcard domain which matches
+@@ -900,8 +901,14 @@ func (c *client) reserveAddresses(appName string, domain dnsname.FQDN, dst netip
+ 		if a == nil {
+ 			break
+ 		}
+-		if err := c.returnAddrs(a); err != nil {
+-			return nil, err
++		if a.is4() {
++			c.v4MagicIPPool.returnAddr(a.magic)
++			c.v4TransitIPPool.returnAddr(a.transit)
++		} else if a.is6() {
++			c.v6MagicIPPool.returnAddr(a.magic)
++			c.v6TransitIPPool.returnAddr(a.transit)
++		} else {
++			return nil, errors.New("unexpected neither 4 nor 6")
+ 		}
+ 	}
+ 
+@@ -1412,6 +1419,15 @@ func (c *connector) lookupBySrcIPAndTransitIP(srcIP, transitIP netip.Addr) (appA
+ 	return v, ok
+ }
+ 
++// reset clears all internal state of [connector], that are not configuration
++// passed into it.
++func (c *connector) reset() {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++
++	c.transitIPs = make(map[netip.Addr]map[netip.Addr]appAddr)
++}
++
+ type addrs struct {
+ 	dst             netip.Addr
+ 	magic           netip.Addr
+diff --git a/feature/conn25/conn25_test.go b/feature/conn25/conn25_test.go
+index 47732b1c1ee46..05ba31e00258b 100644
+--- a/feature/conn25/conn25_test.go
++++ b/feature/conn25/conn25_test.go
+@@ -2519,114 +2519,6 @@ func TestIsKnownTransitIP(t *testing.T) {
+ 	}
+ }
+ 
+-func TestReturnAddrs(t *testing.T) {
+-	c := newConn25(t.Logf)
+-
+-	c.reconfig(&config{
+-		ipSets: ipSets{
+-			v4Magic:   mustIPSetFromPrefix("100.64.0.0/24"),
+-			v6Magic:   mustIPSetFromPrefix("fd7a:115c:a1e0:a99c:0100::/80"),
+-			v4Transit: mustIPSetFromPrefix("169.254.0.0/24"),
+-			v6Transit: mustIPSetFromPrefix("fd7a:115c:a1e0:a99c:0200::/80"),
+-		},
+-		isConfigured: true,
+-	})
+-
+-	t.Run("return-ok-v4", func(t *testing.T) {
+-		magic, err := c.client.v4MagicIPPool.next()
+-		if err != nil {
+-			t.Errorf("get v4 magic ip: %v", err)
+-		}
+-		transit, err := c.client.v4TransitIPPool.next()
+-		if err != nil {
+-			t.Errorf("get v4 transit ip: %v", err)
+-		}
+-		addrs := &addrs{
+-			magic:   magic,
+-			transit: transit,
+-			dst:     netip.MustParseAddr("192.0.2.42"),
+-			domain:  dnsname.FQDN("utilized-and-returnable.example."),
+-		}
+-		if err := c.client.assignments.insert(addrs); err != nil {
+-			t.Errorf("inserting assignment: %v", err)
+-		}
+-		if err := c.client.returnAddrs(addrs); err != nil {
+-			t.Errorf("returnAddr: expected no error, got: %v", err)
+-		}
+-		if c.client.v4MagicIPPool.inUse.Contains(magic) {
+-			t.Errorf("found magic ip that should have been returned: %s", magic)
+-		}
+-		if c.client.v4TransitIPPool.inUse.Contains(transit) {
+-			t.Errorf("found transit ip that should have been returned: %s", transit)
+-		}
+-	})
+-
+-	t.Run("return-not-in-use-v4", func(t *testing.T) {
+-		// In the range but not marked inUse by next().
+-		magic := netip.MustParseAddr("100.64.0.1")
+-		transit := netip.MustParseAddr("169.254.0.1")
+-		addrs := &addrs{
+-			magic:   magic,
+-			transit: transit,
+-			dst:     netip.MustParseAddr("192.0.2.42"),
+-			domain:  dnsname.FQDN("wild-undomesticated-addr.example."),
+-		}
+-		if err := c.client.assignments.insert(addrs); err != nil {
+-			t.Errorf("inserting assignment: %v", err)
+-		}
+-		if err := c.client.returnAddrs(addrs); !errors.Is(err, errAddrExists) {
+-			t.Errorf("returnAddr: expected error %v, got none", errAddrExists)
+-		}
+-	})
+-
+-	t.Run("return-ok-v6", func(t *testing.T) {
+-		magic, err := c.client.v6MagicIPPool.next()
+-		if err != nil {
+-			t.Errorf("get v6 magic ip: %v", err)
+-		}
+-		transit, err := c.client.v6TransitIPPool.next()
+-		if err != nil {
+-			t.Errorf("get v6 transit ip: %v", err)
+-		}
+-		addrs := &addrs{
+-			magic:   magic,
+-			transit: transit,
+-			dst:     netip.MustParseAddr("3fff::1"),
+-			domain:  dnsname.FQDN("utilized-and-returnable.example."),
+-		}
+-		if err := c.client.assignments.insert(addrs); err != nil {
+-			t.Errorf("inserting assignment: %v", err)
+-		}
+-		if err := c.client.returnAddrs(addrs); err != nil {
+-			t.Errorf("returnAddr: expected no error, got: %v", err)
+-		}
+-		if c.client.v6MagicIPPool.inUse.Contains(magic) {
+-			t.Errorf("found magic ip that should have been returned: %s", magic)
+-		}
+-		if c.client.v6TransitIPPool.inUse.Contains(transit) {
+-			t.Errorf("found transit ip that should have been returned: %s", transit)
+-		}
+-	})
+-
+-	t.Run("return-not-in-use-v6", func(t *testing.T) {
+-		// In the range but not marked inUse by next().
+-		magic := netip.MustParseAddr("fd7a:115c:a1e0:a99c:0100::1")
+-		transit := netip.MustParseAddr("fd7a:115c:a1e0:a99c:0200::1")
+-		addrs := &addrs{
+-			magic:   magic,
+-			transit: transit,
+-			dst:     netip.MustParseAddr("3fff::1"),
+-			domain:  dnsname.FQDN("wild-undomesticated-addr.example."),
+-		}
+-		if err := c.client.assignments.insert(addrs); err != nil {
+-			t.Errorf("inserting assignment: %v", err)
+-		}
+-		if err := c.client.returnAddrs(addrs); !errors.Is(err, errAddrExists) {
+-			t.Errorf("returnAddr: expected error %v, got none", errAddrExists)
+-		}
+-	})
+-}
+-
+ func TestLinkLocalAllow(t *testing.T) {
+ 	knownTip := netip.MustParseAddr("100.64.0.41")
+ 
+
+From 38ccbc98c4ff9bd7d98e56026d86b250b64eb288 Mon Sep 17 00:00:00 2001
+From: Naman Sood <mail@nsood.in>
+Date: Thu, 30 Jul 2026 15:59:39 -0400
+Subject: [PATCH 3/4] feedback
+
+Signed-off-by: Naman Sood <mail@nsood.in>
+---
+ feature/conn25/conn25.go | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/feature/conn25/conn25.go b/feature/conn25/conn25.go
+index 185d8c4b97af2..aaecf98e01a2f 100644
+--- a/feature/conn25/conn25.go
++++ b/feature/conn25/conn25.go
+@@ -401,6 +401,12 @@ func (e *extension) profileStateChange(loginProfile ipn.LoginProfileView, prefs
+ 	e.conn25.prefsAdvertiseConnector.Store(prefs.AppConnector().Advertise)
+ 
+ 	if !sameNode {
++		// Load an empty configuration to disable conn25 entirely, since we
++		// don't yet know that it is configured on the new profile. We will
++		// know once [extension.onSelfChange] is called with a new
++		// configuration, if any.
++		e.conn25.reconfig(&config{})
++
+ 		// If a client changes profiles and becomes a different node, all of its
+ 		// existing flows lose meaning, and we should delete them so that the
+ 		// settings of our new environment can take over.
+@@ -408,12 +414,6 @@ func (e *extension) profileStateChange(loginProfile ipn.LoginProfileView, prefs
+ 			e.clearAllDatapathFlows()
+ 		}
+ 
+-		// Load an empty configuration to disable conn25 entirely, since we
+-		// don't yet know that it is configured on the new profile. We will
+-		// know once [extension.onSelfChange] is called with a new
+-		// configuration, if any.
+-		e.conn25.reconfig(&config{})
+-
+ 		// Clear internal state, like address assignments for clients and
+ 		// transit IP mappings for connectors.
+ 		e.conn25.client.reset()
+@@ -776,6 +776,7 @@ type client struct {
+ 	addrsCh   chan addrs
+ 	getIPSets func() ipSets
+ 
++	// Remember to add new fields to [client.reset] if needed.
+ 	mu              sync.Mutex // protects the fields below
+ 	v4MagicIPPool   *ippool
+ 	v4TransitIPPool *ippool
+
+From 0905f9e2f93796c169f07ca66fa7e33669a58d29 Mon Sep 17 00:00:00 2001
+From: Naman Sood <mail@nsood.in>
+Date: Thu, 30 Jul 2026 16:07:47 -0400
+Subject: [PATCH 4/4] missing comment
+
+Signed-off-by: Naman Sood <mail@nsood.in>
+---
+ feature/conn25/conn25.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/feature/conn25/conn25.go b/feature/conn25/conn25.go
+index aaecf98e01a2f..d5c3002d7c64b 100644
+--- a/feature/conn25/conn25.go
++++ b/feature/conn25/conn25.go
+@@ -1376,6 +1376,7 @@ type connector struct {
+ 	logf      logger.Logf
+ 	getIPSets func() ipSets
+ 
++	// Remember to add new fields to [connector.reset] if needed.
+ 	mu sync.Mutex // protects the fields below
+ 	// transitIPs is a map of connector client peer IP -> client transitIPs that we update as connector client peers instruct us to, and then use to route traffic to its destination on behalf of connector clients.
+ 	// Note that each peer could potentially have two maps: one for its IPv4 address, and one for its IPv6 address. The transit IPs map for a given peer IP will contain transit IPs of the same family as the peer's IP.

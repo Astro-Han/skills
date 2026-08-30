@@ -1,0 +1,851 @@
+From 01c3e5d8aa771afb8f73ecb0d73fd6f6caf5b081 Mon Sep 17 00:00:00 2001
+From: liuxiaocs7 <liuxiao2103@qq.com>
+Date: Thu, 27 Aug 2026 00:28:18 +0800
+Subject: [PATCH] refactor(runtime-host): remove the uncalled
+ execution.inspect.resolve operation
+
+execution.inspect exposed two operations, but Desktop calls only
+execution.inspect.query. execution.inspect.resolve was registered in the
+protocol, the operation table, and the coordinator, yet had no non-test caller
+anywhere in the repository, leaving a second inspection contract that no
+shipped surface reads.
+
+Remove resolve end to end across every layer that maintained it:
+
+- Protocol: the operation spec with its input/output decoders and assertions,
+  the ExecutionInspectCandidate / ExecutionInspectEntityKind types, the
+  candidate decoder, and the EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS limit.
+- Operation table: the execution.inspect.resolve entry;
+  ExecutionInspectOperationKey collapses to just query automatically.
+- Coordinator: the handler entry, #resolve, its #findSession /
+  #findRunInSession / compareCandidates helpers, and the now single-value
+  failure() helper (type assertion dropped).
+- Storage: ExecutionAgentRunReader.findRunsById -- the only reader reachable
+  exclusively from resolve -- and the resolve-only core_agent_runs_identity
+  SQLite index. AgentRunIdentitySearchResult and assertIdentitySearchLimit stay;
+  listSessionRunsBounded shares them.
+- Compatibility epoch: bump RUNTIME_HOST_COMPATIBILITY_EPOCH to 53 so a peer
+  that still knows resolve fails the handshake instead of sending a removed
+  operation mid-connection.
+- Retired credential grant: register execution.inspect.resolve as a retired
+  operation grant so an access file issued before the removal releases the
+  grant on decode rather than throwing RuntimeHostAccessInputError and blocking
+  Host startup.
+- Storage schema: bump the core-execution schema version to 6 so existing
+  databases drop the obsolete index on upgrade.
+
+execution.inspect.query and all four of its result kinds (session, agent_run,
+turn_trace, session_trace_page), including the Turn/Session trace paths Desktop
+renders, are untouched. Adds protocol, retired-grant, and schema-migration
+regression tests.
+
+Fixes #3932
+
+Generated-by: Claude Opus
+---
+ .../access-credential-metadata.test.ts        |  35 ++++-
+ .../execution-inspect-coordinator.test.ts     |  37 +----
+ .../execution-inspect-protocol.test.ts        |  60 +-------
+ .../__tests__/execution-inspect-uds.test.ts   |   8 -
+ .../src/__tests__/protocol.test.ts            |   9 ++
+ .../src/protocol/execution-inspect.ts         | 143 ------------------
+ packages/runtime-host/src/protocol/index.ts   |   5 +-
+ .../runtime-host/src/protocol/operations.ts   |   1 -
+ .../src/server/access-credential-store.ts     |   3 +
+ .../server/execution-inspect-coordinator.ts   | 103 +------------
+ .../sqlite-core-execution-store.test.ts       |  29 ++++
+ packages/storage/src/agent-run-store.ts       |  23 ---
+ packages/storage/src/execution-stores.ts      |   3 -
+ .../src/sqlite-core-execution-schema.ts       |   7 +-
+ 14 files changed, 93 insertions(+), 373 deletions(-)
+
+diff --git a/packages/runtime-host/src/__tests__/access-credential-metadata.test.ts b/packages/runtime-host/src/__tests__/access-credential-metadata.test.ts
+index b97c7d8c75..18455197f7 100644
+--- a/packages/runtime-host/src/__tests__/access-credential-metadata.test.ts
++++ b/packages/runtime-host/src/__tests__/access-credential-metadata.test.ts
+@@ -19,7 +19,7 @@
+ 
+ import assert from 'node:assert/strict';
+ import { createHash } from 'node:crypto';
+-import { access, mkdtemp, rm } from 'node:fs/promises';
++import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+ import { tmpdir } from 'node:os';
+ import { join } from 'node:path';
+ import { test } from 'node:test';
+@@ -29,6 +29,7 @@ import { readRuntimeHostAccessCredentialMetadata } from '../server/access-creden
+ import {
+   ACCESS_FILE_NAME,
+   createAccessCredentialFile,
++  readAccessCredentialFile,
+   writeAccessCredentialFile,
+   type StoredAccessCredential,
+ } from '../server/access-credential-store.js';
+@@ -133,3 +134,35 @@ test('credential metadata exposes only usable public access state', async (t) =>
+     assert.equal(serialized.includes(sensitive), false);
+   }
+ });
++
++test('releases a retired execution.inspect.resolve grant from an existing access file', async (t) => {
++  const dir = await mkdtemp(join(tmpdir(), 'maka-access-retired-'));
++  t.after(() => rm(dir, { recursive: true, force: true }));
++  const path = join(dir, ACCESS_FILE_NAME);
++  // A file written before the operation was removed still records the grant.
++  // Decoding must release it rather than reject the whole file and keep the
++  // Host from starting over a capability it can no longer serve.
++  await writeFile(
++    path,
++    JSON.stringify({
++      schemaVersion: 1,
++      credentials: [
++        {
++          credentialId: 'legacy',
++          credentialHash: 'a'.repeat(64),
++          principalId: 'desktop:legacy',
++          principalKind: 'remote_owner',
++          status: 'active',
++          operationGrants: ['host.status', 'execution.inspect.resolve'],
++          canPublishClientCapabilities: false,
++          canUseHostPaths: false,
++          createdAt: '2026-01-01T00:00:00.000Z',
++        },
++      ],
++    }),
++    'utf8',
++  );
++
++  const file = await readAccessCredentialFile(path);
++  assert.deepEqual(file.credentials[0]?.operationGrants, ['host.status']);
++});
+diff --git a/packages/runtime-host/src/__tests__/execution-inspect-coordinator.test.ts b/packages/runtime-host/src/__tests__/execution-inspect-coordinator.test.ts
+index f0ed037956..753368305b 100644
+--- a/packages/runtime-host/src/__tests__/execution-inspect-coordinator.test.ts
++++ b/packages/runtime-host/src/__tests__/execution-inspect-coordinator.test.ts
+@@ -143,47 +143,12 @@ describe('HostExecutionInspectCoordinator', () => {
+     });
+   });
+ 
+-  test('resolves duplicate AgentRun identities and returns canonical evidence documents', async () => {
++  test('returns canonical evidence documents for duplicate AgentRun identities', async () => {
+     await withCoordinator(async ({ stores, coordinator }) => {
+       const first = await stores.sessionStore.create(sessionInput('First'));
+       const second = await stores.sessionStore.create(sessionInput('Second'));
+       await stores.agentRunStore.createRun(runHeader(first.id, 'shared-run', 1));
+       await stores.agentRunStore.createRun(runHeader(second.id, 'shared-run', 2));
+-      await stores.agentRunStore.createRun(runHeader(second.id, first.id, 3));
+-
+-      const crossKind = await coordinator.handlers['execution.inspect.resolve'](
+-        { id: first.id },
+-        connectionContext(),
+-      );
+-      assert.equal(crossKind.ok, true);
+-      if (!crossKind.ok) return;
+-      assert.equal(crossKind.result.status, 'ambiguous');
+-      assert.deepEqual(
+-        crossKind.result.candidates.map((candidate) => candidate.kind),
+-        ['agent_run', 'session'],
+-      );
+-
+-      const ambiguous = await coordinator.handlers['execution.inspect.resolve'](
+-        { id: 'shared-run', requestedKind: 'agent_run' },
+-        connectionContext(),
+-      );
+-      assert.equal(ambiguous.ok, true);
+-      if (!ambiguous.ok) return;
+-      assert.equal(ambiguous.result.status, 'ambiguous');
+-      assert.deepEqual(
+-        ambiguous.result.candidates.map((candidate) =>
+-          candidate.kind === 'agent_run' ? candidate.sessionId : undefined,
+-        ),
+-        [first.id, second.id].sort(),
+-      );
+-
+-      const resolved = await coordinator.handlers['execution.inspect.resolve'](
+-        { id: 'shared-run', requestedKind: 'agent_run', sessionId: second.id },
+-        connectionContext(),
+-      );
+-      assert.equal(resolved.ok, true);
+-      if (!resolved.ok) return;
+-      assert.equal(resolved.result.status, 'resolved');
+ 
+       const run = await coordinator.handlers['execution.inspect.query'](
+         { kind: 'agent_run', sessionId: second.id, agentRunId: 'shared-run' },
+diff --git a/packages/runtime-host/src/__tests__/execution-inspect-protocol.test.ts b/packages/runtime-host/src/__tests__/execution-inspect-protocol.test.ts
+index c9504e9acc..7febc0924d 100644
+--- a/packages/runtime-host/src/__tests__/execution-inspect-protocol.test.ts
++++ b/packages/runtime-host/src/__tests__/execution-inspect-protocol.test.ts
+@@ -24,25 +24,12 @@ import type { AgentRunInspectDocument, SessionInspectDocument } from '@maka/core
+ import {
+   decodeClientFrame,
+   decodeHostFrame,
+-  EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS,
+   EXECUTION_INSPECT_RESULT_MAX_BYTES,
+   HOST_OPERATION_SPECS,
+ } from '../protocol/index.js';
+ 
+ describe('execution inspect protocol', () => {
+-  test('decodes closed resolution and evidence query shapes', () => {
+-    assert.deepEqual(
+-      decodeClientFrame({
+-        requestId: 'request-resolve',
+-        operation: 'execution.inspect.resolve',
+-        input: { id: 'run-1', requestedKind: 'agent_run', sessionId: 'session-1' },
+-      }),
+-      {
+-        requestId: 'request-resolve',
+-        operation: 'execution.inspect.resolve',
+-        input: { id: 'run-1', requestedKind: 'agent_run', sessionId: 'session-1' },
+-      },
+-    );
++  test('decodes closed evidence query shapes', () => {
+     assert.deepEqual(
+       decodeClientFrame({
+         requestId: 'request-trace',
+@@ -138,7 +125,7 @@ describe('execution inspect protocol', () => {
+     );
+   });
+ 
+-  test('rejects open shapes, inconsistent resolution, and oversized payloads', () => {
++  test('rejects open shapes and oversized payloads', () => {
+     assert.throws(
+       () =>
+         decodeClientFrame({
+@@ -161,37 +148,6 @@ describe('execution inspect protocol', () => {
+         }),
+       isProtocolError,
+     );
+-    assert.throws(
+-      () =>
+-        decodeHostFrame({
+-          requestId: 'request-status',
+-          operation: 'execution.inspect.resolve',
+-          ok: true,
+-          result: { status: 'resolved', candidates: [], truncated: false },
+-        }),
+-      isProtocolError,
+-    );
+-    assert.throws(
+-      () =>
+-        decodeHostFrame({
+-          requestId: 'request-page',
+-          operation: 'execution.inspect.resolve',
+-          ok: true,
+-          result: {
+-            status: 'ambiguous',
+-            candidates: Array.from(
+-              { length: EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS + 1 },
+-              (_, index) => ({
+-                kind: 'agent_run',
+-                id: 'run-1',
+-                sessionId: `session-${index}`,
+-              }),
+-            ),
+-            truncated: true,
+-          },
+-        }),
+-      isProtocolError,
+-    );
+     assert.throws(
+       () =>
+         decodeHostFrame({
+@@ -257,18 +213,6 @@ describe('execution inspect protocol', () => {
+         }),
+       isProtocolError,
+     );
+-    assert.throws(
+-      () =>
+-        HOST_OPERATION_SPECS['execution.inspect.resolve'].assertOutputForInput?.(
+-          { id: 'run-1', requestedKind: 'agent_run', sessionId: 'session-1' },
+-          {
+-            status: 'resolved',
+-            candidates: [{ kind: 'agent_run', id: 'run-1', sessionId: 'session-2' }],
+-            truncated: false,
+-          },
+-        ),
+-      isProtocolError,
+-    );
+   });
+ });
+ 
+diff --git a/packages/runtime-host/src/__tests__/execution-inspect-uds.test.ts b/packages/runtime-host/src/__tests__/execution-inspect-uds.test.ts
+index d272dac565..1200d161df 100644
+--- a/packages/runtime-host/src/__tests__/execution-inspect-uds.test.ts
++++ b/packages/runtime-host/src/__tests__/execution-inspect-uds.test.ts
+@@ -73,14 +73,6 @@ test('a live Host serves Interactive inspection over its real endpoint while ret
+     assert.equal(connected.kind, 'connected');
+     if (connected.kind !== 'connected') throw new Error('Live inspection did not connect');
+     try {
+-      assert.deepEqual(
+-        await connected.connection.request('execution.inspect.resolve', { id: session.id }),
+-        {
+-          status: 'resolved',
+-          candidates: [{ kind: 'session', id: session.id }],
+-          truncated: false,
+-        },
+-      );
+       const inspected = await connected.connection.request('execution.inspect.query', {
+         kind: 'session',
+         sessionId: session.id,
+diff --git a/packages/runtime-host/src/__tests__/protocol.test.ts b/packages/runtime-host/src/__tests__/protocol.test.ts
+index 662fcd9e8d..7a5e8551ef 100644
+--- a/packages/runtime-host/src/__tests__/protocol.test.ts
++++ b/packages/runtime-host/src/__tests__/protocol.test.ts
+@@ -232,6 +232,15 @@ describe('Runtime Host bootstrap protocol', () => {
+     assert.ok(RUNTIME_HOST_COMPATIBILITY_EPOCH > 50);
+   });
+ 
++  test('publishes a new compatibility epoch for the removed execution.inspect.resolve operation', () => {
++    // Epoch 63 peers still know execution.inspect.resolve and would send it
++    // only to fail mid-connection now that it is gone, so its removal must
++    // fail the handshake instead.
++    assert.ok(RUNTIME_HOST_COMPATIBILITY_EPOCH > 63);
++    assert.equal(Object.hasOwn(HOST_OPERATION_SPECS, 'execution.inspect.resolve'), false);
++    assert.equal(Object.hasOwn(HOST_OPERATION_SPECS, 'execution.inspect.query'), true);
++  });
++
+   test('adds credential rotation without changing existing credential inputs', () => {
+     const issueInput = {
+       principalKind: 'remote_owner',
+diff --git a/packages/runtime-host/src/protocol/execution-inspect.ts b/packages/runtime-host/src/protocol/execution-inspect.ts
+index ff37798a07..6d7a9f3372 100644
+--- a/packages/runtime-host/src/protocol/execution-inspect.ts
++++ b/packages/runtime-host/src/protocol/execution-inspect.ts
+@@ -40,7 +40,6 @@ import {
+ import { invalidProtocolFrame } from './errors.js';
+ import { defineOperation } from './operation-spec.js';
+ 
+-export const EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS = 32;
+ export const EXECUTION_INSPECT_SESSION_MAX_RUNS = 64;
+ export const EXECUTION_INSPECT_TRACE_PAGE_MAX_TURNS = 16;
+ export const EXECUTION_INSPECT_RESULT_MAX_BYTES = 48 * 1024;
+@@ -57,24 +56,6 @@ const QUERY_ERRORS = [
+   'internal_failure',
+ ] as const;
+ 
+-export type ExecutionInspectEntityKind = 'session' | 'agent_run';
+-
+-export type ExecutionInspectCandidate =
+-  | { readonly kind: 'session'; readonly id: string }
+-  | { readonly kind: 'agent_run'; readonly id: string; readonly sessionId: string };
+-
+-export interface ExecutionInspectResolveInput {
+-  readonly id: string;
+-  readonly requestedKind?: ExecutionInspectEntityKind;
+-  readonly sessionId?: string;
+-}
+-
+-export interface ExecutionInspectResolveResult {
+-  readonly status: 'resolved' | 'not_found' | 'ambiguous';
+-  readonly candidates: readonly ExecutionInspectCandidate[];
+-  readonly truncated: boolean;
+-}
+-
+ export type ExecutionInspectQueryInput =
+   | { readonly kind: 'session'; readonly sessionId: string }
+   | {
+@@ -108,18 +89,6 @@ export type ExecutionInspectQueryResult =
+     };
+ 
+ export const EXECUTION_INSPECT_OPERATION_SPECS = {
+-  'execution.inspect.resolve': defineOperation<
+-    ExecutionInspectResolveInput,
+-    ExecutionInspectResolveResult,
+-    (typeof QUERY_ERRORS)[number]
+-  >({
+-    mode: 'query',
+-    availability: 'ready',
+-    errors: QUERY_ERRORS,
+-    decodeInput: decodeExecutionInspectResolveInput,
+-    decodeOutput: decodeExecutionInspectResolveResult,
+-    assertOutputForInput: assertResolveOutputForInput,
+-  }),
+   'execution.inspect.query': defineOperation<
+     ExecutionInspectQueryInput,
+     ExecutionInspectQueryResult,
+@@ -134,65 +103,6 @@ export const EXECUTION_INSPECT_OPERATION_SPECS = {
+   }),
+ } as const;
+ 
+-export function decodeExecutionInspectResolveInput(value: unknown): ExecutionInspectResolveInput {
+-  const record = requireShapedRecord(
+-    value,
+-    'execution.inspect.resolve input',
+-    ['id'],
+-    ['requestedKind', 'sessionId'],
+-  );
+-  const requestedKind =
+-    record.requestedKind === undefined
+-      ? undefined
+-      : requireExecutionInspectEntityKind(record.requestedKind);
+-  const sessionId =
+-    record.sessionId === undefined
+-      ? undefined
+-      : requireEntityId(record.sessionId, 'inspect Session id');
+-  if (sessionId !== undefined && requestedKind !== 'agent_run') {
+-    throw invalidProtocolFrame('Inspect Session filter requires AgentRun kind');
+-  }
+-  return {
+-    id: requireEntityId(record.id, 'inspect target id'),
+-    ...(requestedKind ? { requestedKind } : {}),
+-    ...(sessionId ? { sessionId } : {}),
+-  };
+-}
+-
+-export function decodeExecutionInspectResolveResult(value: unknown): ExecutionInspectResolveResult {
+-  requireEncodedByteLimit(
+-    value,
+-    'execution.inspect.resolve result',
+-    EXECUTION_INSPECT_RESULT_MAX_BYTES,
+-  );
+-  const record = requireExactRecord(value, 'execution.inspect.resolve result', [
+-    'status',
+-    'candidates',
+-    'truncated',
+-  ]);
+-  if (!Array.isArray(record.candidates)) {
+-    throw invalidProtocolFrame('Invalid execution inspect candidates');
+-  }
+-  if (record.candidates.length > EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS) {
+-    throw invalidProtocolFrame('Execution inspect candidate page exceeds its item limit');
+-  }
+-  if (typeof record.truncated !== 'boolean') {
+-    throw invalidProtocolFrame('Invalid execution inspect candidate truncation');
+-  }
+-  const status = requireResolveStatus(record.status);
+-  const candidates = record.candidates.map(decodeExecutionInspectCandidate);
+-  const expectedStatus =
+-    candidates.length === 0 && !record.truncated
+-      ? 'not_found'
+-      : candidates.length === 1 && !record.truncated
+-        ? 'resolved'
+-        : 'ambiguous';
+-  if (status !== expectedStatus) {
+-    throw invalidProtocolFrame('Execution inspect resolution status does not match candidates');
+-  }
+-  return { status, candidates, truncated: record.truncated };
+-}
+-
+ export function decodeExecutionInspectQueryInput(value: unknown): ExecutionInspectQueryInput {
+   const record = requireShapedRecord(
+     value,
+@@ -312,49 +222,6 @@ export function decodeExecutionInspectQueryResult(value: unknown): ExecutionInsp
+   throw invalidProtocolFrame('Invalid execution inspect query result kind');
+ }
+ 
+-function decodeExecutionInspectCandidate(value: unknown): ExecutionInspectCandidate {
+-  const record = requireShapedRecord(
+-    value,
+-    'execution inspect candidate',
+-    ['kind', 'id'],
+-    ['sessionId'],
+-  );
+-  const kind = requireExecutionInspectEntityKind(record.kind);
+-  const sessionId =
+-    record.sessionId === undefined
+-      ? undefined
+-      : requireEntityId(record.sessionId, 'candidate Session id');
+-  const id = requireEntityId(record.id, 'candidate id');
+-  if (kind === 'agent_run') {
+-    if (sessionId === undefined) {
+-      throw invalidProtocolFrame('AgentRun inspect candidate requires a Session identity');
+-    }
+-    return { kind, id, sessionId };
+-  }
+-  if (sessionId !== undefined) {
+-    throw invalidProtocolFrame(
+-      'Session inspect candidate cannot include a parent Session identity',
+-    );
+-  }
+-  return { kind, id };
+-}
+-
+-function assertResolveOutputForInput(
+-  input: ExecutionInspectResolveInput,
+-  output: ExecutionInspectResolveResult,
+-): void {
+-  for (const candidate of output.candidates) {
+-    if (
+-      candidate.id !== input.id ||
+-      (input.requestedKind !== undefined && candidate.kind !== input.requestedKind) ||
+-      (input.sessionId !== undefined &&
+-        (candidate.kind !== 'agent_run' || candidate.sessionId !== input.sessionId))
+-    ) {
+-      throw invalidProtocolFrame('Execution inspect resolution changed request identity');
+-    }
+-  }
+-}
+-
+ function assertQueryOutputForInput(
+   input: ExecutionInspectQueryInput,
+   output: ExecutionInspectQueryResult,
+@@ -397,13 +264,3 @@ function requireTraceCursor(value: unknown): string {
+   }
+   return cursor;
+ }
+-
+-function requireExecutionInspectEntityKind(value: unknown): ExecutionInspectEntityKind {
+-  if (value === 'session' || value === 'agent_run') return value;
+-  throw invalidProtocolFrame('Invalid execution inspect entity kind');
+-}
+-
+-function requireResolveStatus(value: unknown): ExecutionInspectResolveResult['status'] {
+-  if (value === 'resolved' || value === 'not_found' || value === 'ambiguous') return value;
+-  throw invalidProtocolFrame('Invalid execution inspect resolution status');
+-}
+diff --git a/packages/runtime-host/src/protocol/index.ts b/packages/runtime-host/src/protocol/index.ts
+index 101bcd07fe..b735d3549d 100644
+--- a/packages/runtime-host/src/protocol/index.ts
++++ b/packages/runtime-host/src/protocol/index.ts
+@@ -94,7 +94,10 @@ export const RUNTIME_HOST_REGISTRATION_SCHEMA_VERSION = 1 as const;
+ export const RUNTIME_HOST_PROTOCOL_VERSION = 0 as const;
+ // Increment when the same protocol version no longer guarantees safe Client-Host
+ // interoperability. Mismatches are rejected before domain commands are admitted.
+-export const RUNTIME_HOST_COMPATIBILITY_EPOCH = 63 as const;
++export const RUNTIME_HOST_COMPATIBILITY_EPOCH = 64 as const;
++// 64: execution.inspect drops the retired resolve operation. Older peers still
++// know execution.inspect.resolve and would send it only to fail mid-connection,
++// so removing it needs its own handshake boundary.
+ // 63: Connection updates accept the full canonical enabled-model limit.
+ // Older peers reject valid catalogs containing more than 64 enabled models.
+ // 62: A Direct peer listener can expose owner-only Peer Mesh management
+diff --git a/packages/runtime-host/src/protocol/operations.ts b/packages/runtime-host/src/protocol/operations.ts
+index 638f4aa4dc..d9176c2657 100644
+--- a/packages/runtime-host/src/protocol/operations.ts
++++ b/packages/runtime-host/src/protocol/operations.ts
+@@ -254,7 +254,6 @@ export const REMOTE_OWNER_OPERATION_GRANTS = Object.freeze([
+   'daily-review.query',
+   'deep-research.query',
+   'execution.inspect.query',
+-  'execution.inspect.resolve',
+   'external-session.catalog.query',
+   'external-session.import',
+   'external-session.source.query',
+diff --git a/packages/runtime-host/src/server/access-credential-store.ts b/packages/runtime-host/src/server/access-credential-store.ts
+index 4b714a52d0..210d9899d0 100644
+--- a/packages/runtime-host/src/server/access-credential-store.ts
++++ b/packages/runtime-host/src/server/access-credential-store.ts
+@@ -47,6 +47,9 @@ const RETIRED_OPERATION_GRANTS = new Set([
+   // Retired with the Claude subscription provider, whose client identity the
+   // usage report required.
+   'oauth.account.usage.fetch',
++  // Retired with the second execution-inspection contract; no shipped surface
++  // called execution.inspect.resolve, so a stored grant is released on decode.
++  'execution.inspect.resolve',
+ ]);
+ 
+ export const ACCESS_FILE_NAME = 'runtime-host-access.json';
+diff --git a/packages/runtime-host/src/server/execution-inspect-coordinator.ts b/packages/runtime-host/src/server/execution-inspect-coordinator.ts
+index ef4d437533..3419a17a2c 100644
+--- a/packages/runtime-host/src/server/execution-inspect-coordinator.ts
++++ b/packages/runtime-host/src/server/execution-inspect-coordinator.ts
+@@ -38,16 +38,13 @@ import {
+   type ExecutionSessionWriter,
+ } from '@maka/storage/execution-stores';
+ import {
+-  EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS,
+   EXECUTION_INSPECT_EVIDENCE_MAX_BYTES,
+   EXECUTION_INSPECT_EVIDENCE_MAX_RECORDS,
+   EXECUTION_INSPECT_RESULT_MAX_BYTES,
+   EXECUTION_INSPECT_SESSION_MAX_RUNS,
+   EXECUTION_INSPECT_TRACE_PAGE_MAX_TURNS,
+-  type ExecutionInspectCandidate,
+   type ExecutionInspectQueryInput,
+   type ExecutionInspectQueryResult,
+-  type ExecutionInspectResolveInput,
+   type OperationOutcome,
+ } from '../protocol/index.js';
+ import type { ExecutionInspectOperationHandlerMap } from './operation-dispatcher.js';
+@@ -57,7 +54,6 @@ interface InspectStores {
+   readonly agentRunStore: Pick<
+     ExecutionAgentRunReader,
+     | 'readRun'
+-    | 'findRunsById'
+     | 'listSessionRunsBounded'
+     | 'listSessionRunsPage'
+     | 'readEventsBounded'
+@@ -70,7 +66,6 @@ interface InspectStores {
+ /** Host-owned, payload-safe read model for live Interactive execution evidence. */
+ export class HostExecutionInspectCoordinator {
+   readonly handlers: ExecutionInspectOperationHandlerMap = {
+-    'execution.inspect.resolve': (input) => this.#resolve(input),
+     'execution.inspect.query': (input) => this.#query(input),
+   };
+ 
+@@ -80,50 +75,6 @@ export class HostExecutionInspectCoordinator {
+     this.#stores = stores;
+   }
+ 
+-  async #resolve(
+-    input: ExecutionInspectResolveInput,
+-  ): Promise<OperationOutcome<'execution.inspect.resolve'>> {
+-    try {
+-      const [sessionCandidates, runSearch] = await Promise.all([
+-        input.requestedKind === 'agent_run' ? [] : this.#findSession(input.id),
+-        input.requestedKind === 'session'
+-          ? { runs: [], truncated: false }
+-          : input.sessionId
+-            ? this.#findRunInSession(input.sessionId, input.id)
+-            : this.#stores.agentRunStore.findRunsById(
+-                input.id,
+-                input.requestedKind === undefined
+-                  ? EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS - 1
+-                  : EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS,
+-              ),
+-      ]);
+-      const candidates = [
+-        ...runSearch.runs.map(
+-          (run): ExecutionInspectCandidate => ({
+-            kind: 'agent_run',
+-            id: run.runId,
+-            sessionId: run.sessionId,
+-          }),
+-        ),
+-        ...sessionCandidates,
+-      ].sort(compareCandidates);
+-      const truncated = runSearch.truncated;
+-      const status =
+-        candidates.length === 0 && !truncated
+-          ? 'not_found'
+-          : candidates.length === 1 && !truncated
+-            ? 'resolved'
+-            : 'ambiguous';
+-      return { ok: true, result: { status, candidates, truncated } };
+-    } catch {
+-      return failure(
+-        'execution.inspect.resolve',
+-        'persistence_failed',
+-        'Execution evidence is unavailable',
+-      );
+-    }
+-  }
+-
+   async #query(
+     input: ExecutionInspectQueryInput,
+   ): Promise<OperationOutcome<'execution.inspect.query'>> {
+@@ -137,11 +88,10 @@ export class HostExecutionInspectCoordinator {
+               ? await this.#inspectTurnTrace(input.sessionId, input.turnId)
+               : await this.#inspectSessionTracePage(input);
+       if (result === undefined) {
+-        return failure('execution.inspect.query', 'not_found', 'Execution evidence was not found');
++        return failure('not_found', 'Execution evidence was not found');
+       }
+       if (encodedBytes(result) > EXECUTION_INSPECT_RESULT_MAX_BYTES) {
+         return failure(
+-          'execution.inspect.query',
+           'invalid_request',
+           input.kind === 'session'
+             ? 'Session inspection exceeds the live Host result limit; inspect one AgentRun instead'
+@@ -155,36 +105,12 @@ export class HostExecutionInspectCoordinator {
+       return { ok: true, result };
+     } catch (error) {
+       if (error instanceof InspectQueryTooLargeError) {
+-        return failure('execution.inspect.query', 'invalid_request', error.message);
++        return failure('invalid_request', error.message);
+       }
+       if (error instanceof InspectQueryInvalidError) {
+-        return failure('execution.inspect.query', 'invalid_request', error.message);
++        return failure('invalid_request', error.message);
+       }
+-      return failure(
+-        'execution.inspect.query',
+-        'persistence_failed',
+-        'Execution evidence is unavailable',
+-      );
+-    }
+-  }
+-
+-  async #findSession(id: string): Promise<ExecutionInspectCandidate[]> {
+-    try {
+-      const header = await this.#stores.sessionStore.readHeaderSnapshot(id);
+-      return [{ kind: 'session', id: header.id }];
+-    } catch (error) {
+-      if (isMissing(error)) return [];
+-      throw error;
+-    }
+-  }
+-
+-  async #findRunInSession(sessionId: string, runId: string) {
+-    try {
+-      const run = await this.#stores.agentRunStore.readRun(sessionId, runId);
+-      return { runs: [run], truncated: false };
+-    } catch (error) {
+-      if (isMissing(error)) return { runs: [], truncated: false };
+-      throw error;
++      return failure('persistence_failed', 'Execution evidence is unavailable');
+     }
+   }
+ 
+@@ -526,18 +452,6 @@ function decodeTraceCursor(cursor: string): { readonly createdAt: number; readon
+   }
+ }
+ 
+-function compareCandidates(
+-  left: ExecutionInspectCandidate,
+-  right: ExecutionInspectCandidate,
+-): number {
+-  return (
+-    left.kind.localeCompare(right.kind) ||
+-    (left.kind === 'agent_run' ? left.sessionId : '').localeCompare(
+-      right.kind === 'agent_run' ? right.sessionId : '',
+-    )
+-  );
+-}
+-
+ function isMissing(error: unknown): boolean {
+   return isSessionNotFoundError(error) || (error as NodeJS.ErrnoException)?.code === 'ENOENT';
+ }
+@@ -546,10 +460,9 @@ function isInspectQueryTooLargeError(error: unknown): boolean {
+   return error instanceof InspectQueryTooLargeError;
+ }
+ 
+-function failure<K extends 'execution.inspect.resolve' | 'execution.inspect.query'>(
+-  _operation: K,
+-  code: Extract<OperationOutcome<K>, { ok: false }>['error']['code'],
++function failure(
++  code: Extract<OperationOutcome<'execution.inspect.query'>, { ok: false }>['error']['code'],
+   message: string,
+-): OperationOutcome<K> {
+-  return { ok: false, error: { code, message } } as OperationOutcome<K>;
++): OperationOutcome<'execution.inspect.query'> {
++  return { ok: false, error: { code, message } };
+ }
+diff --git a/packages/storage/src/__tests__/sqlite-core-execution-store.test.ts b/packages/storage/src/__tests__/sqlite-core-execution-store.test.ts
+index dd82774469..8ce0f081a4 100644
+--- a/packages/storage/src/__tests__/sqlite-core-execution-store.test.ts
++++ b/packages/storage/src/__tests__/sqlite-core-execution-store.test.ts
+@@ -220,6 +220,35 @@ describe('SQLite core execution stores', () => {
+     });
+   });
+ 
++  test('drops the obsolete AgentRun identity index on upgrade', async () => {
++    await withRoot(async (root) => {
++      createSqliteAgentRunStore(root).close?.();
++      const path = join(root, 'runtime.sqlite');
++      const legacy = new DatabaseSync(path);
++      legacy.exec(`
++        CREATE INDEX IF NOT EXISTS core_agent_runs_identity
++          ON core_agent_runs(run_id, session_id);
++        UPDATE operational_schema_migrations SET version = 5 WHERE scope = 'core_execution';
++      `);
++      legacy.close();
++
++      createSqliteAgentRunStore(root).close?.();
++      const migrated = new DatabaseSync(path, { readOnly: true });
++      try {
++        assert.deepEqual(
++          migrated
++            .prepare(
++              "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'core_agent_runs_identity'",
++            )
++            .all(),
++          [],
++        );
++      } finally {
++        migrated.close();
++      }
++    });
++  });
++
+   test('pages AgentRuns by stable creation and run identity order', async () => {
+     await withRoot(async (root) => {
+       const store = createSqliteAgentRunStore(root);
+diff --git a/packages/storage/src/agent-run-store.ts b/packages/storage/src/agent-run-store.ts
+index 6a87cfb0a5..6feb75144b 100644
+--- a/packages/storage/src/agent-run-store.ts
++++ b/packages/storage/src/agent-run-store.ts
+@@ -201,7 +201,6 @@ export interface DurableAgentRunStore
+   extends AgentRunStore,
+     RootTurnAdmissionStore,
+     RootTurnStartRejectionStore {
+-  findRunsById(runId: string, limit: number): Promise<AgentRunIdentitySearchResult>;
+   listSessionRunsBounded(sessionId: string, limit: number): Promise<AgentRunIdentitySearchResult>;
+   listSessionRunsPage(sessionId: string, input: AgentRunPageInput): Promise<AgentRunPageResult>;
+   readEventsBounded(
+@@ -419,28 +418,6 @@ class SqliteAgentRunStore implements DurableAgentRunStore {
+     return this.listSessionRunsForRecovery(sessionId);
+   }
+ 
+-  async findRunsById(runId: string, limit: number): Promise<AgentRunIdentitySearchResult> {
+-    assertSafeId(runId, 'Invalid run id');
+-    assertIdentitySearchLimit(limit);
+-    const rows = this.#lease.database
+-      .prepare(`
+-        SELECT session_id, record_json
+-        FROM core_agent_runs
+-        WHERE run_id = ?
+-        ORDER BY session_id
+-        LIMIT ?
+-      `)
+-      .all(runId, limit + 1) as Array<{ session_id?: unknown; record_json?: unknown }>;
+-    const truncated = rows.length > limit;
+-    const runs = rows.slice(0, limit).map((row) => {
+-      if (typeof row.session_id !== 'string' || typeof row.record_json !== 'string') {
+-        throw new Error('Invalid SQLite AgentRun identity row');
+-      }
+-      return decodePersistedAgentRunHeader(JSON.parse(row.record_json), row.session_id, runId);
+-    });
+-    return { runs, truncated };
+-  }
+-
+   async listSessionRunsBounded(
+     sessionId: string,
+     limit: number,
+diff --git a/packages/storage/src/execution-stores.ts b/packages/storage/src/execution-stores.ts
+index 9dab9563d2..56cd4ef14c 100644
+--- a/packages/storage/src/execution-stores.ts
++++ b/packages/storage/src/execution-stores.ts
+@@ -173,7 +173,6 @@ export interface ExecutionSessionReader {
+ 
+ export interface ExecutionAgentRunReader {
+   readRun(sessionId: string, runId: string): Promise<AgentRunHeader>;
+-  findRunsById(runId: string, limit: number): Promise<AgentRunIdentitySearchResult>;
+   listSessionRuns(sessionId: string): Promise<AgentRunHeader[]>;
+   listSessionRunsBounded(sessionId: string, limit: number): Promise<AgentRunIdentitySearchResult>;
+   listSessionRunsPage(sessionId: string, input: AgentRunPageInput): Promise<AgentRunPageResult>;
+@@ -471,7 +470,6 @@ async function createExecutionStoresForWrite<K extends StorageRootKind, E extend
+       updateRun: (sessionId, runId, patch, options) =>
+         run(() => agentRunStore.updateRun(sessionId, runId, patch, options)),
+       readRun: (sessionId, runId) => run(() => agentRunStore.readRun(sessionId, runId)),
+-      findRunsById: (runId, limit) => run(() => agentRunStore.findRunsById(runId, limit)),
+       listSessionRuns: (sessionId) => run(() => agentRunStore.listSessionRuns(sessionId)),
+       listSessionRunsBounded: (sessionId, limit) =>
+         run(() => agentRunStore.listSessionRunsBounded(sessionId, limit)),
+@@ -616,7 +614,6 @@ async function openExecutionStoresForRead<K extends StorageRootKind, E extends o
+     },
+     agentRunStore: {
+       readRun: (sessionId, runId) => run(() => agentRunStore.readRun(sessionId, runId)),
+-      findRunsById: (runId, limit) => run(() => agentRunStore.findRunsById(runId, limit)),
+       listSessionRuns: (sessionId) => run(() => agentRunStore.listSessionRuns(sessionId)),
+       listSessionRunsBounded: (sessionId, limit) =>
+         run(() => agentRunStore.listSessionRunsBounded(sessionId, limit)),
+diff --git a/packages/storage/src/sqlite-core-execution-schema.ts b/packages/storage/src/sqlite-core-execution-schema.ts
+index 1053414d52..f6fea7c94a 100644
+--- a/packages/storage/src/sqlite-core-execution-schema.ts
++++ b/packages/storage/src/sqlite-core-execution-schema.ts
+@@ -19,7 +19,7 @@
+ 
+ import type { DatabaseSync } from 'node:sqlite';
+ 
+-export const SQLITE_CORE_EXECUTION_SCHEMA_VERSION = 5;
++export const SQLITE_CORE_EXECUTION_SCHEMA_VERSION = 6;
+ 
+ export function migrateSqliteCoreExecutionDatabase(db: DatabaseSync): void {
+   db.exec(`
+@@ -35,9 +35,6 @@ export function migrateSqliteCoreExecutionDatabase(db: DatabaseSync): void {
+     CREATE INDEX IF NOT EXISTS core_agent_runs_session_order
+       ON core_agent_runs(session_id, created_at, run_id);
+ 
+-    CREATE INDEX IF NOT EXISTS core_agent_runs_identity
+-      ON core_agent_runs(run_id, session_id);
+-
+     CREATE TABLE IF NOT EXISTS core_agent_run_events (
+       session_id TEXT NOT NULL,
+       run_id TEXT NOT NULL,
+@@ -154,6 +151,8 @@ export function migrateSqliteCoreExecutionDatabase(db: DatabaseSync): void {
+       ON core_agent_runs(session_id, latest_model_call_sequence, run_id)
+       WHERE latest_model_call_sequence IS NOT NULL;
+ 
++    DROP INDEX IF EXISTS core_agent_runs_identity;
++
+     DROP TABLE IF EXISTS core_message_receipts;
+     DROP TABLE IF EXISTS core_message_host_epochs;
+   `);

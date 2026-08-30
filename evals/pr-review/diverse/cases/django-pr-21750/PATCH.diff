@@ -1,0 +1,169 @@
+From e4900fe6743fd262e30b2d6a88d986644649fe07 Mon Sep 17 00:00:00 2001
+From: Adam Johnson <me@adamj.eu>
+Date: Sat, 8 Aug 2026 23:01:34 +0100
+Subject: [PATCH] Fixed #37260 -- Made alterations between Python on_delete
+ options noops.
+
+Support for database-level delete options removed "on_delete" from
+`Field.non_db_attrs` because changes to or from the new `DB_CASCADE`,
+`DB_SET_DEFAULT`, and `DB_SET_NULL` options require schema changes. As a
+consequence, an `AlterField` changing only a Python-level `on_delete` option
+(such as `CASCADE` to `PROTECT`) performs unnecessary schema changes when it
+was previously a no-op at the database level.
+
+This commit makes `ForeignObject.non_db_attrs` a property that includes
+`"on_delete"`only when the option is not a database-level one, so that:
+
+- Python-level to Python-level changes skip DDL again,
+- changes to, from, or between database-level options still alter the
+  field.
+
+Regression in 0c487aa3a7b2417481bf48c1e5355c855873e210.
+---
+ django/db/models/fields/related.py  |  8 +++++
+ docs/releases/6.1.1.txt             |  5 +++
+ tests/migrations/test_operations.py | 27 ++++++++++++++++
+ tests/schema/tests.py               | 49 ++++++++++++++++++++++++++++-
+ 4 files changed, 88 insertions(+), 1 deletion(-)
+
+diff --git a/django/db/models/fields/related.py b/django/db/models/fields/related.py
+index 56cde9cee327..bce026eae7b2 100644
+--- a/django/db/models/fields/related.py
++++ b/django/db/models/fields/related.py
+@@ -601,6 +601,14 @@ def __copy__(self):
+         obj.__dict__.pop("reverse_path_infos", None)
+         return obj
+ 
++    @property
++    def non_db_attrs(self):
++        if isinstance(self.remote_field.on_delete, DatabaseOnDelete):
++            # Database-level on_delete options are part of the column
++            # definition.
++            return super().non_db_attrs
++        return super().non_db_attrs + ("on_delete",)
++
+     def check(self, **kwargs):
+         return [
+             *super().check(**kwargs),
+diff --git a/docs/releases/6.1.1.txt b/docs/releases/6.1.1.txt
+index 4e13e8441ee9..225b3bf07b0f 100644
+--- a/docs/releases/6.1.1.txt
++++ b/docs/releases/6.1.1.txt
+@@ -25,3 +25,8 @@ Bugfixes
+   created with :func:`~django.utils.safestring.mark_safe`, used as form media
+   assets were treated as asset paths rather than being rendered verbatim
+   (:ticket:`37262`).
++
++* Fixed a regression in Django 6.1 that caused ``AlterField`` operations that
++  changed only the Python-level ``on_delete`` option of ``ForeignKey`` or
++  ``OneToOneField`` fields to perform unnecessary schema changes
++  (:ticket:`37260`).
+diff --git a/tests/migrations/test_operations.py b/tests/migrations/test_operations.py
+index 939520d79245..9bbf1249e957 100644
+--- a/tests/migrations/test_operations.py
++++ b/tests/migrations/test_operations.py
+@@ -2573,6 +2573,33 @@ def test_alter_field_add_db_column_noop(self):
+                 operation.database_forwards(app_label, editor, new_state, project_state)
+         self.assertColumnExists(rider_table, "pony_id")
+ 
++    def test_alter_field_python_level_on_delete_noop(self):
++        """
++        AlterField operation is a noop when changing only the Python-level
++        on_delete option.
++        """
++        app_label = "test_alflodnoop"
++        project_state = self.set_up_test_model(app_label, related_model=True)
++        operation = migrations.AlterField(
++            "Rider", "pony", models.ForeignKey("Pony", models.PROTECT)
++        )
++        new_state = project_state.clone()
++        operation.state_forwards(app_label, new_state)
++        self.assertIs(
++            project_state.models[app_label, "rider"]
++            .fields["pony"]
++            .remote_field.on_delete,
++            models.CASCADE,
++        )
++        self.assertIs(
++            new_state.models[app_label, "rider"].fields["pony"].remote_field.on_delete,
++            models.PROTECT,
++        )
++        with connection.schema_editor() as editor, self.assertNumQueries(0):
++            operation.database_forwards(app_label, editor, project_state, new_state)
++        with connection.schema_editor() as editor, self.assertNumQueries(0):
++            operation.database_backwards(app_label, editor, new_state, project_state)
++
+     def test_alter_field_foreignobject_noop(self):
+         app_label = "test_alflfo_noop"
+         project_state = self.set_up_test_model(app_label)
+diff --git a/tests/schema/tests.py b/tests/schema/tests.py
+index 024e68f2b36d..292df448e7eb 100644
+--- a/tests/schema/tests.py
++++ b/tests/schema/tests.py
+@@ -635,10 +635,57 @@ def test_fk_alter_on_delete(self):
+         ):
+             editor.alter_field(Book, old_field, new_field)
+         self.assertForeignKeyExists(Book, "author_id", "schema_author")
++        self.assertGreater(len(ctx.captured_queries), 0)
+         self.assertIs(
+             any("ON DELETE" in query["sql"] for query in ctx.captured_queries), False
+         )
+ 
++    @skipUnlessDBFeature("supports_foreign_keys", "can_introspect_foreign_keys")
++    def test_fk_alter_on_delete_python_level_noop(self):
++        with connection.schema_editor() as editor:
++            editor.create_model(Author)
++            editor.create_model(Book)
++        old_field = Book._meta.get_field("author")
++        new_field = ForeignKey(Author, PROTECT)
++        new_field.set_attributes_from_name("author")
++        # Changing between Python-level on_delete options doesn't require
++        # database changes.
++        with connection.schema_editor() as editor, self.assertNumQueries(0):
++            editor.alter_field(Book, old_field, new_field, strict=True)
++        with connection.schema_editor() as editor, self.assertNumQueries(0):
++            editor.alter_field(Book, new_field, old_field, strict=True)
++
++    @isolate_apps("schema")
++    @skipUnlessDBFeature("supports_foreign_keys", "can_introspect_foreign_keys")
++    def test_fk_alter_on_delete_db_level(self):
++        class DBOnDeleteParent(Model):
++            class Meta:
++                app_label = "schema"
++
++        class DBOnDeleteChild(Model):
++            parent = ForeignKey(DBOnDeleteParent, DB_CASCADE, null=True)
++
++            class Meta:
++                app_label = "schema"
++
++        self.isolated_local_models = [DBOnDeleteChild, DBOnDeleteParent]
++        with connection.schema_editor() as editor:
++            editor.create_model(DBOnDeleteParent)
++            editor.create_model(DBOnDeleteChild)
++        # Changing between database-level on_delete options requires database
++        # changes.
++        old_field = DBOnDeleteChild._meta.get_field("parent")
++        new_field = ForeignKey(DBOnDeleteParent, DB_SET_NULL, null=True)
++        new_field.set_attributes_from_name("parent")
++        with (
++            connection.schema_editor() as editor,
++            CaptureQueriesContext(connection) as ctx,
++        ):
++            editor.alter_field(DBOnDeleteChild, old_field, new_field, strict=True)
++        self.assertIs(
++            any("SET NULL" in query["sql"] for query in ctx.captured_queries), True
++        )
++
+     @isolate_apps("schema")
+     @skipUnlessDBFeature("supports_foreign_keys", "can_introspect_foreign_keys")
+     def test_create_model_db_on_delete(self):
+@@ -4926,7 +4973,7 @@ def test_alter_field_fk_attributes_noop(self):
+             error_messages={"invalid": "error message"},
+             help_text="help text",
+             limit_choices_to={"limit": "choice"},
+-            on_delete=CASCADE,
++            on_delete=PROTECT,
+             related_name="related_name",
+             related_query_name="related_query_name",
+             validators=[lambda x: x],

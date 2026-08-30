@@ -1,0 +1,1060 @@
+From 0a4c563d631ef4dd9ac59497ccd7304562482135 Mon Sep 17 00:00:00 2001
+From: AstroHan <lei.yuhan@outlook.com>
+Date: Fri, 28 Aug 2026 16:48:19 +0800
+Subject: [PATCH 1/2] fix(desktop): state a failed turn's outcome where it
+ happened
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A failed turn's banner made three separate promises it could not keep.
+
+It claimed an action that does not exist. The banner reads
+`describeTurnErrorClass()` for a title and `deriveFailedTurnRecovery()`
+for a tail, joined by a CSS `::before` dot, so a rate limit rendered as
+「触发模型速率限制 · 已保留部分输出，可从这里继续」. There is no "here"
+to continue from: `partialOutputRetained` only records that the turn
+produced some assistant text or a tool result, and the sole resume path
+is `app_restarted`'s safe resume, gated on `latestInterruptedResumeTurnId`.
+`FailedTurnRecoveryAction`'s four values were never read by any renderer
+— only `label` was — so the whole recovery layer existed to phrase
+guidance no surface could honor. It goes; each `turnError` string now
+says what happened and what to do in one sentence, and what it tells the
+user to do is send another message, which always works.
+
+It painted its own error surface. `Marker variant="failed-banner"` plus
+hand-rolled `oklch(from var(--destructive) …)` borders reimplemented
+Astryx's `Banner`, which the same file already uses for the provider
+retry indicator and which the app uses in ~50 other places. Reason maps
+to `title`, the park diagnostic to `description`, safe resume to
+`endContent`. Three `MarkerVariant`s, the bespoke `AlertOctagon`, and
+the shell CSS go with it; only the block rhythm stays. Severity follows
+the app's existing `tone === 'destructive' ? 'error' : 'warning'` grading
+so "restarted, press continue" stops looking as loud as blocked billing.
+
+It rendered above the work it described. The banner sat at the head of
+`maka-assistant-answer-content`, before `segment.items.map()`, so an
+outcome read as a header on reasoning and tool calls that had all
+succeeded. It now follows the timeline it concludes.
+
+Safe resume survives all of this: it is the one recovery with a real
+backend, replaying an interrupted turn's own context rather than asking
+the user to restate it. Its button and every string around it move from
+「安全恢复」 to 「继续这一轮」, so the control, its pending state, its
+park description, and its toasts stop describing the same act four ways.
+
+Generated-by: Claude Code
+---
+ .../session-error-presentation.test.ts        | 14 +--
+ .../session-status-presentation.test.ts       | 95 ++++---------------
+ .../src/renderer/app-shell-turn-view-model.ts | 21 ++--
+ .../tools/side-chat/quote-companion-panel.tsx |  2 +-
+ .../src/renderer/locales/conversation-copy.ts |  5 +-
+ .../src/renderer/locales/shell-copy.ts        | 12 +--
+ .../renderer/session-status-presentation.ts   | 74 ++++-----------
+ .../src/renderer/styles/chat-detail.css       | 10 +-
+ packages/ui/src/chat-turn.tsx                 | 70 +++++++-------
+ packages/ui/src/chat-view.tsx                 |  2 +-
+ packages/ui/src/conversation-copy.ts          |  4 +-
+ packages/ui/src/primitives/chat.tsx           | 14 +--
+ packages/ui/src/runtime-resume-copy.ts        | 10 +-
+ packages/ui/src/styles.css                    | 23 +----
+ 14 files changed, 117 insertions(+), 239 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/session-error-presentation.test.ts b/apps/desktop/src/main/__tests__/session-error-presentation.test.ts
+index 319cf498ae..19423fa36e 100644
+--- a/apps/desktop/src/main/__tests__/session-error-presentation.test.ts
++++ b/apps/desktop/src/main/__tests__/session-error-presentation.test.ts
+@@ -22,7 +22,7 @@ import { describe, it } from 'node:test';
+ 
+ import { describeSessionErrorReason } from '../../renderer/session-error-presentation.js';
+ import { sessionEventErrorMessage } from '../../renderer/model-connection-errors.js';
+-import { deriveFailedTurnRecovery, describeTurnErrorClass } from '../../renderer/session-status-presentation.js';
++import { describeTurnErrorClass } from '../../renderer/session-status-presentation.js';
+ 
+ describe('provider capacity presentation', () => {
+   it('uses capacity-specific copy instead of the unknown error fallback', () => {
+@@ -31,15 +31,9 @@ describe('provider capacity presentation', () => {
+   });
+ 
+   it('does not recommend an immediate direct retry', () => {
+-    const recovery = deriveFailedTurnRecovery({
+-      errorClass: 'provider_capacity',
+-      partialOutputRetained: false,
+-      toolActivityCount: 0,
+-      erroredToolCount: 0,
+-    });
+-    assert.equal(recovery.action, 'retry');
+-    assert.match(recovery.label, /等待几分钟|切换模型/);
+-    assert.doesNotMatch(recovery.label, /直接重试/);
++    const label = describeTurnErrorClass('provider_capacity');
++    assert.match(label, /等几分钟|换一个模型/);
++    assert.doesNotMatch(label, /直接重试/);
+   });
+ });
+ 
+diff --git a/apps/desktop/src/main/__tests__/session-status-presentation.test.ts b/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
+index bc303df436..f13012d7da 100644
+--- a/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
++++ b/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
+@@ -20,91 +20,30 @@
+ import assert from 'node:assert/strict';
+ import { describe, it } from 'node:test';
+ import {
+-  deriveFailedTurnRecovery,
+   describeTurnErrorClass,
++  deriveFailedTurnSeverity,
+ } from '../../renderer/session-status-presentation.js';
+ 
+-const outputFreeFailure = {
+-  partialOutputRetained: false,
+-  toolActivityCount: 0,
+-  erroredToolCount: 0,
+-};
+-
+-describe('failed turn recovery presentation', () => {
++describe('failed turn presentation', () => {
+   it('presents persisted provider server errors as provider failures', () => {
+-    assert.equal(describeTurnErrorClass('server_error', 'zh'), '模型服务返回错误');
+-    assert.equal(describeTurnErrorClass('server_error', 'en'), 'Model service error');
+-  });
+-
+-  it('does not recommend a byte-identical retry after context overflow', () => {
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery({ ...outputFreeFailure, errorClass: 'context_overflow' }, 'zh'),
+-      { action: 'continue', label: '上下文仍超出限制，请减少附件或开启新任务' },
+-    );
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery({ ...outputFreeFailure, errorClass: 'context_overflow' }, 'en'),
+-      {
+-        action: 'continue',
+-        label: 'Context is still too large; reduce attachments or start a new task',
+-      },
+-    );
+-  });
+-
+-  it('offers configuration or task recovery after runtime context exhaustion', () => {
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'context_budget_exhausted' },
+-        'zh',
+-      ),
+-      {
+-        action: 'check_connection',
+-        label: '检查模型的上下文窗口设置、切换模型，或开启新任务',
+-      },
+-    );
++    assert.match(describeTurnErrorClass('server_error', 'zh'), /模型服务返回错误/);
++    assert.match(describeTurnErrorClass('server_error', 'en'), /model service returned an error/i);
+   });
+ 
+-  it('keeps the generic retry fallback for an unknown output-free failure', () => {
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery({ ...outputFreeFailure, errorClass: 'unknown_failure' }, 'en'),
+-      { action: 'retry', label: 'No tools ran; retry directly' },
+-    );
++  it('states what to do without promising a resume the UI cannot offer', () => {
++    // The banner offers a button only for `app_restarted`; every other class
++    // has to point at the one action that always exists — send a message.
++    for (const errorClass of ['rate_limit', 'network', 'timeout', 'unknown_failure']) {
++      assert.match(describeTurnErrorClass(errorClass, 'zh'), /重新发消息|再发消息|发消息/);
++    }
+   });
+ 
+-  it('preserves higher-priority retained-output and tool guidance', () => {
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'context_overflow', partialOutputRetained: true },
+-        'en',
+-      ),
+-      { action: 'continue', label: 'Partial output was retained; continue from here' },
+-    );
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'context_overflow', toolActivityCount: 1 },
+-        'en',
+-      ),
+-      { action: 'inspect_tool', label: 'Tool history was retained; inspect it before retrying' },
+-    );
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'context_overflow', erroredToolCount: 1 },
+-        'en',
+-      ),
+-      { action: 'inspect_tool', label: 'Inspect the tool result before retrying' },
+-    );
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'provider_capacity', partialOutputRetained: true },
+-        'en',
+-      ),
+-      { action: 'continue', label: 'Partial output was retained; continue from here' },
+-    );
+-    assert.deepEqual(
+-      deriveFailedTurnRecovery(
+-        { ...outputFreeFailure, errorClass: 'provider_capacity', toolActivityCount: 1 },
+-        'en',
+-      ),
+-      { action: 'inspect_tool', label: 'Tool history was retained; inspect it before retrying' },
+-    );
++  it('grades continuable outcomes below outcomes the user must act on', () => {
++    assert.equal(deriveFailedTurnSeverity('app_restarted'), 'warning');
++    assert.equal(deriveFailedTurnSeverity('tool_step_cap_reached'), 'warning');
++    assert.equal(deriveFailedTurnSeverity('permission_required'), 'warning');
++    assert.equal(deriveFailedTurnSeverity('auth'), 'error');
++    assert.equal(deriveFailedTurnSeverity('context_overflow'), 'error');
++    assert.equal(deriveFailedTurnSeverity(undefined), 'error');
+   });
+ });
+diff --git a/apps/desktop/src/renderer/app-shell-turn-view-model.ts b/apps/desktop/src/renderer/app-shell-turn-view-model.ts
+index 725220e095..b4fee7055e 100644
+--- a/apps/desktop/src/renderer/app-shell-turn-view-model.ts
++++ b/apps/desktop/src/renderer/app-shell-turn-view-model.ts
+@@ -30,7 +30,11 @@ import {
+   type TurnPresentationDeriver,
+   type TurnViewModel,
+ } from '@maka/ui';
+-import { deriveFailedTurnRecovery, describeTurnErrorClass } from './session-status-presentation.js';
++import {
++  type FailedTurnSeverity,
++  describeTurnErrorClass,
++  deriveFailedTurnSeverity,
++} from './session-status-presentation.js';
+ import { deriveTurnFooterActions } from './turn-footer-actions.js';
+ import { deriveTurnLineageBadges } from './derive-turn-lineage-badges.js';
+ import { latestInterruptedResumeTurnId } from './interrupted-resume.js';
+@@ -52,7 +56,7 @@ interface TurnPresentationEntry {
+   footerActions: ReadonlyArray<TurnFooterActionMeta>;
+   lineageBadges?: TurnLineageBadge[];
+   failedReasonLabel?: string;
+-  failedRecoveryLabel?: string;
++  failedSeverity?: FailedTurnSeverity;
+ }
+ 
+ const PENDING_ACTION_IDS = ['regenerate', 'branch', 'copy'] as const;
+@@ -115,7 +119,7 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+     const existsTurn = (id: string) => turnIds.has(id);
+     const footerActionsByTurn: Record<string, ReadonlyArray<TurnFooterActionMeta>> = {};
+     const failedReasonLabels: Record<string, string> = {};
+-    const failedRecoveryLabels: Record<string, string> = {};
++    const failedSeverities: Record<string, FailedTurnSeverity> = {};
+     const lineageBadgesByTurn: Record<string, TurnLineageBadge[]> = {};
+ 
+     for (const turn of turns) {
+@@ -154,7 +158,7 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+       footerActionsByTurn[turn.turnId] = entry.footerActions;
+       if (entry.lineageBadges) lineageBadgesByTurn[turn.turnId] = entry.lineageBadges;
+       if (entry.failedReasonLabel !== undefined) failedReasonLabels[turn.turnId] = entry.failedReasonLabel;
+-      if (entry.failedRecoveryLabel !== undefined) failedRecoveryLabels[turn.turnId] = entry.failedRecoveryLabel;
++      if (entry.failedSeverity !== undefined) failedSeverities[turn.turnId] = entry.failedSeverity;
+     }
+ 
+     const resumeCandidateTurnId = latestInterruptedResumeTurnId(turns);
+@@ -165,7 +169,7 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+     lastResult = {
+       footerActionsByTurn,
+       failedReasonLabels,
+-      failedRecoveryLabels,
++      failedSeverities,
+       lineageBadgesByTurn,
+       ...(resumeCandidateTurnId ? { resumeCandidateTurnId } : {}),
+     };
+@@ -208,12 +212,7 @@ function deriveTurnPresentationEntry(input: {
+ 
+   if (turn.status === 'failed' && !isSandboxOnlyToolFailure(turn)) {
+     entry.failedReasonLabel = describeTurnErrorClass(turn.errorClass, uiLocale);
+-    entry.failedRecoveryLabel = deriveFailedTurnRecovery({
+-      errorClass: turn.errorClass,
+-      partialOutputRetained: turn.partialOutputRetained,
+-      toolActivityCount: turn.tools.length,
+-      erroredToolCount: turn.tools.filter((tool) => tool.status === 'errored').length,
+-    }, uiLocale).label;
++    entry.failedSeverity = deriveFailedTurnSeverity(turn.errorClass);
+   }
+ 
+   const lineageBadges = deriveTurnLineageBadges({
+diff --git a/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx b/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
+index 05e6e3bc07..524e27a759 100644
+--- a/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
++++ b/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
+@@ -195,7 +195,7 @@ export function QuoteCompanionPanel(props: {
+         ]),
+       ),
+       failedReasonLabels: {},
+-      failedRecoveryLabels: {},
++      failedSeverities: {},
+       lineageBadgesByTurn: {},
+     }),
+     [companion.regeneratePendingTurnId, locale],
+diff --git a/apps/desktop/src/renderer/locales/conversation-copy.ts b/apps/desktop/src/renderer/locales/conversation-copy.ts
+index 52496bd793..3535a5e35a 100644
+--- a/apps/desktop/src/renderer/locales/conversation-copy.ts
++++ b/apps/desktop/src/renderer/locales/conversation-copy.ts
+@@ -341,7 +341,6 @@ export interface DesktopConversationCopy {
+     permission: string;
+     restarted: string;
+     sandboxBoundaryClosed: string;
+-    recovery: Record<'safeResume' | 'stepCap' | 'toolError' | 'connection' | 'partial' | 'toolRecord' | 'retry' | 'capacity' | 'contextOverflow' | 'contextBudgetExhausted' | 'sandboxBoundaryClosed', string>;
+   };
+ }
+ 
+@@ -638,7 +637,7 @@ const COPY = {
+       reauth: { label: '上次连接测试鉴权失败', tooltip: '最近一次连接测试返回鉴权失败（401 / 403），密钥可能已过期或被吊销。这不会拦截发送，但若发送失败请到 设置 · 模型 重新登录。' },
+       testError: { label: '上次连接测试失败', tooltip: '最近一次连接测试因网络 / 超时 / 5xx 失败。这不会拦截发送，但若问题持续请到 设置 · 模型 检查 Base URL / 代理。' },
+     },
+-    turnError: { unknown: '未知错误', contextOverflow: '上下文窗口已超出限制', contextBudgetExhausted: '上下文已达到上限，当前任务无法继续', malformedSummary: '上下文压缩未能生成有效摘要。请检查模型的上下文窗口设置、切换模型，或开启新任务。', timeout: '请求超时', auth: '鉴权失败', providerBilling: '模型服务计费受限', providerCapacity: '模型服务暂时满载，请稍后重试或切换模型', rateLimit: '触发模型速率限制', network: '网络错误', provider: '模型服务返回错误', stepCap: '达到工具步骤上限', tool: '工具调用失败', permission: '等待权限确认', restarted: '本地应用重启，上一轮没有完成', sandboxBoundaryClosed: '本地应用重启，等待确认的「允许访问工作区以外的内容」请求已按拒绝关闭', recovery: { safeResume: '检查当前状态后，可尝试安全恢复', stepCap: '任务可能尚未完成，可以继续', toolError: '先检查工具结果，再决定是否重试', connection: '先检查模型连接或登录状态', partial: '已保留部分输出，可从这里继续', toolRecord: '工具记录已保留，重试前先看结果', retry: '没有执行工具，可直接重试', capacity: '模型服务暂时满载，请等待几分钟或切换模型后重试', contextOverflow: '上下文仍超出限制，请减少附件或开启新任务', contextBudgetExhausted: '检查模型的上下文窗口设置、切换模型，或开启新任务', sandboxBoundaryClosed: '访问范围没有放开，重试本轮后可重新决定' } },
++    turnError: { unknown: '出错了，原因不明。重新发消息重试。', contextOverflow: '上下文超出模型窗口限制，减少附件或开启新任务。', contextBudgetExhausted: '上下文已达上限，这个任务无法继续。换模型或开启新任务。', malformedSummary: '上下文压缩未能生成有效摘要。请检查模型的上下文窗口设置、切换模型，或开启新任务。', timeout: '模型请求超时，重新发消息重试。', auth: '模型鉴权失败，请到设置里重新连接或登录。', providerBilling: '模型服务计费受限，请检查账号余额或订阅状态。', providerCapacity: '模型服务暂时满载，等几分钟重试，或换一个模型。', rateLimit: '模型请求太频繁被限流了，等一会儿再发消息重试。', network: '网络连接失败，检查网络后重新发消息。', provider: '模型服务返回错误，稍后重试或换一个模型。', stepCap: '达到工具调用步数上限，任务可能没做完。发消息让它继续。', tool: '工具调用失败，看一下上面的工具结果再决定要不要重试。', permission: '这一轮在等权限确认时结束了，重新发消息会再问一次。', restarted: '本地应用重启，上一轮没有完成', sandboxBoundaryClosed: '本地应用重启时，等待确认的「允许访问工作区以外的内容」请求已按拒绝关闭。重新发消息可以再决定一次。' },
+   },
+   en: {
+     actions: { stopFailedTitle: 'Failed to stop', stopFailedFallback: 'The task action failed. Try again later.', refreshSessionsFailedTitle: 'Failed to refresh tasks', refreshSessionsFailedFallback: 'The task list could not be refreshed. Try again later.', conversationErrorTitle: 'Task error', conversationErrorFallback: 'The task run failed. Try again later.', regenerateStartedTitle: 'Regeneration started', regenerateStartedDescription: 'Generating a new response', branchCreatedTitle: 'Branch created', branchCreatedDescription: (name) => `New task: ${name}`, revisionStartedTitle: 'Edit draft ready', revisionStartedDescription: 'The original task is kept; sending creates a new version', revisionReadyTitle: 'Ready to edit and resend', revisionReadyDescription: 'Rewound to before that message; edit and send when ready', revisionUnavailableTitle: 'This message cannot be edited yet', revisionAttachmentsUnsupported: 'Edit & resend does not yet support historical attachments. Copy the text into a new message instead.', revisionTransformedTextUnsupported: 'Edit & resend does not yet support messages sent with an explicit skill. Copy the text and select the skill again instead.', revisionDraftAttachmentConflict: 'The composer already has pending attachments. Send or remove them before editing a sent message.', revisionCommandUnsupported: 'You cannot run /compact, /side, or orchestration commands while editing a sent message. Cancel the edit first.', revisionAlreadyActive: 'Another message is already being edited. Send or cancel that edit first.', revisionCancelLabel: 'Cancel', revisionBannerTitle: 'Editing sent message', revisionBannerDetail: '· New version on send', revisionUnchanged: 'Nothing changed. Use Regenerate if you only want a new answer.', operationFailedTitle: 'Action failed', operationFailedFallback: 'The task action failed. Try again later.', attachmentFailedTitle: 'Failed to add attachment', tryAgain: 'Try again later.', modelReboundTitle: 'Switched to an available model', modelReboundDescription: (modelId) => `The previous connection is unavailable${modelId ? ` · ${modelId}` : ''}`, messageReadFailedTitle: 'Failed to load task', returnLatest: 'Return to latest', scrollMainToBottom: 'Scroll main conversation to bottom' },
+@@ -869,7 +868,7 @@ const COPY = {
+       reauth: { label: 'Last connection test failed authentication', tooltip: 'The latest test returned 401 / 403. Sending is not blocked, but sign in again under Settings · Models if it fails.' },
+       testError: { label: 'Last connection test failed', tooltip: 'The latest test failed because of a network, timeout, or 5xx error. Sending is not blocked; check Base URL or proxy settings if it persists.' },
+     },
+-    turnError: { unknown: 'Unknown error', contextOverflow: 'Context window exceeded', contextBudgetExhausted: 'The context limit was reached and this task cannot continue', malformedSummary: 'Context compaction could not produce a valid summary. Check the model context-window setting, switch models, or start a new task.', timeout: 'Request timed out', auth: 'Authentication failed', providerBilling: 'Provider billing required', providerCapacity: 'The model service is temporarily at capacity. Wait and retry, or switch models.', rateLimit: 'Model rate limit reached', network: 'Network error', provider: 'Model service error', stepCap: 'Tool-step limit reached', tool: 'Tool call failed', permission: 'Waiting for permission', restarted: 'The app restarted before the previous turn completed', sandboxBoundaryClosed: 'The app restarted, so the pending request to reach outside the workspace was closed as denied', recovery: { safeResume: 'Inspect the current state, then try safe recovery', stepCap: 'The task may be incomplete; continue from here', toolError: 'Inspect the tool result before retrying', connection: 'Check the model connection or sign-in status', partial: 'Partial output was retained; continue from here', toolRecord: 'Tool history was retained; inspect it before retrying', retry: 'No tools ran; retry directly', capacity: 'The model service is at capacity. Wait a few minutes or switch models before retrying.', contextOverflow: 'Context is still too large; reduce attachments or start a new task', contextBudgetExhausted: 'Check the model context-window setting, switch models, or start a new task', sandboxBoundaryClosed: 'Access was not widened; retry the turn to decide again' } },
++    turnError: { unknown: 'Something went wrong, cause unknown. Send a message to retry.', contextOverflow: 'Context exceeded the model window. Reduce attachments or start a new task.', contextBudgetExhausted: 'The context limit was reached and this task cannot continue. Switch models or start a new task.', malformedSummary: 'Context compaction could not produce a valid summary. Check the model context-window setting, switch models, or start a new task.', timeout: 'The model request timed out. Send a message to retry.', auth: 'Model authentication failed. Reconnect or sign in again from Settings.', providerBilling: 'Model billing is restricted. Check the account balance or subscription.', providerCapacity: 'The model service is temporarily at capacity. Wait a few minutes, or switch models.', rateLimit: 'Requests were rate-limited. Wait a moment, then send a message to retry.', network: 'The network connection failed. Check the network, then send a message again.', provider: 'The model service returned an error. Retry later, or switch models.', stepCap: 'The tool-step limit was reached, so the task may be incomplete. Send a message to continue.', tool: 'A tool call failed. Check the tool result above before deciding whether to retry.', permission: 'This turn ended while waiting for permission. Send a message and it will ask again.', restarted: 'The app restarted before the previous turn completed', sandboxBoundaryClosed: 'The app restarted, so the pending request to reach outside the workspace was closed as denied. Send a message to decide again.' },
+   },
+ } satisfies UiCatalog<DesktopConversationCopy>;
+ 
+diff --git a/apps/desktop/src/renderer/locales/shell-copy.ts b/apps/desktop/src/renderer/locales/shell-copy.ts
+index a858a39464..3f350ad037 100644
+--- a/apps/desktop/src/renderer/locales/shell-copy.ts
++++ b/apps/desktop/src/renderer/locales/shell-copy.ts
+@@ -1200,10 +1200,10 @@ const SHELL_COPY_BY_LOCALE = {
+       sideChatContextPendingTitle: '先处理待发送的上下文',
+       sideChatContextPendingDescription:
+         '当前 Composer 还有附件、引用或文件 mention。请先发送或移除它们，再使用 /side。',
+-      resumeStartedTitle: '已开始安全恢复',
++      resumeStartedTitle: '已开始继续这一轮',
+       resumeStartedDescription: '正在从最后一个完整执行边界继续',
+-      resumeFailedTitle: '恢复失败',
+-      resumeFailedFallback: '无法启动安全恢复，请检查任务状态后重试。',
++      resumeFailedTitle: '继续失败',
++      resumeFailedFallback: '无法继续这一轮，请检查任务状态后重试。',
+       goalClearFailedTitle: '停止目标失败',
+       goalClearFailedFallback: '目标仍可能继续运行，请立即重试。',
+       goalPauseFailedTitle: '暂停目标失败',
+@@ -1766,10 +1766,10 @@ const SHELL_COPY_BY_LOCALE = {
+       sideChatContextPendingTitle: 'Resolve pending context first',
+       sideChatContextPendingDescription:
+         'The Composer still has attachments, quotes, or file mentions. Send or remove them before using /side.',
+-      resumeStartedTitle: 'Safe recovery started',
++      resumeStartedTitle: 'Continuing this turn',
+       resumeStartedDescription: 'Continuing from the last complete execution boundary',
+-      resumeFailedTitle: 'Recovery failed',
+-      resumeFailedFallback: 'Safe recovery could not start. Check the task state and try again.',
++      resumeFailedTitle: 'Could not continue',
++      resumeFailedFallback: 'This turn could not be continued. Check the task state and try again.',
+       goalClearFailedTitle: 'Could not stop the goal',
+       goalClearFailedFallback: 'The goal may still be running. Try again now.',
+       goalPauseFailedTitle: 'Could not pause the goal',
+diff --git a/apps/desktop/src/renderer/session-status-presentation.ts b/apps/desktop/src/renderer/session-status-presentation.ts
+index bc19cb9ab3..46742fc8ea 100644
+--- a/apps/desktop/src/renderer/session-status-presentation.ts
++++ b/apps/desktop/src/renderer/session-status-presentation.ts
+@@ -126,62 +126,24 @@ export function describeTurnErrorClass(errorClass: string | undefined, locale: U
+   return copy.unknown;
+ }
+ 
+-export type FailedTurnRecoveryAction = 'retry' | 'continue' | 'inspect_tool' | 'check_connection';
+-
+-export interface FailedTurnRecoveryPresentation {
+-  action: FailedTurnRecoveryAction;
+-  label: string;
+-}
+-
+-export interface FailedTurnRecoveryInput {
+-  errorClass?: string;
+-  partialOutputRetained: boolean;
+-  toolActivityCount: number;
+-  erroredToolCount: number;
+-}
+-
+ /**
+- * User-facing recovery guidance for a failed turn. This intentionally
+- * separates "what failed" (`describeTurnErrorClass`) from "what should I do
+- * next", following the same incident-summary discipline as the runtime logs:
+- * do not ask the user to blindly retry if a tool already ran or partial output
+- * was retained.
++ * How loud a failed turn should look. `warning` is for the outcomes where the
++ * work itself survived and the session just needs another nudge — the app
++ * restarted mid-turn, the step cap stopped it, a permission prompt outlived
++ * its turn. Everything else is an `error`: the user has to fix, pay, wait, or
++ * inspect something before the next attempt can differ from this one.
++ *
++ * The two tiers exist because a single `error` red made "restarted, press
++ * continue" look as severe as "billing is blocked". Matches how the rest of
++ * the app grades its Banners (`tone === 'destructive' ? 'error' : 'warning'`).
+  */
+-export function deriveFailedTurnRecovery(input: FailedTurnRecoveryInput, locale: UiLocale = 'zh'): FailedTurnRecoveryPresentation {
+-  const copy = getDesktopConversationCopy(locale).turnError.recovery;
+-  const lower = input.errorClass?.toLowerCase() ?? '';
+-  if (lower === SANDBOX_BOUNDARY_RESTART_CLOSURE_CLASS) {
+-    // Not `continue`: the request was denied and its backend generation is
+-    // gone, so there is nothing to resume into — retrying the turn is the
+-    // only path that lets the agent ask again.
+-    return { action: 'retry', label: copy.sandboxBoundaryClosed };
+-  }
+-  if (lower === 'app_restarted') {
+-    return { action: 'continue', label: copy.safeResume };
+-  }
+-  if (lower === 'tool_step_cap_reached') {
+-    return { action: 'continue', label: copy.stepCap };
+-  }
+-  if (input.erroredToolCount > 0 || lower === 'tool_failed' || lower.includes('tool')) {
+-    return { action: 'inspect_tool', label: copy.toolError };
+-  }
+-  if (lower === 'provider_billing' || lower === 'auth' || lower.includes('auth') || lower === '401' || lower === '403') {
+-    return { action: 'check_connection', label: copy.connection };
+-  }
+-  if (input.partialOutputRetained) {
+-    return { action: 'continue', label: copy.partial };
+-  }
+-  if (input.toolActivityCount > 0) {
+-    return { action: 'inspect_tool', label: copy.toolRecord };
+-  }
+-  if (lower === 'provider_capacity') {
+-    return { action: 'retry', label: copy.capacity };
+-  }
+-  if (lower === 'context_overflow') {
+-    return { action: 'continue', label: copy.contextOverflow };
+-  }
+-  if (lower === 'context_budget_exhausted') {
+-    return { action: 'check_connection', label: copy.contextBudgetExhausted };
+-  }
+-  return { action: 'retry', label: copy.retry };
++export type FailedTurnSeverity = 'error' | 'warning';
++
++export function deriveFailedTurnSeverity(errorClass: string | undefined): FailedTurnSeverity {
++  const lower = errorClass?.toLowerCase() ?? '';
++  if (lower === SANDBOX_BOUNDARY_RESTART_CLOSURE_CLASS) return 'warning';
++  if (lower === 'app_restarted') return 'warning';
++  if (lower === 'tool_step_cap_reached') return 'warning';
++  if (lower === 'permission_required' || lower.includes('permission')) return 'warning';
++  return 'error';
+ }
+diff --git a/apps/desktop/src/renderer/styles/chat-detail.css b/apps/desktop/src/renderer/styles/chat-detail.css
+index 58be62a4f6..ec108d60b0 100644
+--- a/apps/desktop/src/renderer/styles/chat-detail.css
++++ b/apps/desktop/src/renderer/styles/chat-detail.css
+@@ -35,11 +35,11 @@
+   background: oklch(from var(--accent) l c h / 0.045);
+ }
+ 
+-/* Turn aborted marker / failed banner / lineage rows + badges / footer +
+- * footer actions retired to the `@maka/ui` Marker chat primitive
+- * (`aborted` / `failed-banner` / `failed-icon` / `failed-recovery` /
+- * `lineage-row` / `lineage-row-reverse` / `lineage-badge` / `footer` /
+- * `footer-action`), issue #332 PR2 — packages/ui/src/primitives/chat.tsx.
++/* Turn aborted marker / lineage rows + badges / footer + footer actions
++ * retired to the `@maka/ui` Marker chat primitive
++ * (`aborted` / `lineage-row` / `lineage-row-reverse` / `lineage-badge` /
++ * `footer` / `footer-action`), issue #332 PR2 — packages/ui/src/primitives/chat.tsx.
++ * The failed-turn banner is an Astryx `Banner`, not a Marker variant.
+  * The measure-column geometry the `tool-output.css` re-anchor used to add
+  * to the summary / lineage rows / footer is folded into those Marker
+  * variants. */
+diff --git a/packages/ui/src/chat-turn.tsx b/packages/ui/src/chat-turn.tsx
+index d67d00612e..6fd2e85463 100644
+--- a/packages/ui/src/chat-turn.tsx
++++ b/packages/ui/src/chat-turn.tsx
+@@ -19,7 +19,7 @@
+ 
+ import { memo, useEffect, useMemo, useRef, useState, type ComponentPropsWithoutRef, type ReactNode } from 'react';
+ import { useMountedRef } from './use-mounted-ref.js';
+-import { ICON_SIZE, AlertOctagon, Ban, Check, Copy, GitBranch, Info, Pencil, RefreshCcw, Timer } from './icons.js';
++import { ICON_SIZE, Ban, Check, Copy, GitBranch, Info, Pencil, RefreshCcw, Timer } from './icons.js';
+ import { type ClipboardCopyPhase, useClipboardCopyFeedback } from './clipboard-feedback.js';
+ import { Markdown } from './markdown.js';
+ import {
+@@ -397,12 +397,11 @@ export const TurnView = memo(function TurnView(props: {
+    */
+   failedReasonLabel?: string;
+   /**
+-   * PR-PawWork-run-incident-lite: pre-derived recovery guidance for a failed
+-   * turn. Caller computes this from error class, retained partial output, and
+-   * tool activity so the banner can distinguish "retry" from "inspect tool
+-   * output first".
++   * How loud the failed-turn banner should be. Caller computes it from the
++   * error class; `warning` marks the outcomes the session can simply continue
++   * past. Defaults to `error` when a caller doesn't derive it.
+    */
+-  failedRecoveryLabel?: string;
++  failedSeverity?: 'error' | 'warning';
+   safeResumeAction?: {
+     pending: boolean;
+     detail?: string;
+@@ -660,31 +659,6 @@ export const TurnView = memo(function TurnView(props: {
+                   <em>{turnAbortMarkerLabel(turn.abortSource, locale)}</em>
+                 </Marker>
+               )}
+-              {ownsTurnChrome && turn.status === 'failed' && props.failedReasonLabel && (
+-                <Marker variant="failed-banner" role="alert">
+-                  <Marker as="span" variant="failed-icon" aria-hidden="true">
+-                    <AlertOctagon size={ICON_SIZE.control} />
+-                  </Marker>
+-                  <span>{props.failedReasonLabel}</span>
+-                  {(props.safeResumeAction?.detail ?? props.failedRecoveryLabel) && (
+-                    <Marker as="span" variant="failed-recovery">
+-                      {props.safeResumeAction?.detail ?? props.failedRecoveryLabel}
+-                    </Marker>
+-                  )}
+-                  {props.safeResumeAction && (
+-                    <UiButton
+-                      variant="ghost"
+-                      size="sm"
+-                      className="maka-turn-failed-resume"
+-                      isDisabled={props.safeResumeAction.pending}
+-                      onClick={props.safeResumeAction.onResume}
+-                      label={
+-                        props.safeResumeAction.pending ? copy.safeResumePending : copy.safeResume
+-                      }
+-                    />
+-                  )}
+-                </Marker>
+-              )}
+               {/* The turn timeline is the rendering source of truth
+                 (materialize.ts): each step's 深度思考 disclosure, answer bubble,
+                 and Astryx tool group in the order the model produced them.
+@@ -718,6 +692,38 @@ export const TurnView = memo(function TurnView(props: {
+                   />
+                 ),
+               )}
++              {/* A failed turn's banner states the OUTCOME, so it belongs after
++                  the work it is the outcome of. It used to render above the
++                  timeline, where it read as a header on reasoning and tool
++                  calls that had in fact all succeeded. */}
++              {ownsTurnChrome && turn.status === 'failed' && props.failedReasonLabel && (
++                <Banner
++                  status={props.failedSeverity ?? 'error'}
++                  container="section"
++                  className="maka-turn-failed-banner"
++                  title={props.failedReasonLabel}
++                  {...(props.safeResumeAction?.detail
++                    ? { description: props.safeResumeAction.detail }
++                    : {})}
++                  {...(props.safeResumeAction
++                    ? {
++                        endContent: (
++                          <UiButton
++                            variant="ghost"
++                            size="sm"
++                            isDisabled={props.safeResumeAction.pending}
++                            onClick={props.safeResumeAction.onResume}
++                            label={
++                              props.safeResumeAction.pending
++                                ? copy.safeResumePending
++                                : copy.safeResume
++                            }
++                          />
++                        ),
++                      }
++                    : {})}
++                />
++              )}
+               {ownsTurnChrome && props.liveStreaming && (
+                 <>
+                   {props.liveStreaming.providerRetry ? (
+@@ -868,7 +874,7 @@ export interface TurnLineageBadge {
+ export interface TurnPresentation {
+   footerActionsByTurn: Record<string, ReadonlyArray<TurnFooterActionMeta>>;
+   failedReasonLabels: Record<string, string>;
+-  failedRecoveryLabels: Record<string, string>;
++  failedSeverities: Record<string, 'error' | 'warning'>;
+   lineageBadgesByTurn: Record<string, TurnLineageBadge[]>;
+   /** The turn a safe resume would restart, when the shell offers one. */
+   resumeCandidateTurnId?: string;
+diff --git a/packages/ui/src/chat-view.tsx b/packages/ui/src/chat-view.tsx
+index 0102d5f6e1..efb2f58ae7 100644
+--- a/packages/ui/src/chat-view.tsx
++++ b/packages/ui/src/chat-view.tsx
+@@ -713,7 +713,7 @@ export function ChatView(props: {
+                         streamingActive || props.activeSession?.status === 'running'
+                       }
+                       failedReasonLabel={turnPresentation?.failedReasonLabels[turn.turnId]}
+-                      failedRecoveryLabel={turnPresentation?.failedRecoveryLabels[turn.turnId]}
++                      failedSeverity={turnPresentation?.failedSeverities[turn.turnId]}
+                       safeResumeAction={turnPresentation?.resumeCandidateTurnId === turn.turnId
+                         ? props.safeResumeAction
+                         : undefined}
+diff --git a/packages/ui/src/conversation-copy.ts b/packages/ui/src/conversation-copy.ts
+index ba32457a4b..73e32dab47 100644
+--- a/packages/ui/src/conversation-copy.ts
++++ b/packages/ui/src/conversation-copy.ts
+@@ -497,7 +497,7 @@ const CONVERSATION_COPY = {
+       chooseAriaLabel: (label, branch) => branch ? `选择项目：${label}，当前分支 ${branch}` : `选择项目：${label}`,
+     },
+     messages: {
+-      you: '你', assistant: 'Maka', processing: '正在处理…', continuing: '继续中…', workingPhrases: ['正在琢磨…', '正在推敲…', '正在盘算…', '正在钻研…', '正在忙活…', '正在梳理…', '正在打磨…', '正在鼓捣…', '正在酝酿…', '正在攻坚…', '正在权衡…', '正在拾掇…'], providerRetryScheduled: (seconds, attempt, maxAttempts) => `${formatRetryDelay(seconds, 'zh')}后重试（${attempt}/${maxAttempts}）`, providerRetryStarted: (attempt, maxAttempts) => `正在重试（${attempt}/${maxAttempts}）`, providerRetryWaiting: (attempt, maxAttempts) => `等待重试（${attempt}/${maxAttempts}）`, providerRetryReason: { network: '网络中断', provider_capacity: '模型服务暂时满载', provider_unavailable: '模型服务暂时不可用', rate_limit: '触发模型速率限制', timeout: '请求超时', unknown: '模型请求失败' }, safeResumePending: '正在验证…', safeResume: '安全恢复', thinking: '深度思考', truncated: '已截断', copied: '已复制', copying: '复制中', copyFailed: '复制失败', copy: '复制', editMessage: '编辑并重发', editMessageDisabledRunning: '当前回答仍在进行中，结束后再编辑', editMessageDisabledAttachments: '包含附件的历史消息暂不支持编辑并重发', editMessageDisabledQuotes: '包含引用的历史消息暂不支持编辑并重发', editMessageDisabledTransformedText: '通过显式技能发送的历史消息暂不支持编辑并重发',
++      you: '你', assistant: 'Maka', processing: '正在处理…', continuing: '继续中…', workingPhrases: ['正在琢磨…', '正在推敲…', '正在盘算…', '正在钻研…', '正在忙活…', '正在梳理…', '正在打磨…', '正在鼓捣…', '正在酝酿…', '正在攻坚…', '正在权衡…', '正在拾掇…'], providerRetryScheduled: (seconds, attempt, maxAttempts) => `${formatRetryDelay(seconds, 'zh')}后重试（${attempt}/${maxAttempts}）`, providerRetryStarted: (attempt, maxAttempts) => `正在重试（${attempt}/${maxAttempts}）`, providerRetryWaiting: (attempt, maxAttempts) => `等待重试（${attempt}/${maxAttempts}）`, providerRetryReason: { network: '网络中断', provider_capacity: '模型服务暂时满载', provider_unavailable: '模型服务暂时不可用', rate_limit: '触发模型速率限制', timeout: '请求超时', unknown: '模型请求失败' }, safeResumePending: '正在检查…', safeResume: '继续这一轮', thinking: '深度思考', truncated: '已截断', copied: '已复制', copying: '复制中', copyFailed: '复制失败', copy: '复制', editMessage: '编辑并重发', editMessageDisabledRunning: '当前回答仍在进行中，结束后再编辑', editMessageDisabledAttachments: '包含附件的历史消息暂不支持编辑并重发', editMessageDisabledQuotes: '包含引用的历史消息暂不支持编辑并重发', editMessageDisabledTransformedText: '通过显式技能发送的历史消息暂不支持编辑并重发',
+       userAriaLabel: '你发送的消息', systemAriaLabel: '系统消息', assistantAriaLabel: 'Maka 的回答', answerActionsAriaLabel: (context) => `回答操作${context ? `：${context}` : ''}`, answerActionAriaLabel: (action, context) => `${action}回答${context ? `：${context}` : ''}`, messageActionAriaLabel: (action, context) => `${action}消息${context ? `：${context}` : ''}`, sourceAriaLabel: '本轮回答的来源', derivativesAriaLabel: '本轮回答的衍生', scheduledTaskTriggered: '定时任务触发', scheduledTaskTitle: (id) => `由定时任务触发 · ${id}`, legacyAutomationTriggered: '旧版自动化（仅历史）', legacyAutomationTitle: (id) => `由旧版自动化触发 · ${id} · 仅保留历史，不会再次执行`, goalContinued: 'Goal 自动继续', goalTitle: (id) => `由 Goal 继续执行 · ${id}`, agentGraphTriggered: 'Agent Graph 自动继续', agentGraphTitle: (graphId) => `由 Agent Graph 调度器触发 · ${graphId}`,
+       thinkingTruncatedTitle: '部分 reasoning 已截断；显示的是最近的内容', outputTruncatedTitle: '助手输出已超过单次回合上限，超出部分未渲染。如需完整内容请重新生成或查看持久化的任务日志。', removeAttachmentAriaLabel: (name) => `移除 ${name}`, quoteLabel: '引用', quoteExpandAriaLabel: '展开引用全文', quoteCollapseAriaLabel: '收起引用', removeQuoteAriaLabel: '移除引用', aborted: '(已中断)', abortedByStop: '(已中断 · 由停止按钮触发)',
+       systemNotes: {
+@@ -645,7 +645,7 @@ const CONVERSATION_COPY = {
+       chooseAriaLabel: (label, branch) => branch ? `Choose project: ${label}, current branch ${branch}` : `Choose project: ${label}`,
+     },
+     messages: {
+-      you: 'You', assistant: 'Maka', processing: 'Working…', continuing: 'Continuing…', workingPhrases: ['Pondering…', 'Tinkering…', 'Untangling…', 'Digging in…', 'Mulling…', 'Chewing on it…', 'Wrangling…', 'Piecing it together…'], providerRetryScheduled: (seconds, attempt, maxAttempts) => `Retrying in ${formatRetryDelay(seconds, 'en')} (${attempt}/${maxAttempts})`, providerRetryStarted: (attempt, maxAttempts) => `Retrying (${attempt}/${maxAttempts})`, providerRetryWaiting: (attempt, maxAttempts) => `Waiting to retry (${attempt}/${maxAttempts})`, providerRetryReason: { network: 'Network interrupted', provider_capacity: 'The model service is temporarily at capacity', provider_unavailable: 'Model service temporarily unavailable', rate_limit: 'Model rate limit reached', timeout: 'Request timed out', unknown: 'Model request failed' }, safeResumePending: 'Checking…', safeResume: 'Safe recovery', thinking: 'Thinking', truncated: 'Truncated', copied: 'Copied', copying: 'Copying', copyFailed: 'Copy failed', copy: 'Copy', editMessage: 'Edit & resend', editMessageDisabledRunning: 'Wait for this answer to finish before editing', editMessageDisabledAttachments: 'Edit & resend does not yet support messages with attachments', editMessageDisabledQuotes: 'Edit & resend does not yet support messages with quotes', editMessageDisabledTransformedText: 'Edit & resend does not yet support messages sent with an explicit skill',
++      you: 'You', assistant: 'Maka', processing: 'Working…', continuing: 'Continuing…', workingPhrases: ['Pondering…', 'Tinkering…', 'Untangling…', 'Digging in…', 'Mulling…', 'Chewing on it…', 'Wrangling…', 'Piecing it together…'], providerRetryScheduled: (seconds, attempt, maxAttempts) => `Retrying in ${formatRetryDelay(seconds, 'en')} (${attempt}/${maxAttempts})`, providerRetryStarted: (attempt, maxAttempts) => `Retrying (${attempt}/${maxAttempts})`, providerRetryWaiting: (attempt, maxAttempts) => `Waiting to retry (${attempt}/${maxAttempts})`, providerRetryReason: { network: 'Network interrupted', provider_capacity: 'The model service is temporarily at capacity', provider_unavailable: 'Model service temporarily unavailable', rate_limit: 'Model rate limit reached', timeout: 'Request timed out', unknown: 'Model request failed' }, safeResumePending: 'Checking…', safeResume: 'Continue this turn', thinking: 'Thinking', truncated: 'Truncated', copied: 'Copied', copying: 'Copying', copyFailed: 'Copy failed', copy: 'Copy', editMessage: 'Edit & resend', editMessageDisabledRunning: 'Wait for this answer to finish before editing', editMessageDisabledAttachments: 'Edit & resend does not yet support messages with attachments', editMessageDisabledQuotes: 'Edit & resend does not yet support messages with quotes', editMessageDisabledTransformedText: 'Edit & resend does not yet support messages sent with an explicit skill',
+       userAriaLabel: 'Your message', systemAriaLabel: 'System message', assistantAriaLabel: "Maka's response", answerActionsAriaLabel: (context) => `Response actions${context ? `: ${context}` : ''}`, answerActionAriaLabel: (action, context) => `${action} response${context ? `: ${context}` : ''}`, messageActionAriaLabel: (action, context) => `${action} message${context ? `: ${context}` : ''}`, sourceAriaLabel: 'Source of this response', derivativesAriaLabel: 'Responses derived from this one', scheduledTaskTriggered: 'Triggered by scheduled task', scheduledTaskTitle: (id) => `Triggered by scheduled task · ${id}`, legacyAutomationTriggered: 'Legacy Automation (history only)', legacyAutomationTitle: (id) => `Triggered by legacy Automation · ${id} · Historical only; it will not run again`, goalContinued: 'Continued by Goal', goalTitle: (id) => `Continued by Goal · ${id}`, agentGraphTriggered: 'Continued by Agent Graph', agentGraphTitle: (graphId) => `Triggered by the Agent Graph scheduler · ${graphId}`,
+       thinkingTruncatedTitle: 'Some reasoning was truncated; showing the most recent content', outputTruncatedTitle: 'The assistant output exceeded the per-turn limit. Regenerate it or inspect the persisted task log for the complete content.', removeAttachmentAriaLabel: (name) => `Remove ${name}`, quoteLabel: 'Quote', quoteExpandAriaLabel: 'Show the full quoted excerpt', quoteCollapseAriaLabel: 'Collapse the quoted excerpt', removeQuoteAriaLabel: 'Remove quote', aborted: '(Interrupted)', abortedByStop: '(Interrupted · Stop button)',
+       systemNotes: {
+diff --git a/packages/ui/src/primitives/chat.tsx b/packages/ui/src/primitives/chat.tsx
+index 545b48204d..f14a0b2230 100644
+--- a/packages/ui/src/primitives/chat.tsx
++++ b/packages/ui/src/primitives/chat.tsx
+@@ -26,7 +26,7 @@ import { cn } from "../utils.js";
+  * `Marker` — the per-turn status / lineage / footer chrome (issue #332, PR2).
+  *
+  * Retires the bespoke `.maka-turn-summary*`, `.maka-turn-aborted-marker`,
+- * `.maka-turn-failed-*`, `.maka-turn-lineage-*`, and `.maka-turn-footer*` shell
++ * `.maka-turn-lineage-*`, and `.maka-turn-footer*` shell
+  * CSS (spread across `maka-tokens.css`, `styles/settings/models.css`, and the
+  * re-anchored measure-column block in `styles/tool-output.css`), moving each
+  * onto package-owned semantic classes.
+@@ -48,9 +48,6 @@ import { cn } from "../utils.js";
+ export type MarkerVariant =
+   | "aborted"
+   | "host-origin"
+-  | "failed-banner"
+-  | "failed-icon"
+-  | "failed-recovery"
+   | "lineage-row"
+   | "lineage-row-reverse"
+   | "lineage-badge"
+@@ -60,9 +57,6 @@ export type MarkerVariant =
+ const MARKER_CLASSES: Record<MarkerVariant, string> = {
+   aborted: "maka-turn-aborted-marker",
+   "host-origin": "maka-turn-host-origin",
+-  "failed-banner": "maka-turn-failed-banner",
+-  "failed-icon": "maka-turn-failed-icon",
+-  "failed-recovery": "maka-turn-failed-recovery",
+   "lineage-row": "maka-turn-lineage-row",
+   "lineage-row-reverse": "maka-turn-lineage-row maka-turn-lineage-row-reverse",
+   "lineage-badge": "maka-turn-lineage-badge",
+@@ -78,9 +72,9 @@ export { markerVariants };
+ 
+ export interface MarkerProps extends React.ComponentPropsWithoutRef<"div"> {
+   variant: MarkerVariant;
+-  // The summary chips and the failed-banner sub-spans were authored as inline
+-  // `<span>`s; the containers/markers as `<div>`s. Keep the original tag so the
+-  // semantic-class conversion is structurally identical (zero behavioral change).
++  // The summary chips were authored as inline `<span>`s; the containers /
++  // markers as `<div>`s. Keep the original tag so the semantic-class
++  // conversion is structurally identical (zero behavioral change).
+   as?: "div" | "span";
+ }
+ 
+diff --git a/packages/ui/src/runtime-resume-copy.ts b/packages/ui/src/runtime-resume-copy.ts
+index 23c569937d..d9156ee7f5 100644
+--- a/packages/ui/src/runtime-resume-copy.ts
++++ b/packages/ui/src/runtime-resume-copy.ts
+@@ -23,9 +23,9 @@ export interface ResumeParkToastCopy {
+ }
+ 
+ const RESUME_PARK_REASON_COPY: Readonly<Record<string, string>> = {
+-  dangling_tool_state: '上次工具执行中断，已安全保留记录，暂不能自动恢复。',
++  dangling_tool_state: '上次工具执行中断，记录已保留，暂时不能自动继续。',
+   pending_permission: '上次执行仍在等待权限确认。',
+-  background_operation_pending: '仍有后台操作未结束，暂不能安全恢复。',
++  background_operation_pending: '仍有后台操作没有结束，暂时不能继续。',
+   workspace_identity_mismatch: '当前工作区与中断时不一致。',
+   workspace_identity_missing: '无法确认中断时的工作区。',
+   workspace_cwd_mismatch: '当前工作目录与中断时不一致。',
+@@ -51,7 +51,7 @@ const RESUME_PARK_REASON_COPY: Readonly<Record<string, string>> = {
+   continuation_claim_repair_required: '恢复所有权已保留，但续跑记录需要先修复。',
+   continuation_started_indeterminate: '续跑已经开始，但尚未形成可证明的终态。',
+   continuation_authority_unavailable: '当前存储不支持安全的续跑所有权。',
+-  resume_feature_disabled: '安全恢复功能尚未启用。',
++  resume_feature_disabled: '继续中断任务的功能尚未启用。',
+ };
+ 
+ export function resumeParkToastCopy(reasons: readonly string[]): ResumeParkToastCopy {
+@@ -69,9 +69,9 @@ export function resumeParkToastCopy(reasons: readonly string[]): ResumeParkToast
+   )];
+ 
+   return {
+-    title: '暂时无法安全恢复',
++    title: '暂时无法继续这一轮',
+     description: descriptions.length > 0
+       ? descriptions.join(' ')
+-      : '当前任务不满足安全恢复条件。',
++      : '当前任务不满足继续的条件。',
+   };
+ }
+diff --git a/packages/ui/src/styles.css b/packages/ui/src/styles.css
+index 04f5a0c296..a81bc4c876 100644
+--- a/packages/ui/src/styles.css
++++ b/packages/ui/src/styles.css
+@@ -757,8 +757,7 @@
+ .maka-turn-status-icon { flex: 0 0 auto; }
+ 
+ .maka-turn-aborted-marker,
+-.maka-turn-host-origin,
+-.maka-turn-failed-banner {
++.maka-turn-host-origin {
+   font: var(--maka-text-supporting);
+   display: inline-flex;
+   width: fit-content;
+@@ -787,23 +786,9 @@
+   color: var(--muted-foreground);
+ }
+ 
+-.maka-turn-failed-banner {
+-  flex-wrap: wrap;
+-  gap: var(--space-1-5);
+-  margin-block: var(--space-0-5) var(--space-1-5);
+-  padding: var(--space-1) var(--space-2);
+-  border: 1px solid oklch(from var(--destructive) l c h / 0.28);
+-  background: oklch(from var(--destructive) l c h / 0.1);
+-  color: var(--destructive);
+-}
+-
+-.maka-turn-failed-icon { display: inline-flex; align-items: center; }
+-.maka-turn-failed-recovery { color: var(--text-muted); }
+-.maka-turn-failed-recovery::before {
+-  margin-right: var(--space-1-5);
+-  color: var(--foreground-alpha-16);
+-  content: "·";
+-}
++/* Astryx `Banner` paints the failed-turn surface; this only sets the block
++   rhythm between it and the timeline entry above it. */
++.maka-turn-failed-banner { margin-block: var(--space-1) var(--space-0-5); }
+ 
+ .maka-turn-lineage-row,
+ .maka-turn-footer {
+
+From c8e78ded56391423889b4a502486892260dfdda5 Mon Sep 17 00:00:00 2001
+From: AstroHan <lei.yuhan@outlook.com>
+Date: Fri, 28 Aug 2026 19:21:05 +0800
+Subject: [PATCH 2/2] fix(desktop): keep the side-effect warning a failed turn
+ earns
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Deleting `deriveFailedTurnRecovery()` took a real warning with it. A turn
+that ran a tool and then failed on transport — `timeout`, `network`,
+`rate_limit` — was left with error-class copy alone, so "send a message
+to retry" no longer said that tools had already run and a resend could
+repeat their effects. That guidance was worth keeping; only the resume
+it falsely promised was not.
+
+`describeFailedTurnExecutionState()` restores it as text, with no action
+enum to go unread. It does NOT restore the ranking the old derivation
+used. That chain put the tool branch ahead of the error class, so `auth`
+plus one errored tool advised "inspect the tool result" and dropped
+"sign in again" — the only step that could change the outcome — and
+`context_overflow` plus tool activity lost "reduce attachments" the same
+way. The two facts never competed for real: one is why the turn ended,
+the other is what it already did. `Banner` has a slot for each, so the
+error class takes `title`, execution state takes `description`, and
+neither has to lose. `description` is otherwise written only by the
+parked-resume diagnostic, which exists solely on `app_restarted` turns,
+so the two cannot collide.
+
+The ordering fix shipped without a test that could fail for it:
+`chat-turn-steering-order.test.ts` asserted steering position and
+one-occurrence, both true of either layout. It now asserts the banner
+follows the last timeline entry, verified by moving the banner back
+above the timeline and watching it fail.
+
+Generated-by: Claude Code
+---
+ .../session-status-presentation.test.ts       | 48 +++++++++++++++++++
+ .../src/renderer/app-shell-turn-view-model.ts | 13 +++++
+ .../tools/side-chat/quote-companion-panel.tsx |  1 +
+ .../src/renderer/locales/conversation-copy.ts |  5 +-
+ .../renderer/session-status-presentation.ts   | 30 ++++++++++++
+ .../chat-turn-steering-order.test.ts          |  4 ++
+ packages/ui/src/chat-turn.tsx                 | 21 ++++++--
+ packages/ui/src/chat-view.tsx                 |  3 ++
+ 8 files changed, 120 insertions(+), 5 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/session-status-presentation.test.ts b/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
+index f13012d7da..8b193d7d2e 100644
+--- a/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
++++ b/apps/desktop/src/main/__tests__/session-status-presentation.test.ts
+@@ -20,10 +20,17 @@
+ import assert from 'node:assert/strict';
+ import { describe, it } from 'node:test';
+ import {
++  describeFailedTurnExecutionState,
+   describeTurnErrorClass,
+   deriveFailedTurnSeverity,
+ } from '../../renderer/session-status-presentation.js';
+ 
++const NOTHING_RAN = {
++  partialOutputRetained: false,
++  toolActivityCount: 0,
++  erroredToolCount: 0,
++};
++
+ describe('failed turn presentation', () => {
+   it('presents persisted provider server errors as provider failures', () => {
+     assert.match(describeTurnErrorClass('server_error', 'zh'), /模型服务返回错误/);
+@@ -47,3 +54,44 @@ describe('failed turn presentation', () => {
+     assert.equal(deriveFailedTurnSeverity(undefined), 'error');
+   });
+ });
++
++describe('failed turn execution state', () => {
++  it('warns that a completed tool may already have taken effect', () => {
++    // A blind resend after a side-effecting tool can repeat that effect, so
++    // this has to survive alongside a transport failure like `timeout`.
++    const zh = describeFailedTurnExecutionState({ ...NOTHING_RAN, toolActivityCount: 1 }, 'zh');
++    assert.match(zh ?? '', /执行过工具|实际改动/);
++    const en = describeFailedTurnExecutionState({ ...NOTHING_RAN, toolActivityCount: 1 }, 'en');
++    assert.match(en ?? '', /tools already ran/i);
++  });
++
++  it('does not let execution state displace the error class', () => {
++    // The retired recovery derivation ranked these against each other and let
++    // the tool branch win, so `auth` plus an errored tool advised "inspect the
++    // tool result" and dropped the sign-in step. They are separate slots now.
++    const state = { ...NOTHING_RAN, toolActivityCount: 1, erroredToolCount: 1 };
++    assert.match(describeTurnErrorClass('auth', 'zh'), /重新连接或登录/);
++    assert.match(describeFailedTurnExecutionState(state, 'zh') ?? '', /工具执行出错/);
++    assert.match(describeTurnErrorClass('context_overflow', 'zh'), /减少附件|开启新任务/);
++  });
++
++  it('reports nothing when the turn left nothing to re-read', () => {
++    assert.equal(describeFailedTurnExecutionState(NOTHING_RAN, 'zh'), undefined);
++  });
++
++  it('prefers the most specific state the turn reached', () => {
++    const all = { partialOutputRetained: true, toolActivityCount: 2, erroredToolCount: 1 };
++    assert.match(describeFailedTurnExecutionState(all, 'zh') ?? '', /工具执行出错/);
++    assert.match(
++      describeFailedTurnExecutionState({ ...all, erroredToolCount: 0 }, 'zh') ?? '',
++      /执行过工具/,
++    );
++    assert.match(
++      describeFailedTurnExecutionState(
++        { ...NOTHING_RAN, partialOutputRetained: true },
++        'zh',
++      ) ?? '',
++      /部分回答/,
++    );
++  });
++});
+diff --git a/apps/desktop/src/renderer/app-shell-turn-view-model.ts b/apps/desktop/src/renderer/app-shell-turn-view-model.ts
+index b4fee7055e..a8061ceaf5 100644
+--- a/apps/desktop/src/renderer/app-shell-turn-view-model.ts
++++ b/apps/desktop/src/renderer/app-shell-turn-view-model.ts
+@@ -32,6 +32,7 @@ import {
+ } from '@maka/ui';
+ import {
+   type FailedTurnSeverity,
++  describeFailedTurnExecutionState,
+   describeTurnErrorClass,
+   deriveFailedTurnSeverity,
+ } from './session-status-presentation.js';
+@@ -57,6 +58,7 @@ interface TurnPresentationEntry {
+   lineageBadges?: TurnLineageBadge[];
+   failedReasonLabel?: string;
+   failedSeverity?: FailedTurnSeverity;
++  failedExecutionStateLabel?: string;
+ }
+ 
+ const PENDING_ACTION_IDS = ['regenerate', 'branch', 'copy'] as const;
+@@ -120,6 +122,7 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+     const footerActionsByTurn: Record<string, ReadonlyArray<TurnFooterActionMeta>> = {};
+     const failedReasonLabels: Record<string, string> = {};
+     const failedSeverities: Record<string, FailedTurnSeverity> = {};
++    const failedExecutionStateLabels: Record<string, string> = {};
+     const lineageBadgesByTurn: Record<string, TurnLineageBadge[]> = {};
+ 
+     for (const turn of turns) {
+@@ -159,6 +162,9 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+       if (entry.lineageBadges) lineageBadgesByTurn[turn.turnId] = entry.lineageBadges;
+       if (entry.failedReasonLabel !== undefined) failedReasonLabels[turn.turnId] = entry.failedReasonLabel;
+       if (entry.failedSeverity !== undefined) failedSeverities[turn.turnId] = entry.failedSeverity;
++      if (entry.failedExecutionStateLabel !== undefined) {
++        failedExecutionStateLabels[turn.turnId] = entry.failedExecutionStateLabel;
++      }
+     }
+ 
+     const resumeCandidateTurnId = latestInterruptedResumeTurnId(turns);
+@@ -170,6 +176,7 @@ export function createAppShellTurnPresentationDerivation(): AppShellTurnPresenta
+       footerActionsByTurn,
+       failedReasonLabels,
+       failedSeverities,
++      failedExecutionStateLabels,
+       lineageBadgesByTurn,
+       ...(resumeCandidateTurnId ? { resumeCandidateTurnId } : {}),
+     };
+@@ -213,6 +220,12 @@ function deriveTurnPresentationEntry(input: {
+   if (turn.status === 'failed' && !isSandboxOnlyToolFailure(turn)) {
+     entry.failedReasonLabel = describeTurnErrorClass(turn.errorClass, uiLocale);
+     entry.failedSeverity = deriveFailedTurnSeverity(turn.errorClass);
++    const executionState = describeFailedTurnExecutionState({
++      partialOutputRetained: turn.partialOutputRetained,
++      toolActivityCount: turn.tools.length,
++      erroredToolCount: turn.tools.filter((tool) => tool.status === 'errored').length,
++    }, uiLocale);
++    if (executionState) entry.failedExecutionStateLabel = executionState;
+   }
+ 
+   const lineageBadges = deriveTurnLineageBadges({
+diff --git a/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx b/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
+index 524e27a759..b6a1ae9b9b 100644
+--- a/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
++++ b/apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx
+@@ -196,6 +196,7 @@ export function QuoteCompanionPanel(props: {
+       ),
+       failedReasonLabels: {},
+       failedSeverities: {},
++      failedExecutionStateLabels: {},
+       lineageBadgesByTurn: {},
+     }),
+     [companion.regeneratePendingTurnId, locale],
+diff --git a/apps/desktop/src/renderer/locales/conversation-copy.ts b/apps/desktop/src/renderer/locales/conversation-copy.ts
+index 3535a5e35a..e13a5a5353 100644
+--- a/apps/desktop/src/renderer/locales/conversation-copy.ts
++++ b/apps/desktop/src/renderer/locales/conversation-copy.ts
+@@ -341,6 +341,7 @@ export interface DesktopConversationCopy {
+     permission: string;
+     restarted: string;
+     sandboxBoundaryClosed: string;
++    executionState: Record<'erroredTool' | 'toolRan' | 'partialOutput', string>;
+   };
+ }
+ 
+@@ -637,7 +638,7 @@ const COPY = {
+       reauth: { label: '上次连接测试鉴权失败', tooltip: '最近一次连接测试返回鉴权失败（401 / 403），密钥可能已过期或被吊销。这不会拦截发送，但若发送失败请到 设置 · 模型 重新登录。' },
+       testError: { label: '上次连接测试失败', tooltip: '最近一次连接测试因网络 / 超时 / 5xx 失败。这不会拦截发送，但若问题持续请到 设置 · 模型 检查 Base URL / 代理。' },
+     },
+-    turnError: { unknown: '出错了，原因不明。重新发消息重试。', contextOverflow: '上下文超出模型窗口限制，减少附件或开启新任务。', contextBudgetExhausted: '上下文已达上限，这个任务无法继续。换模型或开启新任务。', malformedSummary: '上下文压缩未能生成有效摘要。请检查模型的上下文窗口设置、切换模型，或开启新任务。', timeout: '模型请求超时，重新发消息重试。', auth: '模型鉴权失败，请到设置里重新连接或登录。', providerBilling: '模型服务计费受限，请检查账号余额或订阅状态。', providerCapacity: '模型服务暂时满载，等几分钟重试，或换一个模型。', rateLimit: '模型请求太频繁被限流了，等一会儿再发消息重试。', network: '网络连接失败，检查网络后重新发消息。', provider: '模型服务返回错误，稍后重试或换一个模型。', stepCap: '达到工具调用步数上限，任务可能没做完。发消息让它继续。', tool: '工具调用失败，看一下上面的工具结果再决定要不要重试。', permission: '这一轮在等权限确认时结束了，重新发消息会再问一次。', restarted: '本地应用重启，上一轮没有完成', sandboxBoundaryClosed: '本地应用重启时，等待确认的「允许访问工作区以外的内容」请求已按拒绝关闭。重新发消息可以再决定一次。' },
++    turnError: { unknown: '出错了，原因不明。重新发消息重试。', contextOverflow: '上下文超出模型窗口限制，减少附件或开启新任务。', contextBudgetExhausted: '上下文已达上限，这个任务无法继续。换模型或开启新任务。', malformedSummary: '上下文压缩未能生成有效摘要。请检查模型的上下文窗口设置、切换模型，或开启新任务。', timeout: '模型请求超时，重新发消息重试。', auth: '模型鉴权失败，请到设置里重新连接或登录。', providerBilling: '模型服务计费受限，请检查账号余额或订阅状态。', providerCapacity: '模型服务暂时满载，等几分钟重试，或换一个模型。', rateLimit: '模型请求太频繁被限流了，等一会儿再发消息重试。', network: '网络连接失败，检查网络后重新发消息。', provider: '模型服务返回错误，稍后重试或换一个模型。', stepCap: '达到工具调用步数上限，任务可能没做完。发消息让它继续。', tool: '工具调用失败，看一下上面的工具结果再决定要不要重试。', permission: '这一轮在等权限确认时结束了，重新发消息会再问一次。', restarted: '本地应用重启，上一轮没有完成', sandboxBoundaryClosed: '本地应用重启时，等待确认的「允许访问工作区以外的内容」请求已按拒绝关闭。重新发消息可以再决定一次。', executionState: { erroredTool: '这一轮有工具执行出错，先看它的结果，再决定要不要重发。', toolRan: '这一轮已经执行过工具，可能已经产生实际改动，重发前先看工具结果。', partialOutput: '这一轮已经产生了部分回答，重发前可以先看看。' } },
+   },
+   en: {
+     actions: { stopFailedTitle: 'Failed to stop', stopFailedFallback: 'The task action failed. Try again later.', refreshSessionsFailedTitle: 'Failed to refresh tasks', refreshSessionsFailedFallback: 'The task list could not be refreshed. Try again later.', conversationErrorTitle: 'Task error', conversationErrorFallback: 'The task run failed. Try again later.', regenerateStartedTitle: 'Regeneration started', regenerateStartedDescription: 'Generating a new response', branchCreatedTitle: 'Branch created', branchCreatedDescription: (name) => `New task: ${name}`, revisionStartedTitle: 'Edit draft ready', revisionStartedDescription: 'The original task is kept; sending creates a new version', revisionReadyTitle: 'Ready to edit and resend', revisionReadyDescription: 'Rewound to before that message; edit and send when ready', revisionUnavailableTitle: 'This message cannot be edited yet', revisionAttachmentsUnsupported: 'Edit & resend does not yet support historical attachments. Copy the text into a new message instead.', revisionTransformedTextUnsupported: 'Edit & resend does not yet support messages sent with an explicit skill. Copy the text and select the skill again instead.', revisionDraftAttachmentConflict: 'The composer already has pending attachments. Send or remove them before editing a sent message.', revisionCommandUnsupported: 'You cannot run /compact, /side, or orchestration commands while editing a sent message. Cancel the edit first.', revisionAlreadyActive: 'Another message is already being edited. Send or cancel that edit first.', revisionCancelLabel: 'Cancel', revisionBannerTitle: 'Editing sent message', revisionBannerDetail: '· New version on send', revisionUnchanged: 'Nothing changed. Use Regenerate if you only want a new answer.', operationFailedTitle: 'Action failed', operationFailedFallback: 'The task action failed. Try again later.', attachmentFailedTitle: 'Failed to add attachment', tryAgain: 'Try again later.', modelReboundTitle: 'Switched to an available model', modelReboundDescription: (modelId) => `The previous connection is unavailable${modelId ? ` · ${modelId}` : ''}`, messageReadFailedTitle: 'Failed to load task', returnLatest: 'Return to latest', scrollMainToBottom: 'Scroll main conversation to bottom' },
+@@ -868,7 +869,7 @@ const COPY = {
+       reauth: { label: 'Last connection test failed authentication', tooltip: 'The latest test returned 401 / 403. Sending is not blocked, but sign in again under Settings · Models if it fails.' },
+       testError: { label: 'Last connection test failed', tooltip: 'The latest test failed because of a network, timeout, or 5xx error. Sending is not blocked; check Base URL or proxy settings if it persists.' },
+     },
+-    turnError: { unknown: 'Something went wrong, cause unknown. Send a message to retry.', contextOverflow: 'Context exceeded the model window. Reduce attachments or start a new task.', contextBudgetExhausted: 'The context limit was reached and this task cannot continue. Switch models or start a new task.', malformedSummary: 'Context compaction could not produce a valid summary. Check the model context-window setting, switch models, or start a new task.', timeout: 'The model request timed out. Send a message to retry.', auth: 'Model authentication failed. Reconnect or sign in again from Settings.', providerBilling: 'Model billing is restricted. Check the account balance or subscription.', providerCapacity: 'The model service is temporarily at capacity. Wait a few minutes, or switch models.', rateLimit: 'Requests were rate-limited. Wait a moment, then send a message to retry.', network: 'The network connection failed. Check the network, then send a message again.', provider: 'The model service returned an error. Retry later, or switch models.', stepCap: 'The tool-step limit was reached, so the task may be incomplete. Send a message to continue.', tool: 'A tool call failed. Check the tool result above before deciding whether to retry.', permission: 'This turn ended while waiting for permission. Send a message and it will ask again.', restarted: 'The app restarted before the previous turn completed', sandboxBoundaryClosed: 'The app restarted, so the pending request to reach outside the workspace was closed as denied. Send a message to decide again.' },
++    turnError: { unknown: 'Something went wrong, cause unknown. Send a message to retry.', contextOverflow: 'Context exceeded the model window. Reduce attachments or start a new task.', contextBudgetExhausted: 'The context limit was reached and this task cannot continue. Switch models or start a new task.', malformedSummary: 'Context compaction could not produce a valid summary. Check the model context-window setting, switch models, or start a new task.', timeout: 'The model request timed out. Send a message to retry.', auth: 'Model authentication failed. Reconnect or sign in again from Settings.', providerBilling: 'Model billing is restricted. Check the account balance or subscription.', providerCapacity: 'The model service is temporarily at capacity. Wait a few minutes, or switch models.', rateLimit: 'Requests were rate-limited. Wait a moment, then send a message to retry.', network: 'The network connection failed. Check the network, then send a message again.', provider: 'The model service returned an error. Retry later, or switch models.', stepCap: 'The tool-step limit was reached, so the task may be incomplete. Send a message to continue.', tool: 'A tool call failed. Check the tool result above before deciding whether to retry.', permission: 'This turn ended while waiting for permission. Send a message and it will ask again.', restarted: 'The app restarted before the previous turn completed', sandboxBoundaryClosed: 'The app restarted, so the pending request to reach outside the workspace was closed as denied. Send a message to decide again.', executionState: { erroredTool: 'A tool errored during this turn. Read its result before deciding whether to send another message.', toolRan: 'Tools already ran during this turn and may have made real changes. Read their results before sending another message.', partialOutput: 'This turn produced part of an answer. Worth reading before you send another message.' } },
+   },
+ } satisfies UiCatalog<DesktopConversationCopy>;
+ 
+diff --git a/apps/desktop/src/renderer/session-status-presentation.ts b/apps/desktop/src/renderer/session-status-presentation.ts
+index 46742fc8ea..c039d73e30 100644
+--- a/apps/desktop/src/renderer/session-status-presentation.ts
++++ b/apps/desktop/src/renderer/session-status-presentation.ts
+@@ -147,3 +147,33 @@ export function deriveFailedTurnSeverity(errorClass: string | undefined): Failed
+   if (lower === 'permission_required' || lower.includes('permission')) return 'warning';
+   return 'error';
+ }
++
++export interface FailedTurnExecutionState {
++  partialOutputRetained: boolean;
++  toolActivityCount: number;
++  erroredToolCount: number;
++}
++
++/**
++ * What this turn already did before it failed, when that changes what sending
++ * the next message costs. A tool that ran may have had side effects the retry
++ * would repeat, so the user should read its result before deciding.
++ *
++ * This is a SECOND sentence, not a replacement for `describeTurnErrorClass()`.
++ * The retired `deriveFailedTurnRecovery()` ranked the two against each other
++ * and let the tool branch win, so `auth` plus one errored tool advised
++ * "inspect the tool result" and dropped "sign in again" — the only step that
++ * could actually change the outcome. Both facts are true at once and the
++ * banner has a slot for each (`title` / `description`), so neither has to
++ * lose. Returns undefined when the turn produced nothing worth re-reading.
++ */
++export function describeFailedTurnExecutionState(
++  state: FailedTurnExecutionState,
++  locale: UiLocale = 'zh',
++): string | undefined {
++  const copy = getDesktopConversationCopy(locale).turnError.executionState;
++  if (state.erroredToolCount > 0) return copy.erroredTool;
++  if (state.toolActivityCount > 0) return copy.toolRan;
++  if (state.partialOutputRetained) return copy.partialOutput;
++  return undefined;
++}
+diff --git a/packages/ui/src/__tests__/chat-turn-steering-order.test.ts b/packages/ui/src/__tests__/chat-turn-steering-order.test.ts
+index ce271cf4c4..2583e6c095 100644
+--- a/packages/ui/src/__tests__/chat-turn-steering-order.test.ts
++++ b/packages/ui/src/__tests__/chat-turn-steering-order.test.ts
+@@ -62,6 +62,10 @@ test('renders steering where it arrived in the assistant timeline', () => {
+   ];
+   const [before, steering, after] = texts.map((text) => markup.indexOf(text));
+   assert.equal(before < steering && steering < after, true);
++  // The failure banner is the turn's outcome, so it must follow the work it
++  // concludes. Without this the assertions above pass for either layout, and
++  // the banner could drift back to the head of the timeline unnoticed.
++  assert.equal(after < markup.indexOf('failure detail'), true);
+   const visibleText = parseHTML(`<html><body>${markup}</body></html>`).document.body.textContent;
+   for (const text of [...texts, 'failure detail']) {
+     assert.equal(visibleText.split(text).length - 1, 1, `${text} should render exactly once`);
+diff --git a/packages/ui/src/chat-turn.tsx b/packages/ui/src/chat-turn.tsx
+index 6fd2e85463..c2559e6241 100644
+--- a/packages/ui/src/chat-turn.tsx
++++ b/packages/ui/src/chat-turn.tsx
+@@ -402,6 +402,13 @@ export const TurnView = memo(function TurnView(props: {
+    * past. Defaults to `error` when a caller doesn't derive it.
+    */
+   failedSeverity?: 'error' | 'warning';
++  /**
++   * What the turn already did before it failed, when that changes the cost of
++   * sending the next message (a tool that ran may have had side effects). This
++   * accompanies `failedReasonLabel` rather than competing with it: the reason
++   * is the outcome, this is the execution state, and both can be true.
++   */
++  failedExecutionStateLabel?: string;
+   safeResumeAction?: {
+     pending: boolean;
+     detail?: string;
+@@ -695,15 +702,22 @@ export const TurnView = memo(function TurnView(props: {
+               {/* A failed turn's banner states the OUTCOME, so it belongs after
+                   the work it is the outcome of. It used to render above the
+                   timeline, where it read as a header on reasoning and tool
+-                  calls that had in fact all succeeded. */}
++                  calls that had in fact all succeeded.
++
++                  `description` carries the parked-resume diagnostic when there
++                  is one — it explains why the button did nothing, which
++                  outranks execution state on the one turn that can have both. */}
+               {ownsTurnChrome && turn.status === 'failed' && props.failedReasonLabel && (
+                 <Banner
+                   status={props.failedSeverity ?? 'error'}
+                   container="section"
+                   className="maka-turn-failed-banner"
+                   title={props.failedReasonLabel}
+-                  {...(props.safeResumeAction?.detail
+-                    ? { description: props.safeResumeAction.detail }
++                  {...(props.safeResumeAction?.detail ?? props.failedExecutionStateLabel
++                    ? {
++                        description:
++                          props.safeResumeAction?.detail ?? props.failedExecutionStateLabel,
++                      }
+                     : {})}
+                   {...(props.safeResumeAction
+                     ? {
+@@ -875,6 +889,7 @@ export interface TurnPresentation {
+   footerActionsByTurn: Record<string, ReadonlyArray<TurnFooterActionMeta>>;
+   failedReasonLabels: Record<string, string>;
+   failedSeverities: Record<string, 'error' | 'warning'>;
++  failedExecutionStateLabels: Record<string, string>;
+   lineageBadgesByTurn: Record<string, TurnLineageBadge[]>;
+   /** The turn a safe resume would restart, when the shell offers one. */
+   resumeCandidateTurnId?: string;
+diff --git a/packages/ui/src/chat-view.tsx b/packages/ui/src/chat-view.tsx
+index efb2f58ae7..783780c5e1 100644
+--- a/packages/ui/src/chat-view.tsx
++++ b/packages/ui/src/chat-view.tsx
+@@ -714,6 +714,9 @@ export function ChatView(props: {
+                       }
+                       failedReasonLabel={turnPresentation?.failedReasonLabels[turn.turnId]}
+                       failedSeverity={turnPresentation?.failedSeverities[turn.turnId]}
++                      failedExecutionStateLabel={
++                        turnPresentation?.failedExecutionStateLabels[turn.turnId]
++                      }
+                       safeResumeAction={turnPresentation?.resumeCandidateTurnId === turn.turnId
+                         ? props.safeResumeAction
+                         : undefined}

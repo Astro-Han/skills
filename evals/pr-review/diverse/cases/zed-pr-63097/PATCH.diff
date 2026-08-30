@@ -1,0 +1,485 @@
+From 1dd5d3d4055f2292e596aba00147d820617bf1bf Mon Sep 17 00:00:00 2001
+From: Mikhail Butvin <butvin.mikhail@gmail.com>
+Date: Sat, 22 Aug 2026 03:33:16 +0300
+Subject: [PATCH 1/4] terminal_view: Don't steal focus from an open modal when
+ a terminal appears
+
+Opening a project picker right after a Zed window appears would dismiss it: the
+terminal panel finishes restoring, or its default shell finishes spawning, after
+the keystroke, and both paths unconditionally focused the panel.
+
+Guard both on `has_active_modal`, matching what `add_center_terminal` already does.
+---
+ README.md                                  |   3 +
+ crates/terminal_view/src/terminal_panel.rs | 171 +++++++++++++++++++--
+ 2 files changed, 165 insertions(+), 9 deletions(-)
+
+diff --git a/README.md b/README.md
+index 9f641fb3841909..24840eec031df7 100644
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,6 @@
++> [!IMPORTANT]
++> Remove this line to confirm you've reviewed this PR before submitting.
++
+ # Zed
+ 
+ [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
+diff --git a/crates/terminal_view/src/terminal_panel.rs b/crates/terminal_view/src/terminal_panel.rs
+index ec6fcf9606f99d..03e029dede616e 100644
+--- a/crates/terminal_view/src/terminal_panel.rs
++++ b/crates/terminal_view/src/terminal_panel.rs
+@@ -405,11 +405,15 @@ impl TerminalPanel {
+ 
+         let should_focus = workspace
+             .update_in(cx, |workspace, window, cx| {
+-                terminal_panel.upgrade().is_some_and(|terminal_panel| {
+-                    workspace.active_item(cx).is_none()
+-                        && workspace
+-                            .is_dock_at_position_open(terminal_panel.position(window, cx), cx)
+-                })
++                // Don't steal focus from an open modal (e.g. the recent projects picker):
++                // restoration finishes asynchronously, long after the user may have moved
++                // on, and focusing the panel would dismiss whatever they opened.
++                !workspace.has_active_modal(window, cx)
++                    && terminal_panel.upgrade().is_some_and(|terminal_panel| {
++                        workspace.active_item(cx).is_none()
++                            && workspace
++                                .is_dock_at_position_open(terminal_panel.position(window, cx), cx)
++                    })
+             })
+             .unwrap_or(false);
+         if should_focus {
+@@ -966,19 +970,23 @@ impl TerminalPanel {
+                         )
+                     }));
+ 
++                    // Don't steal focus from an open modal (e.g. the recent projects picker):
++                    // the shell can finish spawning after the user has moved on, and focusing
++                    // the panel would dismiss whatever they opened.
++                    let take_focus = reveal_strategy == RevealStrategy::Always
++                        && !workspace.has_active_modal(window, cx);
+                     match reveal_strategy {
+-                        RevealStrategy::Always => {
++                        RevealStrategy::Always if take_focus => {
+                             workspace.focus_panel::<Self>(window, cx);
+                         }
+-                        RevealStrategy::NoFocus => {
++                        RevealStrategy::Always | RevealStrategy::NoFocus => {
+                             workspace.open_panel::<Self>(window, cx);
+                         }
+                         RevealStrategy::Never => {}
+                     }
+ 
+                     pane.update(cx, |pane, cx| {
+-                        let focus = reveal_strategy == RevealStrategy::Always;
+-                        pane.add_item(terminal_view, true, focus, None, window, cx);
++                        pane.add_item(terminal_view, true, take_focus, None, window, cx);
+                     });
+ 
+                     terminal.downgrade()
+@@ -2602,6 +2610,151 @@ mod tests {
+         });
+     }
+ 
++    #[gpui::test]
++    async fn test_panel_terminal_keeps_focus_on_active_modal(cx: &mut TestAppContext) {
++        cx.executor().allow_parking();
++        init_test(cx);
++
++        let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
++        let workspace = window_handle
++            .update(cx, |multi_workspace, _, _| {
++                multi_workspace.workspace().clone()
++            })
++            .expect("Failed to read workspace");
++        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
++
++        let modal_focus_handle = workspace.update_in(cx, |workspace, window, cx| {
++            let focus_handle = cx.focus_handle();
++            workspace.toggle_modal(window, cx, {
++                let focus_handle = focus_handle.clone();
++                move |_, _| FocusOnlyModal { focus_handle }
++            });
++            focus_handle
++        });
++
++        terminal_panel
++            .update_in(cx, |terminal_panel, window, cx| {
++                terminal_panel.add_terminal_shell(false, None, RevealStrategy::Always, window, cx)
++            })
++            .await
++            .expect("Failed to spawn a panel terminal");
++        cx.run_until_parked();
++
++        workspace.update_in(cx, |workspace, window, cx| {
++            assert!(
++                workspace.has_active_modal(window, cx),
++                "a panel terminal that finishes spawning must not dismiss an active modal"
++            );
++            assert!(
++                modal_focus_handle.is_focused(window),
++                "a panel terminal that finishes spawning must not steal focus from an active modal"
++            );
++        });
++        terminal_panel.read_with(cx, |terminal_panel, cx| {
++            assert_eq!(
++                terminal_panel.active_pane.read(cx).items_len(),
++                1,
++                "the terminal should still be added to the panel"
++            );
++        });
++    }
++
++    #[gpui::test]
++    async fn test_panel_terminal_takes_focus_without_modal(cx: &mut TestAppContext) {
++        cx.executor().allow_parking();
++        init_test(cx);
++
++        let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
++        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
++
++        terminal_panel
++            .update_in(cx, |terminal_panel, window, cx| {
++                terminal_panel.add_terminal_shell(false, None, RevealStrategy::Always, window, cx)
++            })
++            .await
++            .expect("Failed to spawn a panel terminal");
++        cx.run_until_parked();
++
++        terminal_panel.update_in(cx, |terminal_panel, window, cx| {
++            let terminal_view = terminal_panel
++                .active_pane
++                .read(cx)
++                .active_item()
++                .and_then(|item| item.downcast::<TerminalView>())
++                .expect("the new terminal should be the active panel item");
++            assert!(
++                terminal_view.focus_handle(cx).contains_focused(window, cx),
++                "with no modal open, a new panel terminal should take focus"
++            );
++        });
++    }
++
++    #[gpui::test]
++    async fn test_finished_restoration_keeps_focus_on_active_modal(cx: &mut TestAppContext) {
++        cx.executor().allow_parking();
++        init_test(cx);
++
++        let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
++        let workspace = window_handle
++            .update(cx, |multi_workspace, _, _| {
++                multi_workspace.workspace().clone()
++            })
++            .expect("Failed to read workspace");
++        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
++
++        terminal_panel
++            .update_in(cx, |terminal_panel, window, cx| {
++                terminal_panel.add_terminal_shell(false, None, RevealStrategy::Never, window, cx)
++            })
++            .await
++            .expect("Failed to spawn a panel terminal");
++        workspace.update_in(cx, |workspace, window, cx| {
++            workspace.open_panel::<TerminalPanel>(window, cx);
++        });
++        cx.run_until_parked();
++
++        let modal_focus_handle = workspace.update_in(cx, |workspace, window, cx| {
++            let focus_handle = cx.focus_handle();
++            workspace.toggle_modal(window, cx, {
++                let focus_handle = focus_handle.clone();
++                move |_, _| FocusOnlyModal { focus_handle }
++            });
++            focus_handle
++        });
++        workspace.update_in(cx, |workspace, window, cx| {
++            assert!(
++                workspace.active_item(cx).is_none()
++                    && workspace
++                        .is_dock_at_position_open(terminal_panel.read(cx).position(window, cx), cx),
++                "the restoration focus conditions should hold, otherwise this test is vacuous"
++            );
++        });
++
++        window_handle
++            .update(cx, |_, window, cx| {
++                let workspace = workspace.downgrade();
++                let terminal_panel = terminal_panel.downgrade();
++                window.spawn(cx, async move |cx| {
++                    TerminalPanel::restore_serialized_state(workspace, terminal_panel, cx).await
++                })
++            })
++            .expect("Failed to restore serialized state")
++            .await
++            .expect("Failed to restore serialized state");
++        cx.run_until_parked();
++
++        workspace.update_in(cx, |workspace, window, cx| {
++            assert!(
++                workspace.has_active_modal(window, cx),
++                "finishing restoration must not dismiss an active modal"
++            );
++            assert!(
++                modal_focus_handle.is_focused(window),
++                "finishing restoration must not steal focus from an active modal"
++            );
++        });
++    }
++
+     #[gpui::test]
+     async fn test_inline_assist_tooltip_shows_keybinding_of_active_terminal(
+         cx: &mut TestAppContext,
+
+From 7917bdd0f785ac089d8c512a4f96c9607173e675 Mon Sep 17 00:00:00 2001
+From: Mikhail Butvin <butvin.mikhail@gmail.com>
+Date: Sun, 23 Aug 2026 05:32:15 +0300
+Subject: [PATCH 2/4] Remove PR review confirmation banner from README
+
+---
+ README.md | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/README.md b/README.md
+index 24840eec031df7..9f641fb3841909 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,3 @@
+-> [!IMPORTANT]
+-> Remove this line to confirm you've reviewed this PR before submitting.
+-
+ # Zed
+ 
+ [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
+
+From ad9f909dbd2bf630078f2a3382895d584457c180 Mon Sep 17 00:00:00 2001
+From: Mikhail Butvin <butvin.mikhail@gmail.com>
+Date: Mon, 24 Aug 2026 03:04:41 +0300
+Subject: [PATCH 3/4] terminal_view: Guard add_terminal_task and drop redundant
+ comments
+
+---
+ crates/terminal_view/src/terminal_panel.rs | 110 +++++++++++++++++++--
+ 1 file changed, 100 insertions(+), 10 deletions(-)
+
+diff --git a/crates/terminal_view/src/terminal_panel.rs b/crates/terminal_view/src/terminal_panel.rs
+index 03e029dede616e..624a92b7b9bbe6 100644
+--- a/crates/terminal_view/src/terminal_panel.rs
++++ b/crates/terminal_view/src/terminal_panel.rs
+@@ -405,9 +405,6 @@ impl TerminalPanel {
+ 
+         let should_focus = workspace
+             .update_in(cx, |workspace, window, cx| {
+-                // Don't steal focus from an open modal (e.g. the recent projects picker):
+-                // restoration finishes asynchronously, long after the user may have moved
+-                // on, and focusing the panel would dismiss whatever they opened.
+                 !workspace.has_active_modal(window, cx)
+                     && terminal_panel.upgrade().is_some_and(|terminal_panel| {
+                         workspace.active_item(cx).is_none()
+@@ -911,19 +908,20 @@ impl TerminalPanel {
+                     )
+                 }));
+ 
++                let take_focus = reveal_strategy == RevealStrategy::Always
++                    && !workspace.has_active_modal(window, cx);
+                 match reveal_strategy {
+-                    RevealStrategy::Always => {
++                    RevealStrategy::Always if take_focus => {
+                         workspace.focus_panel::<Self>(window, cx);
+                     }
+-                    RevealStrategy::NoFocus => {
++                    RevealStrategy::Always | RevealStrategy::NoFocus => {
+                         workspace.open_panel::<Self>(window, cx);
+                     }
+                     RevealStrategy::Never => {}
+                 }
+ 
+                 pane.update(cx, |pane, cx| {
+-                    let focus = reveal_strategy == RevealStrategy::Always;
+-                    pane.add_item(terminal_view, true, focus, None, window, cx);
++                    pane.add_item(terminal_view, true, take_focus, None, window, cx);
+                 });
+ 
+                 terminal.downgrade()
+@@ -970,9 +968,6 @@ impl TerminalPanel {
+                         )
+                     }));
+ 
+-                    // Don't steal focus from an open modal (e.g. the recent projects picker):
+-                    // the shell can finish spawning after the user has moved on, and focusing
+-                    // the panel would dismiss whatever they opened.
+                     let take_focus = reveal_strategy == RevealStrategy::Always
+                         && !workspace.has_active_modal(window, cx);
+                     match reveal_strategy {
+@@ -2689,6 +2684,101 @@ mod tests {
+         });
+     }
+ 
++    #[gpui::test]
++    async fn test_task_terminal_keeps_focus_on_active_modal(cx: &mut TestAppContext) {
++        cx.executor().allow_parking();
++        init_test(cx);
++
++        let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
++        let workspace = window_handle
++            .update(cx, |multi_workspace, _, _| {
++                multi_workspace.workspace().clone()
++            })
++            .expect("Failed to read workspace");
++        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
++
++        let modal_focus_handle = workspace.update_in(cx, |workspace, window, cx| {
++            let focus_handle = cx.focus_handle();
++            workspace.toggle_modal(window, cx, {
++                let focus_handle = focus_handle.clone();
++                move |_, _| FocusOnlyModal { focus_handle }
++            });
++            focus_handle
++        });
++
++        terminal_panel
++            .update_in(cx, |terminal_panel, window, cx| {
++                terminal_panel.add_terminal_task(
++                    SpawnInTerminal {
++                        command: Some("echo".to_owned()),
++                        ..SpawnInTerminal::default()
++                    },
++                    RevealStrategy::Always,
++                    window,
++                    cx,
++                )
++            })
++            .await
++            .expect("Failed to spawn a task terminal");
++        cx.run_until_parked();
++
++        workspace.update_in(cx, |workspace, window, cx| {
++            assert!(
++                workspace.has_active_modal(window, cx),
++                "a task terminal that finishes spawning must not dismiss an active modal"
++            );
++            assert!(
++                modal_focus_handle.is_focused(window),
++                "a task terminal that finishes spawning must not steal focus from an active modal"
++            );
++        });
++        terminal_panel.read_with(cx, |terminal_panel, cx| {
++            assert_eq!(
++                terminal_panel.active_pane.read(cx).items_len(),
++                1,
++                "the task terminal should still be added to the panel"
++            );
++        });
++    }
++
++    #[gpui::test]
++    async fn test_task_terminal_takes_focus_without_modal(cx: &mut TestAppContext) {
++        cx.executor().allow_parking();
++        init_test(cx);
++
++        let (window_handle, terminal_panel) = init_workspace_with_panel(cx).await;
++        let cx = &mut VisualTestContext::from_window(window_handle.into(), cx);
++
++        terminal_panel
++            .update_in(cx, |terminal_panel, window, cx| {
++                terminal_panel.add_terminal_task(
++                    SpawnInTerminal {
++                        command: Some("echo".to_owned()),
++                        ..SpawnInTerminal::default()
++                    },
++                    RevealStrategy::Always,
++                    window,
++                    cx,
++                )
++            })
++            .await
++            .expect("Failed to spawn a task terminal");
++        cx.run_until_parked();
++
++        terminal_panel.update_in(cx, |terminal_panel, window, cx| {
++            let terminal_view = terminal_panel
++                .active_pane
++                .read(cx)
++                .active_item()
++                .and_then(|item| item.downcast::<TerminalView>())
++                .expect("the new task terminal should be the active panel item");
++            assert!(
++                terminal_view.focus_handle(cx).contains_focused(window, cx),
++                "with no modal open, a new task terminal should take focus"
++            );
++        });
++    }
++
+     #[gpui::test]
+     async fn test_finished_restoration_keeps_focus_on_active_modal(cx: &mut TestAppContext) {
+         cx.executor().allow_parking();
+
+From 17f3aa269daeb704fac84f2a6b185f7d455541ba Mon Sep 17 00:00:00 2001
+From: Mikhail Butvin <butvin.mikhail@gmail.com>
+Date: Mon, 24 Aug 2026 08:06:02 +0300
+Subject: [PATCH 4/4] terminal_view: Spawn task test terminals with a
+ Windows-compatible command
+
+---
+ crates/terminal_view/src/terminal_panel.rs | 34 ++++++++++------------
+ 1 file changed, 16 insertions(+), 18 deletions(-)
+
+diff --git a/crates/terminal_view/src/terminal_panel.rs b/crates/terminal_view/src/terminal_panel.rs
+index 624a92b7b9bbe6..9d0eb3792b66f9 100644
+--- a/crates/terminal_view/src/terminal_panel.rs
++++ b/crates/terminal_view/src/terminal_panel.rs
+@@ -2708,15 +2708,7 @@ mod tests {
+ 
+         terminal_panel
+             .update_in(cx, |terminal_panel, window, cx| {
+-                terminal_panel.add_terminal_task(
+-                    SpawnInTerminal {
+-                        command: Some("echo".to_owned()),
+-                        ..SpawnInTerminal::default()
+-                    },
+-                    RevealStrategy::Always,
+-                    window,
+-                    cx,
+-                )
++                terminal_panel.add_terminal_task(echo_task(), RevealStrategy::Always, window, cx)
+             })
+             .await
+             .expect("Failed to spawn a task terminal");
+@@ -2751,15 +2743,7 @@ mod tests {
+ 
+         terminal_panel
+             .update_in(cx, |terminal_panel, window, cx| {
+-                terminal_panel.add_terminal_task(
+-                    SpawnInTerminal {
+-                        command: Some("echo".to_owned()),
+-                        ..SpawnInTerminal::default()
+-                    },
+-                    RevealStrategy::Always,
+-                    window,
+-                    cx,
+-                )
++                terminal_panel.add_terminal_task(echo_task(), RevealStrategy::Always, window, cx)
+             })
+             .await
+             .expect("Failed to spawn a task terminal");
+@@ -2886,6 +2870,20 @@ mod tests {
+         );
+     }
+ 
++    // On Windows `echo` is a shell builtin rather than an executable, so spawning it directly fails.
++    fn echo_task() -> SpawnInTerminal {
++        let (command, args) = if cfg!(windows) {
++            ("cmd.exe", vec!["/C".to_owned(), "echo".to_owned()])
++        } else {
++            ("echo", Vec::new())
++        };
++        SpawnInTerminal {
++            command: Some(command.to_owned()),
++            args,
++            ..SpawnInTerminal::default()
++        }
++    }
++
+     async fn init_workspace_with_panel(
+         cx: &mut TestAppContext,
+     ) -> (gpui::WindowHandle<MultiWorkspace>, Entity<TerminalPanel>) {

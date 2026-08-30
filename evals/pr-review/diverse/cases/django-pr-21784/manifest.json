@@ -1,0 +1,248 @@
+{
+  "additions": 75,
+  "author": "jacobtylerwalls",
+  "base_sha": "3436cf9bce84bb1f6877ad96819637366b27b719",
+  "body": "#### Trac ticket number\r\nticket-37278\r\n\r\n#### Branch description\r\nIf an annotation is a pure alias to a field (e.g., no transform), then `totally_ordered` can understand it and possibly return `True`. Before, these annotations were skipped, so the property always returned `False`.\r\n\r\n#### AI Assistance Disclosure (REQUIRED)\r\n<!-- Please select exactly ONE of the following: -->\r\n- [x] **No AI tools were used** in preparing this PR.\r\n- [ ] **If AI tools were used**, I have disclosed which ones, and fully reviewed and verified their output.\r\n\r\n#### Checklist\r\n- [x] This PR follows the [contribution guidelines](https://docs.djangoproject.com/en/stable/internals/contributing/writing-code/submitting-patches/).\r\n- [x] This PR **does not** disclose a security vulnerability (see [vulnerability reporting](https://docs.djangoproject.com/en/stable/internals/security/)).\r\n- [x] This PR targets the `main` branch. <!-- Backports will be evaluated and done by mergers, when necessary. -->\r\n- [x] The commit message is written in past tense, mentions the ticket number, and ends with a period (see [guidelines](https://docs.djangoproject.com/en/dev/internals/contributing/committing-code/#committing-guidelines)).\r\n- [x] I have not requested, and will not request, an automated AI review for this PR. <!-- You are welcome to do so in your own fork. -->\r\n- [x] I have checked the \"Has patch\" ticket flag in the Trac system.\r\n- [x] I have added or updated relevant tests.\r\n- [x] I have added or updated relevant docs, including release notes if applicable.\r\n- [x] I have attached screenshots in both light and dark modes for any UI changes.",
+  "captured_at": "2026-08-30T01:09:42+00:00",
+  "case_id": "django-pr-21784",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run_benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "Benchmark"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-commit-prefix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Coverage Tests (PostgreSQL)",
+      "status": "COMPLETED",
+      "workflowName": "Coverage Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL ${{ matrix.pg_major }}, Python ${{ matrix.python }}",
+      "status": "COMPLETED",
+      "workflowName": "GeoDjango Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "define-matrix",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "SQLite",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Screenshots",
+      "status": "COMPLETED",
+      "workflowName": "Visual Regression Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check test migrations",
+      "status": "COMPLETED",
+      "workflowName": "Check migrations"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "flake8",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Quality Checks on a PR",
+      "status": "COMPLETED",
+      "workflowName": "PR Quality Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows, SQLite, Python 3.14",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "python",
+      "status": "COMPLETED",
+      "workflowName": "Python Matrix from config file"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "PostgreSQL",
+      "status": "COMPLETED",
+      "workflowName": "Selenium Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-commit-suffix",
+      "status": "COMPLETED",
+      "workflowName": "Check commit prefix"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "isort",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Ubuntu, SQLite, Python 3.14t",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "black",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "JavaScript tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Scripts tests",
+      "status": "COMPLETED",
+      "workflowName": "Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "biome",
+      "status": "COMPLETED",
+      "workflowName": "Linters"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "3436cf9bce84bb1f6877ad96819637366b27b719",
+  "deletions": 14,
+  "files": [
+    {
+      "additions": 36,
+      "changeType": "MODIFIED",
+      "deletions": 14,
+      "path": "django/db/models/query.py"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/composite_pk/test_order_by.py"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/ordering/models.py"
+    },
+    {
+      "additions": 31,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "tests/ordering/tests.py"
+    }
+  ],
+  "head_sha": "ea088d64c2c437f7c79f10b6b641b47fe252c052",
+  "issues": [],
+  "patch_sha256": "2eaa235fb0c13a388a9cfdf0019237b8d54716eae89cd36f530a090756afa248",
+  "pr_number": 21784,
+  "repo": "django/django",
+  "schema_version": 1,
+  "title": "Fixed #37278 -- Made QuerySet.totally_ordered understand aliases to pure Col/ColPairs.",
+  "url": "https://github.com/django/django/pull/21784"
+}

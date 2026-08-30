@@ -1,0 +1,184 @@
+From e4e6bb68a0386d47577b99ab91eac837bd954e3f Mon Sep 17 00:00:00 2001
+From: silverwind <me@silverwind.io>
+Date: Wed, 19 Aug 2026 21:51:43 +0200
+Subject: [PATCH 1/4] fix: make form controls visible in forced colors mode
+
+Forced colors replaces author colors with the user's palette, which left
+checked and indeterminate checkboxes identical to unchecked ones, made
+toggle switches disappear entirely, and stripped the fill from labels,
+progress bars and branch divergence bars.
+
+Restore each state with system colors, keeping every rule inside the
+media query so normal rendering is untouched.
+
+Assisted-by: Claude Code:claude-opus-5
+---
+ web_src/css/base.css             | 10 ++++++++++
+ web_src/css/modules/checkbox.css | 26 ++++++++++++++++++++++++++
+ web_src/css/modules/label.css    |  7 +++++++
+ web_src/css/repo.css             |  6 ++++++
+ 4 files changed, 49 insertions(+)
+
+diff --git a/web_src/css/base.css b/web_src/css/base.css
+index fdcf55848d853..808e2bd34b8ce 100644
+--- a/web_src/css/base.css
++++ b/web_src/css/base.css
+@@ -224,6 +224,16 @@ progress::-moz-progress-bar {
+   background-color: var(--color-accent);
+ }
+ 
++@media (forced-colors: active) {
++  progress { /* chromium drops the whole widget, firefox renders it natively */
++    outline: 1px solid CanvasText;
++    outline-offset: -1px;
++  }
++  progress::-webkit-progress-value {
++    background: CanvasText;
++  }
++}
++
+ * {
+   caret-color: var(--color-caret);
+ }
+diff --git a/web_src/css/modules/checkbox.css b/web_src/css/modules/checkbox.css
+index a90082c1a7ad8..5033bea159630 100644
+--- a/web_src/css/modules/checkbox.css
++++ b/web_src/css/modules/checkbox.css
+@@ -172,6 +172,32 @@ input[type="checkbox"]:indeterminate::before {
+   background: var(--color-primary) !important;
+ }
+ 
++/* forced colors drops author colors, so state has to come from system colors. The checkmark
++   needs no rule, the user agent forces it to Canvas, and the toggle state stays readable
++   because the knob position is not a color. */
++@media (forced-colors: active) {
++  input[type="checkbox"]:checked,
++  input[type="checkbox"]:indeterminate {
++    background: CanvasText;
++    border-color: CanvasText;
++  }
++  input[type="checkbox"]:disabled:checked,
++  input[type="checkbox"]:disabled:indeterminate {
++    background: GrayText;
++    border-color: GrayText;
++  }
++  input[type="radio"]:disabled:checked {
++    border-color: GrayText;
++  }
++  .ui.toggle.checkbox label::before {
++    outline: 1px solid CanvasText;
++    outline-offset: -1px;
++  }
++  .ui.toggle.checkbox label::after {
++    background: CanvasText;
++  }
++}
++
+ label.gt-checkbox {
+   display: inline-flex;
+   align-items: center;
+diff --git a/web_src/css/modules/label.css b/web_src/css/modules/label.css
+index 4be3f32a7e6b3..9df55fd088e0c 100644
+--- a/web_src/css/modules/label.css
++++ b/web_src/css/modules/label.css
+@@ -305,3 +305,10 @@ it can also be rendered as flex by adding flex-related classes (the general ".it
+   filter: grayscale(0.5);
+   opacity: 0.5;
+ }
++
++@media (forced-colors: active) {
++  .ui.label { /* label backgrounds are dropped, outline keeps the boundary without changing metrics */
++    outline: 1px solid CanvasText;
++    outline-offset: -1px;
++  }
++}
+diff --git a/web_src/css/repo.css b/web_src/css/repo.css
+index 1ab1e579767a0..b2f5f71702515 100644
+--- a/web_src/css/repo.css
++++ b/web_src/css/repo.css
+@@ -720,6 +720,12 @@ td .commit-summary {
+   left: 0;
+ }
+ 
++@media (forced-colors: active) {
++  .repository.branches .commit-divergence .bar {
++    background: CanvasText;
++  }
++}
++
+ .repository.commits .header .search input {
+   font-weight: var(--font-weight-normal);
+   padding: 5px 10px;
+
+From 31ad37d93967ad4f847165c431efc57ffb8a4772 Mon Sep 17 00:00:00 2001
+From: silverwind <me@silverwind.io>
+Date: Wed, 19 Aug 2026 21:55:37 +0200
+Subject: [PATCH 2/4] Apply suggestion from @silverwind
+
+Signed-off-by: silverwind <me@silverwind.io>
+---
+ web_src/css/modules/checkbox.css | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/web_src/css/modules/checkbox.css b/web_src/css/modules/checkbox.css
+index 5033bea159630..b986301f3b404 100644
+--- a/web_src/css/modules/checkbox.css
++++ b/web_src/css/modules/checkbox.css
+@@ -172,9 +172,6 @@ input[type="checkbox"]:indeterminate::before {
+   background: var(--color-primary) !important;
+ }
+ 
+-/* forced colors drops author colors, so state has to come from system colors. The checkmark
+-   needs no rule, the user agent forces it to Canvas, and the toggle state stays readable
+-   because the knob position is not a color. */
+ @media (forced-colors: active) {
+   input[type="checkbox"]:checked,
+   input[type="checkbox"]:indeterminate {
+
+From cded1eb4dfb8be3027201f093bfd9fbcf91314e3 Mon Sep 17 00:00:00 2001
+From: silverwind <me@silverwind.io>
+Date: Wed, 19 Aug 2026 21:56:00 +0200
+Subject: [PATCH 3/4] Apply suggestion from @silverwind
+
+Signed-off-by: silverwind <me@silverwind.io>
+---
+ web_src/css/modules/label.css | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/web_src/css/modules/label.css b/web_src/css/modules/label.css
+index 9df55fd088e0c..a0c1f43e6ea4c 100644
+--- a/web_src/css/modules/label.css
++++ b/web_src/css/modules/label.css
+@@ -307,7 +307,7 @@ it can also be rendered as flex by adding flex-related classes (the general ".it
+ }
+ 
+ @media (forced-colors: active) {
+-  .ui.label { /* label backgrounds are dropped, outline keeps the boundary without changing metrics */
++  .ui.label {
+     outline: 1px solid CanvasText;
+     outline-offset: -1px;
+   }
+
+From 1c73290262509f35a694c947bef6dab259400513 Mon Sep 17 00:00:00 2001
+From: silverwind <me@silverwind.io>
+Date: Wed, 19 Aug 2026 21:56:16 +0200
+Subject: [PATCH 4/4] Apply suggestion from @silverwind
+
+Signed-off-by: silverwind <me@silverwind.io>
+---
+ web_src/css/base.css | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/web_src/css/base.css b/web_src/css/base.css
+index 808e2bd34b8ce..5611e9bb87c3c 100644
+--- a/web_src/css/base.css
++++ b/web_src/css/base.css
+@@ -225,7 +225,7 @@ progress::-moz-progress-bar {
+ }
+ 
+ @media (forced-colors: active) {
+-  progress { /* chromium drops the whole widget, firefox renders it natively */
++  progress {
+     outline: 1px solid CanvasText;
+     outline-offset: -1px;
+   }

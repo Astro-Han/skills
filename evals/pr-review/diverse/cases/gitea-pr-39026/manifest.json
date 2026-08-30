@@ -1,0 +1,218 @@
+{
+  "additions": 22,
+  "author": "bircni",
+  "base_sha": "ad05aaee800a7d1180e325957a37998e6c6c30c5",
+  "body": "Limit retained dependency and provision metadata while parsing Alpine package information.",
+  "captured_at": "2026-08-30T01:09:42+00:00",
+  "case_id": "gitea-pr-39026",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "labeler",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-amd64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-pgsql-shard-1",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-e2e",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "pr-title",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-arm64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-on-demand",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-pgsql-shard-2",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-riscv64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checks-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-sqlite",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "frontend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-unit",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-mysql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-mssql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "ad05aaee800a7d1180e325957a37998e6c6c30c5",
+  "deletions": 3,
+  "files": [
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "modules/packages/alpine/metadata.go"
+    },
+    {
+      "additions": 10,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "modules/packages/alpine/metadata_test.go"
+    }
+  ],
+  "head_sha": "35e2ae33d1a9745210bb82f3395358bc8544d85e",
+  "issues": [],
+  "patch_sha256": "2244ba2f26a8b76c022b77d9c757c59686ee1f96b966d1f50817faf34714f0bf",
+  "pr_number": 39026,
+  "repo": "go-gitea/gitea",
+  "schema_version": 1,
+  "title": "fix(packages): bound Alpine metadata entries",
+  "url": "https://github.com/go-gitea/gitea/pull/39026"
+}

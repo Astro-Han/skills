@@ -506,6 +506,23 @@ def verify_all(cases_root: Path, selection_path: Path | None = None):
     return len(case_dirs)
 
 
+def verify_diverse_cases(cases_root: Path, selection_path: Path):
+    case_dirs = sorted(path.parent for path in cases_root.glob("*/manifest.json"))
+    if not case_dirs:
+        raise ValueError("no diverse PR cases found")
+    captured_ids = set()
+    for case_dir in case_dirs:
+        verify_case(case_dir)
+        manifest = read_json(case_dir / "manifest.json")
+        captured_ids.add(f"{manifest['repo']}#{manifest['pr_number']}")
+    selected_ids = set(read_json(selection_path)["cases"])
+    if captured_ids != selected_ids:
+        missing = sorted(selected_ids - captured_ids)
+        extra = sorted(captured_ids - selected_ids)
+        raise ValueError(f"diverse cases differ from selection: missing={missing}, extra={extra}")
+    return len(case_dirs)
+
+
 def apply_captured_patch(work: Path, patch_path: Path, base_sha: str):
     first_line = patch_path.read_text().splitlines()[0] if patch_path.stat().st_size else ""
     if re.fullmatch(r"From [0-9a-f]{40} Mon Sep 17 00:00:00 2001", first_line):
@@ -625,6 +642,9 @@ def build_parser():
     diverse_verify.add_argument("--candidates", type=Path, required=True)
     diverse_verify.add_argument("--policy", type=Path, required=True)
     diverse_verify.add_argument("--selection", type=Path, required=True)
+    diverse_cases = sub.add_parser("verify-diverse-cases")
+    diverse_cases.add_argument("--cases-root", type=Path, required=True)
+    diverse_cases.add_argument("--selection", type=Path, required=True)
     capture = sub.add_parser("capture")
     capture.add_argument("--repo", required=True)
     capture.add_argument("--number", type=int, required=True)
@@ -655,6 +675,10 @@ def main():
         print(
             f"verified {verify_diverse_selection(args.candidates, args.policy, args.selection)} "
             "diverse PR cases"
+        )
+    elif args.command == "verify-diverse-cases":
+        print(
+            f"verified {verify_diverse_cases(args.cases_root, args.selection)} diverse PR cases"
         )
     elif args.command == "capture":
         capture_case(args.repo, args.number, args.case_id, args.output_root)

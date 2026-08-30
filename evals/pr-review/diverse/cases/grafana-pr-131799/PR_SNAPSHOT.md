@@ -1,0 +1,224 @@
+# Frozen pull request snapshot
+
+- PR: https://github.com/grafana/grafana/pull/131799 — `Provisioning: drop registerOrReuse from informer metrics`
+- Author: pstibrany
+- Target base head: `37738a8fe646c898cf6cfb9f43a6cd90171adca7`
+- Comparison base: `2fa495ab9d5a10dcfb67416680d0dc117d5264a8`
+- Exact source head: `38ff10fb104765055ffc1e28880272cf5fe5b938`
+- Diff: 28 additions, 45 deletions, 2 files
+- Live mergeability and review state: intentionally unavailable in this historical fixture
+
+## Pull request body
+
+`registerOrReuse` catches `AlreadyRegisteredError` and returns the collector already registered. See #131798 for why that is the wrong answer to a duplicate registration.
+
+Nothing needs it here. `newInformerMetrics` has one caller (`informer/job.go`), and the recorders within a delta source share one instance by being handed it, each passing its own resource label. Only a test built it twice against one registry; that test now checks what actually happens in production — two recorders writing distinct resource series through one instance.
+
+No metric names, labels or values change.
+
+Note this is the second of the two copies. The unified storage one is #131792, which needed const labels because it genuinely had three consumers per process.
+
+## Linked issues
+
+No closing Issue was linked in the frozen PR metadata.
+
+## Exact-head checks
+
+- trigger: SKIPPED
+- signed-commits: SKIPPED
+- Setup and establish latest: SKIPPED
+- update: SKIPPED
+- main: SUCCESS
+- main: SUCCESS
+- Detect whether code changed: SUCCESS
+- Detect whether code changed: SUCCESS
+- linux/amd64: SUCCESS
+- Detect frontend changes: SUCCESS
+- codeowners-validator: SUCCESS
+- dispatch-job: SUCCESS
+- signed-commits: SUCCESS
+- Detect whether code changed: SUCCESS
+- detect-changes: SUCCESS
+- handle-ephemeral-instances: SUCCESS
+- Capture PR metadata for handler: SUCCESS
+- Detect whether code changed: SUCCESS
+- Detect whether code changed: SUCCESS
+- Detect whether code changed: SUCCESS
+- Detect whether code changed: SUCCESS
+- Detect whether code changed: SUCCESS
+- check-separation: SUCCESS
+- main: SUCCESS
+- main: SUCCESS
+- Detect whether code changed: SUCCESS
+- reject-gh-secrets: SUCCESS
+- Detect whether code changed: SUCCESS
+- dashboard-schema-v2-e2e: SUCCESS
+- Shellcheck scripts: SUCCESS
+- Detect whether code changed: SUCCESS
+- TruffleHog Secret Scan / trufflehog-scan: SUCCESS
+- Run Trufflehog: SUCCESS
+- check-separation: SUCCESS
+- verify-i18n / verify-i18n: SUCCESS
+- Detect whether code changed: SUCCESS
+- govulncheck: SUCCESS
+- Check whether there are things to scan: SUCCESS
+- linux/arm64: SUCCESS
+- linux/s390x: SUCCESS
+- linux/armv6: SUCCESS
+- linux/armv7: SUCCESS
+- darwin/arm64: SUCCESS
+- darwin/amd64: SUCCESS
+- windows/arm64: SUCCESS
+- Grafana (${{ matrix.shard }}): SKIPPED
+- Build ${{ matrix.target }} frontend: SKIPPED
+- dispatch-job-fork: SKIPPED
+- check-endpoint-migration: SKIPPED
+- Generate golden files: SKIPPED
+- Sqlite (${{ matrix.shard }}): SKIPPED
+- Verify API clients: SKIPPED
+- Create next release branch (Grafana): SKIPPED
+- Run Storybook a11y tests (${{ matrix.STORYBOOK_THEME }} theme): SKIPPED
+- Validate Backend Configs: SUCCESS
+- linux/amd64 (enterprise): SUCCESS
+- Build backend: SUCCESS
+- Feature toggles documentation is in sync with source: SUCCESS
+- Go Workspace Check: SUCCESS
+- setup: SUCCESS
+- Verify committed API specs match: SUCCESS
+- TruffleHog Secret Scan / Send TruffleHog metrics to Prometheus via Grafana Bench: SUCCESS
+- go-fmt: SUCCESS
+- Run zizmor / job-workflow-ref: SUCCESS
+- linux/arm64 (enterprise): SUCCESS
+- linux/s390x (enterprise): SUCCESS
+- linux/armv6 (enterprise): SUCCESS
+- linux/armv7 (enterprise): SUCCESS
+- darwin/arm64 (enterprise): SUCCESS
+- darwin/amd64 (enterprise): SUCCESS
+- windows/arm64 (enterprise): SUCCESS
+- Check bundle size impact: SKIPPED
+- Decoupled plugin tests: SKIPPED
+- MySQL (${{ matrix.shard }}): SKIPPED
+- Create next release branch (Grafana Enterprise): SKIPPED
+- Grafana Enterprise (1/8): SUCCESS
+- verify rpm stig (linux/amd64): SUCCESS
+- Build frontend: SUCCESS
+- endpoint-toggle-result: SUCCESS
+- Check Wire Changes: SUCCESS
+- Verify API clients (enterprise): SUCCESS
+- build frontend: SUCCESS
+- Storybook a11y tests: SUCCESS
+- lint-go: SUCCESS
+- Run zizmor / Generate and upload zizmor results 🌈: SUCCESS
+- Grafana Enterprise (2/8): SUCCESS
+- Grafana Enterprise (3/8): SUCCESS
+- Grafana Enterprise (4/8): SUCCESS
+- Grafana Enterprise (5/8): SUCCESS
+- Grafana Enterprise (6/8): SUCCESS
+- Grafana Enterprise (7/8): SUCCESS
+- Grafana Enterprise (8/8): SUCCESS
+- Rspack plugin tests: SKIPPED
+- Postgres (${{ matrix.shard }}): SKIPPED
+- Lint: SKIPPED
+- Create security branch (Enterprise): SKIPPED
+- All backend unit tests complete: SUCCESS
+- Verify Storybook (Playwright): SUCCESS
+- All Go Workspace Checks complete: SUCCESS
+- build backend: SUCCESS
+- Run zizmor / Send zizmor metrics to Prometheus via Grafana Bench: SUCCESS
+- Packages unit tests: SKIPPED
+- Lint: SKIPPED
+- create_github_release: SKIPPED
+- Run zizmor / Delete branch with dangerous-trigger vulnerability: SKIPPED
+- Playwright E2E tests (1/8): SUCCESS
+- Sqlite Enterprise (1/16): SUCCESS
+- build targz: SUCCESS
+- Playwright E2E tests (2/8): SUCCESS
+- Sqlite Enterprise (2/16): SUCCESS
+- Playwright E2E tests (3/8): SUCCESS
+- Sqlite Enterprise (3/16): SUCCESS
+- Playwright E2E tests (4/8): SUCCESS
+- Sqlite Enterprise (4/16): SUCCESS
+- Playwright E2E tests (5/8): SUCCESS
+- Sqlite Enterprise (5/16): SUCCESS
+- Playwright E2E tests (6/8): SUCCESS
+- Sqlite Enterprise (6/16): SUCCESS
+- Playwright E2E tests (7/8): SUCCESS
+- Sqlite Enterprise (7/16): SUCCESS
+- Playwright E2E tests (8/8): SUCCESS
+- Sqlite Enterprise (8/16): SUCCESS
+- Sqlite Enterprise (9/16): SUCCESS
+- Sqlite Enterprise (10/16): SUCCESS
+- Sqlite Enterprise (11/16): SUCCESS
+- Sqlite Enterprise (12/16): SUCCESS
+- Sqlite Enterprise (13/16): SUCCESS
+- Sqlite Enterprise (14/16): SUCCESS
+- Sqlite Enterprise (15/16): SUCCESS
+- Sqlite Enterprise (16/16): SUCCESS
+- Unit tests (${{ matrix.shard }} / ${{ matrix.total }}): SKIPPED
+- Typecheck: SKIPPED
+- Diagnostics e2e (on-prem) / Download diagnostics e2e (on-prem): SUCCESS
+- MySQL Enterprise (1/16): SUCCESS
+- build docker: SUCCESS
+- MySQL Enterprise (2/16): SUCCESS
+- MySQL Enterprise (3/16): SUCCESS
+- MySQL Enterprise (4/16): SUCCESS
+- MySQL Enterprise (5/16): SUCCESS
+- MySQL Enterprise (6/16): SUCCESS
+- MySQL Enterprise (7/16): SUCCESS
+- MySQL Enterprise (8/16): SUCCESS
+- MySQL Enterprise (9/16): SUCCESS
+- MySQL Enterprise (10/16): SUCCESS
+- MySQL Enterprise (11/16): SUCCESS
+- MySQL Enterprise (12/16): SUCCESS
+- MySQL Enterprise (13/16): SUCCESS
+- MySQL Enterprise (14/16): SUCCESS
+- MySQL Enterprise (15/16): SUCCESS
+- MySQL Enterprise (16/16): SUCCESS
+- Publish metrics: SKIPPED
+- Unit tests (${{ matrix.shard }} / ${{ matrix.total }}): SKIPPED
+- Typecheck: SKIPPED
+- Postgres Enterprise (1/16): SUCCESS
+- Push PR Docker image: SUCCESS
+- Postgres Enterprise (2/16): SUCCESS
+- Postgres Enterprise (3/16): SUCCESS
+- Postgres Enterprise (4/16): SUCCESS
+- Postgres Enterprise (5/16): SUCCESS
+- Postgres Enterprise (6/16): SUCCESS
+- Postgres Enterprise (7/16): SUCCESS
+- Postgres Enterprise (8/16): SUCCESS
+- Postgres Enterprise (9/16): SUCCESS
+- Postgres Enterprise (10/16): SUCCESS
+- Postgres Enterprise (11/16): SUCCESS
+- Postgres Enterprise (12/16): SUCCESS
+- Postgres Enterprise (13/16): SUCCESS
+- Postgres Enterprise (14/16): SUCCESS
+- Postgres Enterprise (15/16): SUCCESS
+- Postgres Enterprise (16/16): SUCCESS
+- Verify OpenAPI specs: SKIPPED
+- Run Meticulous tests: SKIPPED
+- post_on_slack: SKIPPED
+- All Playwright tests complete: SUCCESS
+- All frontend unit tests complete: SUCCESS
+- Verify packed frontend packages: SKIPPED
+- migrate_prs_grafana: SKIPPED
+- Report Playwright benchmarks: SUCCESS
+- Check circular dependencies: SKIPPED
+- migrate_prs_enterprise: SKIPPED
+- All E2E tests complete: SUCCESS
+- lint-knip: SKIPPED
+- Export SBOM and attach to the GitHub release: SKIPPED
+- Validate yarn install: SKIPPED
+- Attach Linux packages to the GitHub release: SKIPPED
+- zizmor: NEUTRAL
+- Cursor Bugbot: SUCCESS
+- Socket Security: Project Report: SUCCESS
+- unnamed: SUCCESS
+- unnamed: SUCCESS
+- unnamed: SUCCESS
+- unnamed: SUCCESS
+- semgrep-cloud-platform/scan: SUCCESS
+
+## Changed files
+
+- `pkg/registry/apis/provisioning/informer/metrics.go`: +19/-36
+- `pkg/registry/apis/provisioning/informer/metrics_test.go`: +9/-9

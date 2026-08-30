@@ -1,0 +1,105 @@
+From 1b97033d572f915260a81b149a2e973b55e8e6f3 Mon Sep 17 00:00:00 2001
+From: "Tomasz (Tom) Kramkowski" <tom@astral.sh>
+Date: Fri, 14 Aug 2026 17:33:35 +0100
+Subject: [PATCH] Use statx for directory cache timestamps on Linux
+
+---
+ crates/uv-cache-info/src/cache_info.rs |  4 +--
+ crates/uv-fs/src/lib.rs                | 50 ++++++++++++++++++++++++++
+ 2 files changed, 52 insertions(+), 2 deletions(-)
+
+diff --git a/crates/uv-cache-info/src/cache_info.rs b/crates/uv-cache-info/src/cache_info.rs
+index ad2bd5a330c..9b17726afb6 100644
+--- a/crates/uv-cache-info/src/cache_info.rs
++++ b/crates/uv-cache-info/src/cache_info.rs
+@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
+ use serde::Deserialize;
+ use tracing::{debug, info_span, warn};
+ 
+-use uv_fs::Simplified;
++use uv_fs::{Simplified, created_time};
+ 
+ use crate::git_info::{Commit, Tags};
+ use crate::glob::cluster_globs;
+@@ -160,7 +160,7 @@ impl CacheInfo {
+                         continue;
+                     }
+ 
+-                    if let Ok(created) = metadata.created() {
++                    if let Ok(created) = created_time(&path, &metadata) {
+                         // Prefer the creation time.
+                         directories.insert(
+                             dir,
+diff --git a/crates/uv-fs/src/lib.rs b/crates/uv-fs/src/lib.rs
+index 3c6e0ed62c1..879fc360b95 100644
+--- a/crates/uv-fs/src/lib.rs
++++ b/crates/uv-fs/src/lib.rs
+@@ -1,11 +1,17 @@
+ use std::io;
+ use std::path::{Path, PathBuf};
++use std::time::SystemTime;
++
++#[cfg(target_os = "linux")]
++use std::time::{Duration, UNIX_EPOCH};
+ 
+ #[cfg(feature = "tokio")]
+ use std::io::Read;
+ 
+ #[cfg(feature = "tokio")]
+ use encoding_rs_io::DecodeReaderBytes;
++#[cfg(target_os = "linux")]
++use rustix::fs::{AtFlags, CWD as RUSTIX_CWD, StatxFlags, statx};
+ use tempfile::NamedTempFile;
+ use tracing::{debug, warn};
+ 
+@@ -22,6 +28,50 @@ mod read;
+ mod space;
+ pub mod which;
+ 
++/// Return a path's creation time, including on Linux targets where [`std::fs::Metadata::created`]
++/// does not expose the filesystem birth time.
++pub fn created_time(path: &Path, metadata: &std::fs::Metadata) -> io::Result<SystemTime> {
++    #[cfg(target_os = "linux")]
++    {
++        let _ = metadata;
++
++        let metadata = statx(
++            RUSTIX_CWD,
++            path,
++            AtFlags::empty(),
++            StatxFlags::BASIC_STATS | StatxFlags::BTIME,
++        )?;
++
++        if metadata.stx_mask & StatxFlags::BTIME.bits() == 0 {
++            return Err(io::Error::new(
++                io::ErrorKind::Unsupported,
++                "creation time is not available for the filesystem",
++            ));
++        }
++
++        let birth_time = metadata.stx_btime;
++        let seconds = Duration::from_secs(birth_time.tv_sec.unsigned_abs());
++        let created = if birth_time.tv_sec < 0 {
++            UNIX_EPOCH.checked_sub(seconds)
++        } else {
++            UNIX_EPOCH.checked_add(seconds)
++        };
++
++        created
++            .filter(|_| birth_time.tv_nsec < 1_000_000_000)
++            .and_then(|created| {
++                created.checked_add(Duration::from_nanos(u64::from(birth_time.tv_nsec)))
++            })
++            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid creation time"))
++    }
++
++    #[cfg(not(target_os = "linux"))]
++    {
++        let _ = path;
++        metadata.created()
++    }
++}
++
+ /// Attempt to check if the two paths refer to the same file.
+ ///
+ /// Returns `Some(true)` if the files are missing, but would be the same if they existed.

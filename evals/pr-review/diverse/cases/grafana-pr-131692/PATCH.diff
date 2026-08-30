@@ -1,0 +1,365 @@
+From c52645570e6c019680cefeae0563b922fb02cff1 Mon Sep 17 00:00:00 2001
+From: Gilles De Mey <gilles.de.mey@gmail.com>
+Date: Thu, 27 Aug 2026 12:26:49 +0200
+Subject: [PATCH 1/3] Alerting: Fix negative triage filters being cancelled out
+ by alias expansion
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The alerts activity page lets a single filter key stand for several real
+label names — `cluster` covers `cluster` and `cluster_name`, `namespace`
+covers `namespace`, `exported_namespace` and `namespace_extracted`, and so
+on. Until now every matcher on such a key was expanded into one selector per
+backing label, joined with `or`.
+
+That works for `=` and `=~`, but it silently undoes `!=` and `!~`. Prometheus
+treats a label the series doesn't have as empty, so a series with
+`cluster="prod-me-central-1"` and no `cluster_name` still matches the
+`cluster_name!="prod-me-central-1"` branch, and the `or` unions it right back
+into the result. Filtering `cluster != prod-me-central-1` returned
+prod-me-central-1 alerts anyway.
+
+Exclusions now go into every selector together instead of being split across
+`or` branches. Inclusions keep branching as before.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ .../unified/triage/scene/queries.test.ts      | 78 +++++++++++++++++++
+ .../alerting/unified/triage/scene/queries.ts  | 52 +++++++++----
+ 2 files changed, 116 insertions(+), 14 deletions(-)
+
+diff --git a/public/app/features/alerting/unified/triage/scene/queries.test.ts b/public/app/features/alerting/unified/triage/scene/queries.test.ts
+index c0f1e27a69d80..13bb1a774c046 100644
+--- a/public/app/features/alerting/unified/triage/scene/queries.test.ts
++++ b/public/app/features/alerting/unified/triage/scene/queries.test.ts
+@@ -1,3 +1,4 @@
++import { prometheusExpressionBuilder } from './expressionBuilder';
+ import { alertRuleInstancesQuery, getWorkbenchQueries, summaryChartQuery, uniqueAlertInstancesQuery } from './queries';
+ 
+ describe('triage queries service combined filter', () => {
+@@ -132,3 +133,80 @@ describe('alertRuleInstancesQuery group scoping', () => {
+     expect(query).not.toContain('environment=');
+   });
+ });
++
++describe('triage queries combined filter exclusions', () => {
++  it('keeps every backing label of an excluded key in the same selector', () => {
++    const query = summaryChartQuery('cluster!="prod-me-central-1"').expr;
++
++    expect(query).toBe(
++      'count by (alertstate) (GRAFANA_ALERTS{cluster!="prod-me-central-1",cluster_name!="prod-me-central-1"})'
++    );
++    expect(query).not.toContain(' or ');
++  });
++
++  it('applies an excluded key to every branch of an included key', () => {
++    const query = summaryChartQuery('namespace="alloy-otlp",cluster!="prod-me-central-1"').expr;
++
++    expect(query).toBe(
++      'count by (alertstate) (' +
++        '(GRAFANA_ALERTS{cluster!="prod-me-central-1",cluster_name!="prod-me-central-1",namespace="alloy-otlp"}' +
++        ' or GRAFANA_ALERTS{cluster!="prod-me-central-1",cluster_name!="prod-me-central-1",exported_namespace="alloy-otlp"}' +
++        ' or GRAFANA_ALERTS{cluster!="prod-me-central-1",cluster_name!="prod-me-central-1",namespace_extracted="alloy-otlp"})' +
++        ')'
++    );
++  });
++
++  it('combines include and exclude matchers on the same key', () => {
++    const query = summaryChartQuery('cluster="prod-a",cluster!="prod-b"').expr;
++
++    expect(query).toBe(
++      'count by (alertstate) (' +
++        '(GRAFANA_ALERTS{cluster!="prod-b",cluster_name!="prod-b",cluster="prod-a"}' +
++        ' or GRAFANA_ALERTS{cluster!="prod-b",cluster_name!="prod-b",cluster_name="prod-a"})' +
++        ')'
++    );
++  });
++
++  it('expands regex exclusions across every backing label', () => {
++    const query = summaryChartQuery('severity!~"info|debug"').expr;
++
++    expect(query).toBe(
++      'count by (alertstate) (GRAFANA_ALERTS{' +
++        'severity!~"info|debug",priority!~"info|debug",level!~"info|debug",loglevel!~"info|debug",' +
++        'logLevel!~"info|debug",lvl!~"info|debug",detected_level!~"info|debug"' +
++        '})'
++    );
++    expect(query).not.toContain(' or ');
++  });
++
++  it('leaves exclusions on non-combined keys alone', () => {
++    const query = summaryChartQuery('environment!="dev"').expr;
++
++    expect(query).toBe('count by (alertstate) (GRAFANA_ALERTS{environment!="dev"})');
++  });
++
++  it('keeps multi-value exclusions (!=|) in the same selector', () => {
++    // The multi-value operator is rewritten to !~ before it reaches the query builder,
++    // so go through the expression builder rather than hand-writing the filter string.
++    const filter = prometheusExpressionBuilder([
++      { key: 'cluster', operator: '!=|', value: 'prod-me-central-1', values: ['prod-me-central-1', 'prod-eu-west-2'] },
++    ]);
++    expect(filter).toBe('cluster!~"prod-me-central-1|prod-eu-west-2"');
++
++    const query = summaryChartQuery(filter).expr;
++
++    expect(query).toBe(
++      'count by (alertstate) (GRAFANA_ALERTS{' +
++        'cluster!~"prod-me-central-1|prod-eu-west-2",cluster_name!~"prod-me-central-1|prod-eu-west-2"' +
++        '})'
++    );
++    expect(query).not.toContain(' or ');
++  });
++
++  it('carries exclusions into the deduplicated unique-instances query', () => {
++    const query = uniqueAlertInstancesQuery('cluster!="prod-me-central-1"').expr;
++
++    expect(query).toContain('alertstate="firing",cluster!="prod-me-central-1",cluster_name!="prod-me-central-1"');
++    expect(query).toContain('alertstate="pending",cluster!="prod-me-central-1",cluster_name!="prod-me-central-1"');
++  });
++});
+diff --git a/public/app/features/alerting/unified/triage/scene/queries.ts b/public/app/features/alerting/unified/triage/scene/queries.ts
+index d541377c74e6e..8152a62e7b0cf 100644
+--- a/public/app/features/alerting/unified/triage/scene/queries.ts
++++ b/public/app/features/alerting/unified/triage/scene/queries.ts
+@@ -36,36 +36,60 @@ function serializeMatchers(matchers: MatcherExpr[]): string {
+   return matchers.map((m) => `${m.name}${m.operator}${quoteWithEscape(m.value)}`).join(',');
+ }
+ 
++function isNegativeOperator(operator: MatcherOperator): boolean {
++  return operator === '!=' || operator === '!~';
++}
++
++function renameMatchers(matchers: MatcherExpr[], name: string): MatcherExpr[] {
++  return matchers.map((matcher) => ({ ...matcher, name }));
++}
++
+ /**
+  * Builds one or more metric selectors from the current ad-hoc filter string.
+  *
+  * Combined filters use a single user-facing key (for example `service`) while
+  * alert series may have one of several backing label keys (`service`, `service_name`).
+- * We expand those matchers into OR selectors so filtering is consistent.
++ *
++ * Which way we expand a matcher depends on whether it includes or excludes:
++ *
++ * - Include (`=`, `=~`): one selector per backing label, joined with `or`. A series
++ *   matches if any of its backing labels has the value.
++ * - Exclude (`!=`, `!~`): every backing label goes into the same selector. Splitting
++ *   these across `or` branches would undo the exclusion — Prometheus treats a label
++ *   that isn't on the series as empty, so a series with `cluster="foo"` and no
++ *   `cluster_name` would still match the `cluster_name!="foo"` branch and come back
++ *   in the union.
+  */
+ function buildMetricSelectors(filter: string, extraMatchers: MatcherExpr[] = []): string[] {
+   const allMatchers = [...parseFilterMatchers(filter), ...extraMatchers];
+   const combinedMatchers = Object.entries(COMBINED_FILTER_LABEL_KEYS)
+-    .map(([canonicalKey, labelKeys]) => ({
+-      canonicalKey,
+-      labelKeys,
+-      matchers: allMatchers.filter((m) => m.name === canonicalKey),
+-    }))
++    .map(([canonicalKey, labelKeys]) => {
++      const matchers = allMatchers.filter((m) => m.name === canonicalKey);
++      return {
++        canonicalKey,
++        labelKeys,
++        matchers,
++        includeMatchers: matchers.filter((m) => !isNegativeOperator(m.operator)),
++        excludeMatchers: matchers.filter((m) => isNegativeOperator(m.operator)),
++      };
++    })
+     .filter((entry) => entry.matchers.length > 0);
+ 
+   const combinedCanonicalKeys = new Set(combinedMatchers.map((entry) => entry.canonicalKey));
+   const baseMatchers = allMatchers.filter((m) => !combinedCanonicalKeys.has(m.name));
+ 
+-  let branches: MatcherExpr[][] = [baseMatchers];
++  // Exclusions apply to every branch, so they live alongside the non-combined matchers.
++  const expandedExcludeMatchers = combinedMatchers.flatMap((entry) =>
++    entry.labelKeys.flatMap((labelKey) => renameMatchers(entry.excludeMatchers, labelKey))
++  );
++
++  let branches: MatcherExpr[][] = [[...baseMatchers, ...expandedExcludeMatchers]];
+   for (const entry of combinedMatchers) {
++    if (entry.includeMatchers.length === 0) {
++      continue;
++    }
+     branches = branches.flatMap((branch) =>
+-      entry.labelKeys.map((labelKey) => [
+-        ...branch,
+-        ...entry.matchers.map((matcher) => ({
+-          ...matcher,
+-          name: labelKey,
+-        })),
+-      ])
++      entry.labelKeys.map((labelKey) => [...branch, ...renameMatchers(entry.includeMatchers, labelKey)])
+     );
+   }
+ 
+
+From b2916e1acdc5b0bbb45bc64ac6e280345db8646e Mon Sep 17 00:00:00 2001
+From: Gilles De Mey <gilles.de.mey@gmail.com>
+Date: Thu, 27 Aug 2026 13:39:07 +0200
+Subject: [PATCH 2/3] Alerting: Keep empty-value exclusions matching "has any
+ of these labels"
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+`cluster!=""` is not excluding a value — since Prometheus reads a label the
+series doesn't have as empty, it's asking whether the series has a cluster at
+all. That's a question about any of the backing labels, so it has to branch
+across them like an inclusion rather than being ANDed into every selector.
+
+ANDed, it meant "has both `cluster` and `cluster_name`", which almost no series
+does. Not reachable from the value dropdown — Prometheus never returns an empty
+label value — but external integrations can link into the page with a
+hand-built URL.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+---
+ .../unified/triage/scene/queries.test.ts      |  8 ++++++
+ .../alerting/unified/triage/scene/queries.ts  | 26 ++++++++++++++-----
+ 2 files changed, 27 insertions(+), 7 deletions(-)
+
+diff --git a/public/app/features/alerting/unified/triage/scene/queries.test.ts b/public/app/features/alerting/unified/triage/scene/queries.test.ts
+index 13bb1a774c046..a0a56352eea20 100644
+--- a/public/app/features/alerting/unified/triage/scene/queries.test.ts
++++ b/public/app/features/alerting/unified/triage/scene/queries.test.ts
+@@ -203,6 +203,14 @@ describe('triage queries combined filter exclusions', () => {
+     expect(query).not.toContain(' or ');
+   });
+ 
++  it('treats an empty-value exclusion as "has any of these labels"', () => {
++    const query = summaryChartQuery('cluster!=""').expr;
++
++    // Prometheus reads a missing label as empty, so ANDing the two here would mean
++    // "has both labels" and match almost nothing. Branching keeps it to "has either".
++    expect(query).toBe('count by (alertstate) ((GRAFANA_ALERTS{cluster!=""} or GRAFANA_ALERTS{cluster_name!=""}))');
++  });
++
+   it('carries exclusions into the deduplicated unique-instances query', () => {
+     const query = uniqueAlertInstancesQuery('cluster!="prod-me-central-1"').expr;
+ 
+diff --git a/public/app/features/alerting/unified/triage/scene/queries.ts b/public/app/features/alerting/unified/triage/scene/queries.ts
+index 8152a62e7b0cf..37e2745ba0ba2 100644
+--- a/public/app/features/alerting/unified/triage/scene/queries.ts
++++ b/public/app/features/alerting/unified/triage/scene/queries.ts
+@@ -40,6 +40,16 @@ function isNegativeOperator(operator: MatcherOperator): boolean {
+   return operator === '!=' || operator === '!~';
+ }
+ 
++/**
++ * An exclusion with an empty value is not really an exclusion of a value — because
++ * Prometheus reads a label the series doesn't have as empty, `cluster!=""` is asking
++ * "does this series have a cluster at all?". That's a question about any of the
++ * backing labels, so it spreads across branches like an inclusion does.
++ */
++function excludesAValue(matcher: MatcherExpr): boolean {
++  return isNegativeOperator(matcher.operator) && matcher.value !== '';
++}
++
+ function renameMatchers(matchers: MatcherExpr[], name: string): MatcherExpr[] {
+   return matchers.map((matcher) => ({ ...matcher, name }));
+ }
+@@ -59,6 +69,8 @@ function renameMatchers(matchers: MatcherExpr[], name: string): MatcherExpr[] {
+  *   that isn't on the series as empty, so a series with `cluster="foo"` and no
+  *   `cluster_name` would still match the `cluster_name!="foo"` branch and come back
+  *   in the union.
++ *
++ * See `excludesAValue` for why an exclusion with an empty value goes the first way.
+  */
+ function buildMetricSelectors(filter: string, extraMatchers: MatcherExpr[] = []): string[] {
+   const allMatchers = [...parseFilterMatchers(filter), ...extraMatchers];
+@@ -69,8 +81,8 @@ function buildMetricSelectors(filter: string, extraMatchers: MatcherExpr[] = [])
+         canonicalKey,
+         labelKeys,
+         matchers,
+-        includeMatchers: matchers.filter((m) => !isNegativeOperator(m.operator)),
+-        excludeMatchers: matchers.filter((m) => isNegativeOperator(m.operator)),
++        branchedMatchers: matchers.filter((m) => !excludesAValue(m)),
++        sharedMatchers: matchers.filter(excludesAValue),
+       };
+     })
+     .filter((entry) => entry.matchers.length > 0);
+@@ -79,17 +91,17 @@ function buildMetricSelectors(filter: string, extraMatchers: MatcherExpr[] = [])
+   const baseMatchers = allMatchers.filter((m) => !combinedCanonicalKeys.has(m.name));
+ 
+   // Exclusions apply to every branch, so they live alongside the non-combined matchers.
+-  const expandedExcludeMatchers = combinedMatchers.flatMap((entry) =>
+-    entry.labelKeys.flatMap((labelKey) => renameMatchers(entry.excludeMatchers, labelKey))
++  const expandedSharedMatchers = combinedMatchers.flatMap((entry) =>
++    entry.labelKeys.flatMap((labelKey) => renameMatchers(entry.sharedMatchers, labelKey))
+   );
+ 
+-  let branches: MatcherExpr[][] = [[...baseMatchers, ...expandedExcludeMatchers]];
++  let branches: MatcherExpr[][] = [[...baseMatchers, ...expandedSharedMatchers]];
+   for (const entry of combinedMatchers) {
+-    if (entry.includeMatchers.length === 0) {
++    if (entry.branchedMatchers.length === 0) {
+       continue;
+     }
+     branches = branches.flatMap((branch) =>
+-      entry.labelKeys.map((labelKey) => [...branch, ...renameMatchers(entry.includeMatchers, labelKey)])
++      entry.labelKeys.map((labelKey) => [...branch, ...renameMatchers(entry.branchedMatchers, labelKey)])
+     );
+   }
+ 
+
+From 7386912384e4e4a21066c482a23d2bf3cb2e95eb Mon Sep 17 00:00:00 2001
+From: Gilles De Mey <gilles.de.mey@gmail.com>
+Date: Thu, 27 Aug 2026 13:44:14 +0200
+Subject: [PATCH 3/3] update comments
+
+---
+ .../alerting/unified/triage/scene/queries.ts  | 26 +++++++------------
+ 1 file changed, 10 insertions(+), 16 deletions(-)
+
+diff --git a/public/app/features/alerting/unified/triage/scene/queries.ts b/public/app/features/alerting/unified/triage/scene/queries.ts
+index 37e2745ba0ba2..a56605766b765 100644
+--- a/public/app/features/alerting/unified/triage/scene/queries.ts
++++ b/public/app/features/alerting/unified/triage/scene/queries.ts
+@@ -41,10 +41,8 @@ function isNegativeOperator(operator: MatcherOperator): boolean {
+ }
+ 
+ /**
+- * An exclusion with an empty value is not really an exclusion of a value — because
+- * Prometheus reads a label the series doesn't have as empty, `cluster!=""` is asking
+- * "does this series have a cluster at all?". That's a question about any of the
+- * backing labels, so it spreads across branches like an inclusion does.
++ * `cluster!=""` rules out no value, it only asks "does the series have a cluster label
++ * set?". Any one of the label names can answer yes, so we treat it as an include.
+  */
+ function excludesAValue(matcher: MatcherExpr): boolean {
+   return isNegativeOperator(matcher.operator) && matcher.value !== '';
+@@ -57,20 +55,16 @@ function renameMatchers(matchers: MatcherExpr[], name: string): MatcherExpr[] {
+ /**
+  * Builds one or more metric selectors from the current ad-hoc filter string.
+  *
+- * Combined filters use a single user-facing key (for example `service`) while
+- * alert series may have one of several backing label keys (`service`, `service_name`).
++ * A combined filter shows one key (`service`), but the series can carry the value under
++ * any of a few label names (`service`, `service_name`), so every matcher on such a key
++ * gets rewritten for each name:
+  *
+- * Which way we expand a matcher depends on whether it includes or excludes:
++ * - Include (`=`, `=~`): one selector per label name, joined with `or`.
++ * - Exclude (`!=`, `!~`): all names in a single selector. Separate `or` branches would
++ *   let the excluded series back in, since Prometheus reads a missing label as empty —
++ *   a series with `cluster="foo"` and no `cluster_name` passes `cluster_name!="foo"`.
+  *
+- * - Include (`=`, `=~`): one selector per backing label, joined with `or`. A series
+- *   matches if any of its backing labels has the value.
+- * - Exclude (`!=`, `!~`): every backing label goes into the same selector. Splitting
+- *   these across `or` branches would undo the exclusion — Prometheus treats a label
+- *   that isn't on the series as empty, so a series with `cluster="foo"` and no
+- *   `cluster_name` would still match the `cluster_name!="foo"` branch and come back
+- *   in the union.
+- *
+- * See `excludesAValue` for why an exclusion with an empty value goes the first way.
++ * See `excludesAValue` for why `!=""` counts as an include.
+  */
+ function buildMetricSelectors(filter: string, extraMatchers: MatcherExpr[] = []): string[] {
+   const allMatchers = [...parseFilterMatchers(filter), ...extraMatchers];

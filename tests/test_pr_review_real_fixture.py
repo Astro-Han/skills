@@ -196,6 +196,41 @@ class RealFixtureTests(unittest.TestCase):
                 fixture.verify_diverse_selection(candidates, policy, selection), 2
             )
 
+    def test_diverse_case_verifier_matches_frozen_repo_and_number(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = root / "cases"
+            case = cases / "owner-repo-pr-1"
+            case.mkdir(parents=True)
+            patch = case / "PATCH.diff"
+            patch.write_text("")
+            manifest = {
+                "schema_version": 1,
+                "case_id": "owner-repo-pr-1",
+                "repo": "owner/repo",
+                "pr_number": 1,
+                "url": "https://example.test/1",
+                "title": "fix",
+                "base_sha": "a" * 40,
+                "comparison_base_sha": "a" * 40,
+                "head_sha": "b" * 40,
+                "additions": 0,
+                "deletions": 0,
+                "changed_files": 0,
+                "files": [],
+                "checks": [],
+                "issues": [],
+                "patch_sha256": fixture.digest(patch),
+            }
+            fixture.write_json(case / "manifest.json", manifest)
+            (case / "PR_SNAPSHOT.md").write_text(
+                f"{manifest['url']}\n{manifest['head_sha']}\n"
+            )
+            selection = root / "selection.json"
+            fixture.write_json(selection, {"cases": ["owner/repo#1"]})
+
+            self.assertEqual(fixture.verify_diverse_cases(cases, selection), 1)
+
     def test_capture_patch_routes_through_gh(self):
         with mock.patch.object(fixture, "run", return_value="patch") as call:
             self.assertEqual(fixture.capture_patch("o/r", 42), "patch")

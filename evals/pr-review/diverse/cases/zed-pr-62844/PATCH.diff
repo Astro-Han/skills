@@ -1,0 +1,237 @@
+From 975403e23fef05f9ea976eb2397bceef3f0e88ad Mon Sep 17 00:00:00 2001
+From: Arnesh Banerjee <linkrinku13@gmail.com>
+Date: Wed, 19 Aug 2026 03:59:29 +0530
+Subject: [PATCH 1/2] workspace: Activate the right tab when restoring a
+ workspace
+
+`deserialize_to` picked the active and preview tabs by their serialized
+index, but items that fail to deserialize are never added to the pane, so
+every later tab sits at a lower index than it was serialized with. Map the
+serialized index to the pane's own index instead.
+---
+ crates/workspace/src/persistence/model.rs | 17 +++--
+ crates/workspace/src/workspace.rs         | 76 +++++++++++++++++++++--
+ 2 files changed, 84 insertions(+), 9 deletions(-)
+
+diff --git a/crates/workspace/src/persistence/model.rs b/crates/workspace/src/persistence/model.rs
+index d3b0f6e971b393..4a531a89e350da 100644
+--- a/crates/workspace/src/persistence/model.rs
++++ b/crates/workspace/src/persistence/model.rs
+@@ -395,13 +395,22 @@ impl SerializedPane {
+             }
+         }
+ 
+-        if let Some(active_item_index) = active_item_index {
++        // `items` keeps a `None` for every item that failed to deserialize, and those
++        // were never added to the pane, so a serialized index no longer lines up with
++        // the pane's own indices. Anything addressing a tab has to be remapped, or it
++        // lands on whichever tab shifted into that slot.
++        let pane_index_of = |serialized_index: usize| {
++            items.get(serialized_index)?.as_ref()?;
++            Some(items[..serialized_index].iter().flatten().count())
++        };
++
++        if let Some(active_item_index) = active_item_index.and_then(pane_index_of) {
+             pane.update_in(cx, |pane, window, cx| {
+                 pane.activate_item(active_item_index, false, false, window, cx);
+             })?;
+         }
+ 
+-        if let Some(preview_item_index) = preview_item_index {
++        if let Some(preview_item_index) = preview_item_index.and_then(pane_index_of) {
+             pane.update(cx, |pane, cx| {
+                 if let Some(item) = pane.item_for_index(preview_item_index) {
+                     pane.set_preview_item_id(Some(item.item_id()), cx);
+@@ -409,9 +418,7 @@ impl SerializedPane {
+             })?;
+         }
+ 
+-        // `items` keeps a `None` for every item that failed to deserialize, and those
+-        // were never added to the pane. Counting them would leave the pinned count
+-        // pointing past the pinned tabs and pin unpinned ones in their place.
++        // Same desync, on the count of the leading tabs that are pinned.
+         let pinned_count = items
+             .iter()
+             .take(self.pinned_count)
+diff --git a/crates/workspace/src/workspace.rs b/crates/workspace/src/workspace.rs
+index 3d421f4e8839ef..d6c959d7812b8e 100644
+--- a/crates/workspace/src/workspace.rs
++++ b/crates/workspace/src/workspace.rs
+@@ -16751,7 +16751,7 @@ mod tests {
+         // Items whose kind has no registered descriptor always fail to deserialize,
+         // which is what happens to a real item when its file or serialized state is
+         // gone by the time the workspace is restored.
+-        let (items_len, pinned_count) = restore_pane(
++        let pane = restore_pane(
+             &workspace,
+             SerializedPane::new(
+                 vec![
+@@ -16766,13 +16766,15 @@ mod tests {
+             cx,
+         )
+         .await;
++        let (items_len, pinned_count) =
++            pane.read_with(cx, |pane, _| (pane.items_len(), pane.pinned_count()));
+         assert_eq!(items_len, 3);
+         assert_eq!(
+             pinned_count, 1,
+             "only the pinned item that was restored should stay pinned"
+         );
+ 
+-        let (items_len, pinned_count) = restore_pane(
++        let pane = restore_pane(
+             &workspace,
+             SerializedPane::new(
+                 vec![
+@@ -16786,6 +16788,8 @@ mod tests {
+             cx,
+         )
+         .await;
++        let (items_len, pinned_count) =
++            pane.read_with(cx, |pane, _| (pane.items_len(), pane.pinned_count()));
+         assert_eq!(items_len, 2);
+         assert_eq!(
+             pinned_count, 2,
+@@ -16793,6 +16797,70 @@ mod tests {
+         );
+     }
+ 
++    #[gpui::test]
++    async fn test_restoring_active_and_preview_tabs_when_items_fail_to_deserialize(
++        cx: &mut TestAppContext,
++    ) {
++        init_test(cx);
++        cx.update(|cx| {
++            register_serializable_item::<TestItem>(cx);
++        });
++
++        let fs = FakeFs::new(cx.executor());
++        fs.insert_tree("/root", json!({ "test.txt": "" })).await;
++        let project = Project::test(fs, ["root".as_ref()], cx).await;
++        let (workspace, cx) =
++            cx.add_window_view(|window, cx| Workspace::test_new(project, window, cx));
++
++        // The active and preview tabs both sit behind an item that fails to restore, so
++        // their serialized indices are one ahead of where those tabs end up.
++        let pane = restore_pane(
++            &workspace,
++            SerializedPane::new(
++                vec![
++                    SerializedItem::new("Unrestorable", 1, false, false),
++                    SerializedItem::new("TestItem", 2, true, false),
++                    SerializedItem::new("TestItem", 3, false, true),
++                ],
++                true,
++                0,
++            ),
++            cx,
++        )
++        .await;
++        pane.read_with(cx, |pane, _| {
++            assert_eq!(pane.items_len(), 2);
++            assert_eq!(pane.active_item_index(), 0);
++            assert_eq!(
++                pane.preview_item_id(),
++                pane.item_for_index(1).map(|item| item.item_id()),
++                "the preview tab should follow the item it was serialized with"
++            );
++        });
++
++        // The active item itself fails to restore, so nothing should be activated in its
++        // place and the pane should keep the tab it settled on.
++        let pane = restore_pane(
++            &workspace,
++            SerializedPane::new(
++                vec![
++                    SerializedItem::new("TestItem", 1, false, false),
++                    SerializedItem::new("Unrestorable", 2, true, true),
++                    SerializedItem::new("TestItem", 3, false, false),
++                ],
++                true,
++                0,
++            ),
++            cx,
++        )
++        .await;
++        pane.read_with(cx, |pane, _| {
++            assert_eq!(pane.items_len(), 2);
++            assert_eq!(pane.active_item_index(), 1);
++            assert_eq!(pane.preview_item_id(), None);
++        });
++    }
++
+     #[gpui::test]
+     async fn test_serializing_pinned_tabs_when_items_are_not_serializable(cx: &mut TestAppContext) {
+         init_test(cx);
+@@ -16868,7 +16936,7 @@ mod tests {
+         workspace: &Entity<Workspace>,
+         serialized_pane: SerializedPane,
+         cx: &mut VisualTestContext,
+-    ) -> (usize, usize) {
++    ) -> Entity<Pane> {
+         let (pane, task) = workspace.update_in(cx, |workspace, window, cx| {
+             let pane = workspace.add_pane(window, cx);
+             let weak_pane = pane.downgrade();
+@@ -16888,7 +16956,7 @@ mod tests {
+             (pane, task)
+         });
+         task.await.unwrap();
+-        pane.read_with(cx, |pane, _| (pane.items_len(), pane.pinned_count()))
++        pane
+     }
+ 
+     mod register_project_item_tests {
+
+From de4209eba944cb9a12a6bf2689c72e160f524d73 Mon Sep 17 00:00:00 2001
+From: Kirill Bulatov <kirill@zed.dev>
+Date: Wed, 19 Aug 2026 00:48:57 +0200
+Subject: [PATCH 2/2] Tidy up
+
+---
+ crates/workspace/src/persistence/model.rs | 25 ++++++++---------------
+ 1 file changed, 9 insertions(+), 16 deletions(-)
+
+diff --git a/crates/workspace/src/persistence/model.rs b/crates/workspace/src/persistence/model.rs
+index 4a531a89e350da..03e0e055f71036 100644
+--- a/crates/workspace/src/persistence/model.rs
++++ b/crates/workspace/src/persistence/model.rs
+@@ -395,30 +395,23 @@ impl SerializedPane {
+             }
+         }
+ 
+-        // `items` keeps a `None` for every item that failed to deserialize, and those
+-        // were never added to the pane, so a serialized index no longer lines up with
+-        // the pane's own indices. Anything addressing a tab has to be remapped, or it
+-        // lands on whichever tab shifted into that slot.
+-        let pane_index_of = |serialized_index: usize| {
+-            items.get(serialized_index)?.as_ref()?;
+-            Some(items[..serialized_index].iter().flatten().count())
+-        };
+-
+-        if let Some(active_item_index) = active_item_index.and_then(pane_index_of) {
++        if let Some(active_item) = active_item_index.and_then(|index| items.get(index)?.clone()) {
+             pane.update_in(cx, |pane, window, cx| {
+-                pane.activate_item(active_item_index, false, false, window, cx);
++                if let Some(index) = pane.index_for_item(active_item.as_ref()) {
++                    pane.activate_item(index, false, false, window, cx);
++                }
+             })?;
+         }
+ 
+-        if let Some(preview_item_index) = preview_item_index.and_then(pane_index_of) {
++        if let Some(preview_item) = preview_item_index.and_then(|index| items.get(index)?.clone()) {
+             pane.update(cx, |pane, cx| {
+-                if let Some(item) = pane.item_for_index(preview_item_index) {
+-                    pane.set_preview_item_id(Some(item.item_id()), cx);
+-                }
++                pane.set_preview_item_id(Some(preview_item.item_id()), cx);
+             })?;
+         }
+ 
+-        // Same desync, on the count of the leading tabs that are pinned.
++        // `items` keeps a `None` for every item that failed to deserialize, and those
++        // were never added to the pane. Counting them would leave the pinned count
++        // pointing past the pinned tabs and pin unpinned ones in their place.
+         let pinned_count = items
+             .iter()
+             .take(self.pinned_count)

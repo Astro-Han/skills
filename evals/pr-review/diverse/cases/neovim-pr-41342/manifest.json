@@ -1,0 +1,311 @@
+{
+  "additions": 29,
+  "author": "Rawan10101",
+  "base_sha": "0c091cedc291ee4dd13ccae192057d92878aee0e",
+  "body": "This PR bundles the wasm build output with the browser demo into a single zip and wires it into the release workflow. It will be easy to just unzip and run `python3 serve.py`.",
+  "captured_at": "2026-08-30T01:09:53+00:00",
+  "case_id": "neovim-pr-41342",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "s390x",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Backport Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "backport"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "old-cmake",
+      "status": "COMPLETED",
+      "workflowName": "build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze",
+      "status": "COMPLETED",
+      "workflowName": "codeql"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs",
+      "status": "COMPLETED",
+      "workflowName": "docs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-commits",
+      "status": "COMPLETED",
+      "workflowName": "lintcommit"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "news.txt"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build nvim.wasm (Emscripten + Zig)",
+      "status": "COMPLETED",
+      "workflowName": "nvim.wasm build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "remove-reviewers",
+      "status": "COMPLETED",
+      "workflowName": "reviewers: remove"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "security: zizmor GHA analyzer"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lintc",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasmtime",
+      "status": "COMPLETED",
+      "workflowName": "wasm"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "windows-asan",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "use-existing-src",
+      "status": "COMPLETED",
+      "workflowName": "build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ai-assisted",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "OpenBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "request-reviewer",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clang-analyzer",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu tsan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (linux)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (macos 15)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (windows)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (functional)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (old)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "with-external-deps",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "b78adb98bac2d589551a5b09bb0a7e39887321f4",
+  "deletions": 6,
+  "files": [
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": ".github/scripts/build_wasm.sh"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": ".github/workflows/release.yml"
+    }
+  ],
+  "head_sha": "732da013c70124b6ef66c696091e736d0f07c33b",
+  "issues": [],
+  "patch_sha256": "1cbb7785645763c374d26c1110af870424958d64ac940d29d800f134f7898ec3",
+  "pr_number": 41342,
+  "repo": "neovim/neovim",
+  "schema_version": 1,
+  "title": "ci: bundle wasm output with demo into a single zip",
+  "url": "https://github.com/neovim/neovim/pull/41342"
+}

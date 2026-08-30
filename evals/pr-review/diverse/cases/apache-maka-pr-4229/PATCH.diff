@@ -1,0 +1,130 @@
+From cac9e4ab6c81a834639d757492307618a1b8b688 Mon Sep 17 00:00:00 2001
+From: Wang <m4n5terrr@gmail.com>
+Date: Sun, 30 Aug 2026 07:46:57 +0800
+Subject: [PATCH] fix(desktop): enable relay discovery for Peer Mesh
+
+Make the Desktop peer configuration explicitly opt into automatic relay discovery for both the Mesh owner and its direct-peer fallback. Warn when an invitation still contains direct routes only.
+
+Generated-by: OpenAI Codex
+---
+ .../__tests__/runtime-host-peer-client.test.ts     |  1 +
+ apps/desktop/src/main/runtime-host-boot.ts         |  4 +++-
+ apps/desktop/src/main/runtime-host-peer-client.ts  | 14 +++++++++++---
+ .../settings/runtime-host-peer-mesh-dialog.tsx     | 14 ++++++++++++++
+ 4 files changed, 29 insertions(+), 4 deletions(-)
+
+diff --git a/apps/desktop/src/main/__tests__/runtime-host-peer-client.test.ts b/apps/desktop/src/main/__tests__/runtime-host-peer-client.test.ts
+index 88ff2e60f3..22c20c31cc 100644
+--- a/apps/desktop/src/main/__tests__/runtime-host-peer-client.test.ts
++++ b/apps/desktop/src/main/__tests__/runtime-host-peer-client.test.ts
+@@ -62,6 +62,7 @@ test('development uses the native peer addon only for the peer-enabled launch',
+   }), {
+     nativePath,
+     keyPath: join(clientDataRoot, 'runtime-host-client.peer.key'),
++    automaticRelayDiscovery: true,
+   });
+   assert.equal(peerEnvironment.MAKA_RUNTIME_HOST_PEER_NATIVE_PATH, nativePath);
+ });
+diff --git a/apps/desktop/src/main/runtime-host-boot.ts b/apps/desktop/src/main/runtime-host-boot.ts
+index e002cadeb8..6e710da8bb 100644
+--- a/apps/desktop/src/main/runtime-host-boot.ts
++++ b/apps/desktop/src/main/runtime-host-boot.ts
+@@ -254,7 +254,9 @@ if (runtimeHostPeerConfiguration) {
+     });
+   } catch (error) {
+     console.error('[runtime-host] Peer Mesh is unavailable; continuing with Direct peer:', error);
+-    runtimeHostPeerClient = createRuntimeHostPeerClientFromEnvironment();
++    runtimeHostPeerClient = createRuntimeHostPeerClientFromEnvironment(process.env, {
++      automaticRelayDiscovery: runtimeHostPeerConfiguration.automaticRelayDiscovery,
++    });
+   }
+ }
+ const runtimeHostDirectPeerAvailable = runtimeHostPeerClient !== undefined;
+diff --git a/apps/desktop/src/main/runtime-host-peer-client.ts b/apps/desktop/src/main/runtime-host-peer-client.ts
+index 1e3bf5ea45..53ed4a519b 100644
+--- a/apps/desktop/src/main/runtime-host-peer-client.ts
++++ b/apps/desktop/src/main/runtime-host-peer-client.ts
+@@ -29,13 +29,21 @@ export async function configureDesktopRuntimeHostPeerClient(input: {
+   readonly resourcesPath: string;
+   readonly clientDataRoot: string;
+   readonly environment?: NodeJS.ProcessEnv;
+-}): Promise<{ readonly nativePath: string; readonly keyPath: string } | undefined> {
++}): Promise<{
++  readonly nativePath: string;
++  readonly keyPath: string;
++  readonly automaticRelayDiscovery: true;
++} | undefined> {
+   const environment = input.environment ?? process.env;
+   const explicitNativePath = environment.MAKA_RUNTIME_HOST_PEER_NATIVE_PATH?.trim();
+   const explicitKeyPath = environment.MAKA_RUNTIME_HOST_PEER_KEY_PATH?.trim();
+   if (explicitNativePath || explicitKeyPath) {
+     return explicitNativePath && explicitKeyPath
+-      ? { nativePath: explicitNativePath, keyPath: explicitKeyPath }
++      ? {
++          nativePath: explicitNativePath,
++          keyPath: explicitKeyPath,
++          automaticRelayDiscovery: true,
++        }
+       : undefined;
+   }
+   if (!input.isPackaged && !input.enableDevelopmentPeer) return undefined;
+@@ -59,5 +67,5 @@ export async function configureDesktopRuntimeHostPeerClient(input: {
+   environment.MAKA_RUNTIME_HOST_PEER_NATIVE_PATH = nativePath;
+   const keyPath = join(input.clientDataRoot, 'runtime-host-client.peer.key');
+   environment.MAKA_RUNTIME_HOST_PEER_KEY_PATH = keyPath;
+-  return { nativePath, keyPath };
++  return { nativePath, keyPath, automaticRelayDiscovery: true };
+ }
+diff --git a/apps/desktop/src/renderer/settings/runtime-host-peer-mesh-dialog.tsx b/apps/desktop/src/renderer/settings/runtime-host-peer-mesh-dialog.tsx
+index 7c93a7ba8a..e085b22a00 100644
+--- a/apps/desktop/src/renderer/settings/runtime-host-peer-mesh-dialog.tsx
++++ b/apps/desktop/src/renderer/settings/runtime-host-peer-mesh-dialog.tsx
+@@ -55,6 +55,7 @@ type PeerMeshDialogView =
+       readonly meshId: string;
+       readonly code: string;
+       readonly expiresAt: number;
++      readonly hasCoordinationRelay: boolean;
+     };
+ 
+ export function RuntimeHostPeerMeshDialog(props: {
+@@ -126,6 +127,7 @@ export function RuntimeHostPeerMeshDialog(props: {
+         meshId,
+         code: JSON.stringify(result.invitation),
+         expiresAt: result.invitation.expiresAt,
++        hasCoordinationRelay: result.invitation.coordinationRelays.length > 0,
+       });
+       setSnapshot(result.snapshot);
+     } catch (failure) {
+@@ -474,6 +476,14 @@ function InvitationView(props: {
+           {props.copy.invitationWarning}
+         </Text>
+       </div>
++      {!props.invitation.hasCoordinationRelay ? (
++        <div className="settingsPeerMeshInvitationNote">
++          <Network size={ICON_SIZE.control} aria-hidden="true" />
++          <Text type="supporting" color="secondary">
++            {props.copy.invitationDirectOnly}
++          </Text>
++        </div>
++      ) : null}
+     </div>
+   );
+ }
+@@ -740,6 +750,8 @@ function peerMeshCopy(locale: string) {
+         invitationTitle: '邀请成员',
+         invitationFor: (value: string) => `Mesh ${value}`,
+         invitationWarning: '该代码只能使用一次；获得代码的人可以让一个 peer 加入此 Mesh。',
++        invitationDirectOnly:
++          '尚未连接到协调节点。此邀请码只包含直接地址，跨 NAT 时可能无法连接。',
+         invitationExpires: (value: string) => `有效期至 ${value}`,
+         invitationCopied: '邀请码已复制',
+         copyInvitation: '复制邀请码',
+@@ -807,6 +819,8 @@ function peerMeshCopy(locale: string) {
+         invitationFor: (value: string) => `Mesh ${value}`,
+         invitationWarning:
+           'This code works once. Anyone holding it can admit one peer to this Mesh.',
++        invitationDirectOnly:
++          'No coordination peer is available yet. This invitation contains direct routes only and may not work across NATs.',
+         invitationExpires: (value: string) => `Expires ${value}`,
+         invitationCopied: 'Invitation copied',
+         copyInvitation: 'Copy invitation',

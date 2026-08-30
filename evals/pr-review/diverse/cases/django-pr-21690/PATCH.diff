@@ -1,0 +1,154 @@
+From 34248cdceba3d8155f60dd6b33b0ca87b004239f Mon Sep 17 00:00:00 2001
+From: Vishy <vis.pypi@gmail.com>
+Date: Tue, 28 Jul 2026 04:53:23 -0400
+Subject: [PATCH] Fixed #37224 -- Skipped questioner for field changes on
+ unmanaged models.
+
+---
+ django/db/migrations/autodetector.py  | 15 +++++++-
+ tests/migrations/test_autodetector.py | 50 +++++++++++++++++++++++++++
+ 2 files changed, 64 insertions(+), 1 deletion(-)
+
+diff --git a/django/db/migrations/autodetector.py b/django/db/migrations/autodetector.py
+index 0d0010f868b5..89a30da0aeac 100644
+--- a/django/db/migrations/autodetector.py
++++ b/django/db/migrations/autodetector.py
+@@ -1155,6 +1155,9 @@ def _generate_added_field(self, app_label, model_name, field_name):
+         # which don't allow empty strings as default.
+         time_fields = (models.DateField, models.DateTimeField, models.TimeField)
+         auto_fields = (models.AutoField, models.SmallAutoField, models.BigAutoField)
++        is_managed = self.to_state.models[app_label, model_name].options.get(
++            "managed", True
++        )
+         preserve_default = (
+             field.null
+             or field.has_default()
+@@ -1163,6 +1166,7 @@ def _generate_added_field(self, app_label, model_name, field_name):
+             or (field.blank and field.empty_strings_allowed)
+             or (isinstance(field, time_fields) and field.auto_now)
+             or (isinstance(field, auto_fields))
++            or not is_managed
+         )
+         if not preserve_default:
+             field = field.clone()
+@@ -1174,7 +1178,12 @@ def _generate_added_field(self, app_label, model_name, field_name):
+                 field.default = self.questioner.ask_not_null_addition(
+                     field_name, model_name
+                 )
+-        if field.unique and field.has_default() and callable(field.default):
++        if (
++            field.unique
++            and field.has_default()
++            and callable(field.default)
++            and is_managed
++        ):
+             self.questioner.ask_unique_callable_default_addition(field_name, model_name)
+         self.add_operation(
+             app_label,
+@@ -1322,6 +1331,9 @@ def generate_altered_fields(self):
+                 target_changed = (
+                     both_m2m and new_field_dec[2]["to"] != old_field_dec[2]["to"]
+                 )
++                is_managed = self.to_state.models[app_label, model_name].options.get(
++                    "managed", True
++                )
+                 if (both_m2m or neither_m2m) and not target_changed:
+                     # Either both fields are m2m or neither is
+                     preserve_default = True
+@@ -1331,6 +1343,7 @@ def generate_altered_fields(self):
+                         and not new_field.has_default()
+                         and not new_field.has_db_default()
+                         and not new_field.many_to_many
++                        and is_managed
+                     ):
+                         field = new_field.clone()
+                         new_default = self.questioner.ask_not_null_alteration(
+diff --git a/tests/migrations/test_autodetector.py b/tests/migrations/test_autodetector.py
+index f2bc7e48a1d0..7fc6f6b2765f 100644
+--- a/tests/migrations/test_autodetector.py
++++ b/tests/migrations/test_autodetector.py
+@@ -1,6 +1,7 @@
+ import copy
+ import functools
+ import re
++import uuid
+ from unittest import mock
+ 
+ from django.apps import apps
+@@ -757,6 +758,16 @@ class AutodetectorTests(BaseAutodetectorTests):
+         {"managed": False},
+         ("testapp.author",),
+     )
++    author_unmanaged_uid_unique_default = ModelState(
++        "testapp",
++        "Author",
++        [
++            ("id", models.AutoField(primary_key=True)),
++            ("uid", models.UUIDField(default=uuid.uuid4, unique=True)),
++        ],
++        {"managed": False},
++        ("testapp.author",),
++    )
+     author_unmanaged_name_longer = ModelState(
+         "testapp",
+         "Author",
+@@ -767,6 +778,26 @@ class AutodetectorTests(BaseAutodetectorTests):
+         {"managed": False},
+         ("testapp.author",),
+     )
++    author_unmanaged_name_no_default = ModelState(
++        "testapp",
++        "Author",
++        [
++            ("id", models.AutoField(primary_key=True)),
++            ("name", models.CharField(max_length=200)),
++        ],
++        {"managed": False},
++        ("testapp.author",),
++    )
++    author_unmanaged_name_nullable = ModelState(
++        "testapp",
++        "Author",
++        [
++            ("id", models.AutoField(primary_key=True)),
++            ("name", models.CharField(max_length=200, null=True)),
++        ],
++        {"managed": False},
++        ("testapp.author",),
++    )
+     author_unmanaged_renamed_with_book = ModelState(
+         "testapp",
+         "Writer",
+@@ -4132,6 +4163,14 @@ def test_unmanaged_add_field(self):
+         self.assertOperationTypes(changes, "testapp", 0, ["AddField"])
+         self.assertOperationAttributes(changes, "testapp", 0, 0, name="name")
+ 
++    def test_unmanaged_add_field_unique_default(self):
++        changes = self.get_changes(
++            [self.author_unmanaged_empty], [self.author_unmanaged_uid_unique_default]
++        )
++        self.assertNumberMigrations(changes, "testapp", 1)
++        self.assertOperationTypes(changes, "testapp", 0, ["AddField"])
++        self.assertOperationAttributes(changes, "testapp", 0, 0, name="uid")
++
+     def test_unmanaged_alter_field(self):
+         """Tests autodetection of altered fields on an unmanaged model."""
+         changes = self.get_changes(
+@@ -4144,6 +4183,17 @@ def test_unmanaged_alter_field(self):
+             changes, "testapp", 0, 0, name="name", preserve_default=True
+         )
+ 
++    def test_unmanaged_alter_field_no_default(self):
++        changes = self.get_changes(
++            [self.author_unmanaged_name_nullable],
++            [self.author_unmanaged_name_no_default],
++        )
++        self.assertNumberMigrations(changes, "testapp", 1)
++        self.assertOperationTypes(changes, "testapp", 0, ["AlterField"])
++        self.assertOperationAttributes(
++            changes, "testapp", 0, 0, name="name", preserve_default=True
++        )
++
+     def test_unmanaged_create(self):
+         """The autodetector correctly deals with unmanaged models."""
+         # First, we test adding an unmanaged model

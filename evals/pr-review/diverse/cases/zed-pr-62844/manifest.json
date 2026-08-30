@@ -1,0 +1,330 @@
+{
+  "additions": 78,
+  "author": "ArneshBanerjee",
+  "base_sha": "aad75630f90fff7de9d29e7aad4f8384586297f7",
+  "body": "@SomeoneToIgnore this is the follow up you asked for in #62692, done as discussed.\n\n`deserialize_to` keeps a `None` in `items` for every item that failed to deserialize, and those are never added to the pane. Any later tab therefore sits at a lower index in the pane than the one it was serialized with, so activating and previewing by serialized index lands on the tab that shifted into that slot. When the failing item is the last one, the index points past the end of the pane and nothing is activated or previewed.\n\nThe serialized index is now mapped to the pane's index by counting the items before it that actually restored, and an index whose own item failed to restore is skipped.\n\nCloses #62843\n\nRelease Notes:\n\n- Fixed the wrong tab being activated when restoring a workspace containing items that fail to open\n",
+  "captured_at": "2026-08-30T01:09:55+00:00",
+  "case_id": "zed-pr-62844",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "batch-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "route-pr",
+      "status": "COMPLETED",
+      "workflowName": "Community PR Board"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "orchestrate",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "cherry-pick-suggestions",
+      "status": "COMPLETED",
+      "workflowName": "Documentation Suggestions"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_style",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri_scheduler",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "doctests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_workspace_binaries",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build_visual_tests_binary",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_wasm",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_dependencies",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_docs",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_licenses",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_scripts",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_postgres_and_protobuf_migrations",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "extension_tests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tests_pass",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "aad75630f90fff7de9d29e7aad4f8384586297f7",
+  "deletions": 10,
+  "files": [
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "crates/workspace/src/persistence/model.rs"
+    },
+    {
+      "additions": 72,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "crates/workspace/src/workspace.rs"
+    }
+  ],
+  "head_sha": "de4209eba944cb9a12a6bf2689c72e160f524d73",
+  "issues": [
+    {
+      "body": "### Summary\n\nWhen a workspace is restored, `SerializedPane::deserialize_to` (`crates/workspace/src/persistence/model.rs`) picks the active tab and the preview tab by their *serialized* index. Items that fail to deserialize are never added to the pane, so every tab after such an item ends up at a lower index than it was serialized with. The active and preview tabs then land on the wrong tab, or on no tab at all.\n\nThis is the same index desync that #62003 hit on the pinned count, which was fixed in #62692. The count was fixed there, the active and preview fields were left for a follow up.\n\n### Steps to reproduce\n\n1. Open a pane with three tabs.\n2. Make the second tab one that cannot be restored (for example a file that is deleted or renamed while Zed is closed), and leave the third tab active.\n3. Restart Zed.\n\n### Expected\n\nThe tab that was active before the restart comes back active.\n\n### Actual\n\nThe pane restores two tabs and activates the wrong one. The same happens to the preview tab. If the failing item was the last one serialized, the index points past the end of the pane and nothing is activated or previewed at all.\n\n### Zed version\n\nReproduces on `main` (`crates/workspace/src/persistence/model.rs`, `SerializedPane::deserialize_to`).\n",
+      "number": 62843,
+      "title": "Wrong tab is activated when restoring a workspace with items that fail to open",
+      "url": "https://github.com/zed-industries/zed/issues/62843"
+    }
+  ],
+  "patch_sha256": "9184f7e3cc427227062cf099eb1c9c93af3763909a2c7f82b29800432b69a910",
+  "pr_number": 62844,
+  "repo": "zed-industries/zed",
+  "schema_version": 1,
+  "title": "workspace: Activate the right tab when restoring a workspace",
+  "url": "https://github.com/zed-industries/zed/pull/62844"
+}

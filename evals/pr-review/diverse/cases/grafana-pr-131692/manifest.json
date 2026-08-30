@@ -1,0 +1,977 @@
+{
+  "additions": 132,
+  "author": "gillesdemey",
+  "base_sha": "345e03d588cae57fe98d08219a99dab584bf35c8",
+  "body": "## What is this feature?\n\nFixes exclusion filters (`!=`, `!~`, and the multi-value `!=|`) on the Alerts activity page silently doing nothing.\n\nThe page lets a single filter key stand for several real label names \u2014 `cluster` covers `cluster` and `cluster_name`, `namespace` covers `namespace`, `exported_namespace` and `namespace_extracted`, `service` and `severity` likewise. Until now every matcher on such a key was expanded into one selector per backing label, joined with `or`.\n\nThat's right for `=` and `=~`, but it undoes `!=` and `!~`. Prometheus treats a label the series doesn't have as empty, so a series with `cluster=\"prod-me-central-1\"` and no `cluster_name` still matches the `cluster_name!=\"prod-me-central-1\"` branch, and the `or` unions it right back in.\n\nFiltering `namespace = alloy-otlp` and `cluster != prod-me-central-1` used to build:\n\n```promql\ncount by (alertstate) ((\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",namespace=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",exported_namespace=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",namespace_extracted=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster_name!=\"prod-me-central-1\",namespace=\"alloy-otlp\"} or       \u2190 brings them back\n  GRAFANA_ALERTS{cluster_name!=\"prod-me-central-1\",exported_namespace=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster_name!=\"prod-me-central-1\",namespace_extracted=\"alloy-otlp\"}\n))\n```\n\nand now builds:\n\n```promql\ncount by (alertstate) ((\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",cluster_name!=\"prod-me-central-1\",namespace=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",cluster_name!=\"prod-me-central-1\",exported_namespace=\"alloy-otlp\"} or\n  GRAFANA_ALERTS{cluster!=\"prod-me-central-1\",cluster_name!=\"prod-me-central-1\",namespace_extracted=\"alloy-otlp\"}\n))\n```\n\nExclusions now go into every selector together instead of being split across `or` branches. Inclusions keep branching exactly as before.\n\nOne exception, in the second commit: `cluster!=\"\"` isn't excluding a value \u2014 since Prometheus reads an absent label as empty, it's asking whether the series has a cluster at all. That's a question about *any* backing label, so it keeps branching. ANDed it would mean \"has both `cluster` and `cluster_name`\", which almost nothing does. Not reachable from the value dropdown (`label_values` never returns an empty value), but external integrations can link into the page with a hand-built URL.\n\n## Why do we need this feature?\n\nReported internally: filtering `cluster != prod-me-central-1` on the Alerts activity page returned prod-me-central-1 alerts anyway. Any exclusion on `cluster`, `namespace`, `service`, or `severity` is affected. Regression from #121410.\n\n## Testing\n\nEight new cases in `queries.test.ts`, asserting full expressions rather than substrings \u2014 substring matching is what let the original bug through. Covers exclusion-only, the reported include+exclude combination, include and exclude on the same key, `!~` across all seven severity aliases, multi-value `!=|` fed through `prometheusExpressionBuilder`, non-combined keys left alone, empty-value exclusions still branching, and exclusions flowing into the deduplicated `last_over_time` query.\n\nSix of them fail against the old builder. The existing alias-expansion tests are untouched and still pass, so inclusion behaviour is unchanged.\n\n## Which issue(s) does this PR fix?\n\nn/a\n\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)\n",
+  "captured_at": "2026-08-30T01:09:55+00:00",
+  "case_id": "grafana-pr-131692",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "trigger",
+      "status": "COMPLETED",
+      "workflowName": "Backport (trigger)"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Check PR is eligible",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "signed-commits",
+      "status": "COMPLETED",
+      "workflowName": "Display info box when PR contains unsigned commits"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Setup and establish latest",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "Auto-milestone"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Backend Code Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect frontend changes",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Setup opted-in teams",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codeowners-validator",
+      "status": "COMPLETED",
+      "workflowName": "Codeowners Validator"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dispatch-job",
+      "status": "COMPLETED",
+      "workflowName": "Dispatch check for patch conflicts"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "signed-commits",
+      "status": "COMPLETED",
+      "workflowName": "Display info box when PR contains unsigned commits"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "detect-changes",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "handle-ephemeral-instances",
+      "status": "COMPLETED",
+      "workflowName": "Ephemeral instances"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Feature toggles CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-separation",
+      "status": "COMPLETED",
+      "workflowName": "MT Service Compatibility"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "PR Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "PR automation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "reject-gh-secrets",
+      "status": "COMPLETED",
+      "workflowName": "Reject GitHub secrets"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dashboard-schema-v2-e2e",
+      "status": "COMPLETED",
+      "workflowName": "Run dashboard schema v2 e2e"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Shellcheck scripts",
+      "status": "COMPLETED",
+      "workflowName": "Shellcheck"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Swagger generated code"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether the Docker image build is affected",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TruffleHog Secret Scan / trufflehog-scan",
+      "status": "COMPLETED",
+      "workflowName": "TruffleHog Secret Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Trufflehog",
+      "status": "COMPLETED",
+      "workflowName": "Trufflehog"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-separation",
+      "status": "COMPLETED",
+      "workflowName": "Unified Storage Compatibility"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "verify-i18n / verify-i18n",
+      "status": "COMPLETED",
+      "workflowName": "Verify i18n"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check whether there are things to scan",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Validate Backend Configs",
+      "status": "COMPLETED",
+      "workflowName": "Backend Code Checks"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Grafana (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Label PR for future deploys",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "dispatch-job-fork",
+      "status": "COMPLETED",
+      "workflowName": "Dispatch check for patch conflicts"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Feature toggles documentation is in sync with source",
+      "status": "COMPLETED",
+      "workflowName": "Feature toggles CI"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Go Workspace Check",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify API clients",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create next release branch (Grafana)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify committed API specs match",
+      "status": "COMPLETED",
+      "workflowName": "Swagger generated code"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "go-fmt",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build base frontend",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect changed files",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build backend",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-endpoint-migration",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Generate golden files",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "setup",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (light theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / full source (alpine)",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TruffleHog Secret Scan / Send TruffleHog metrics to Prometheus via Grafana Bench",
+      "status": "COMPLETED",
+      "workflowName": "TruffleHog Secret Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / job-workflow-ref",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build pr frontend",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (dark theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (deut_prot_light theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (deut_prot_dark theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (tritanopia_light theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Storybook a11y tests (tritanopia_dark theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Grafana Enterprise (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Comment that the build started",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Check Wire Changes",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create next release branch (Grafana Enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "lint-go",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check bundle size impact",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Coverage - @grafana/datapro",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build frontend",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "endpoint-toggle-result",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Decoupled plugin tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify API clients (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build frontend",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Storybook a11y tests",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / frontend",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / Generate and upload zizmor results \ud83c\udf08",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Coverage - @grafana/dataviz-squad",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Coverage - @grafana/grafana-operator-experience-squad",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Coverage - @grafana/grafana-frontend-navigation",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build frontend",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create security branch (Enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All backend unit tests complete",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All coverage checks pass",
+      "status": "COMPLETED",
+      "workflowName": "Check Frontend Test Coverage"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify Storybook (Playwright)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Rspack plugin tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All Go Workspace Checks complete",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build backend",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / backend (linux-amd64)",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / Send zizmor metrics to Prometheus via Grafana Bench",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Deploy preview assets",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "create_github_release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run zizmor / Delete branch with dangerous-trigger vulnerability",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (1/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Packages unit tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build targz",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / source tarball",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (2/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (3/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (4/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (5/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (6/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (7/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (8/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Comment that the deploy failed",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Unit tests (${{ matrix.shard }} / ${{ matrix.total }})",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Typecheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Diagnostics e2e (on-prem) / Download diagnostics e2e (on-prem)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build docker",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / alpine",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / alpine-slim",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / ubuntu",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / ubuntu-slim",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / distroless",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build / variants (targz) / distroless-slim",
+      "status": "COMPLETED",
+      "workflowName": "Test Dockerfile"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Comment that the deploy was cancelled",
+      "status": "COMPLETED",
+      "workflowName": "Deploy frontend preview"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish metrics",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (1 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Typecheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Push PR Docker image",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (2 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (3 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (4 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (5 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (6 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (7 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (8 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (9 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (10 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (11 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (12 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (13 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (14 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (15 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Unit tests (16 / 16)",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "post_on_slack",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All Playwright tests complete",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All frontend unit tests complete",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify OpenAPI specs",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Meticulous tests",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify packed frontend packages",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "migrate_prs_grafana",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Report Playwright benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "migrate_prs_enterprise",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All E2E tests complete",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check circular dependencies",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Export SBOM and attach to the GitHub release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-knip",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Validate yarn install",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Attach Linux packages to the GitHub release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Cursor Bugbot",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Socket Security: Project Report",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "semgrep-cloud-platform/scan",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "aa5d48b19807b369967fcd2ab01b182a94e6948a",
+  "deletions": 16,
+  "files": [
+    {
+      "additions": 86,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "public/app/features/alerting/unified/triage/scene/queries.test.ts"
+    },
+    {
+      "additions": 46,
+      "changeType": "MODIFIED",
+      "deletions": 16,
+      "path": "public/app/features/alerting/unified/triage/scene/queries.ts"
+    }
+  ],
+  "head_sha": "7386912384e4e4a21066c482a23d2bf3cb2e95eb",
+  "issues": [],
+  "patch_sha256": "571a66e7aedf620cb73719ebaf154c8fa4f700842f43557f3266d370284e7c38",
+  "pr_number": 131692,
+  "repo": "grafana/grafana",
+  "schema_version": 1,
+  "title": "Alerting: Fix negative triage filters being cancelled out by alias expansion",
+  "url": "https://github.com/grafana/grafana/pull/131692"
+}

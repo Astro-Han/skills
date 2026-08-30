@@ -1,0 +1,126 @@
+{
+  "additions": 93,
+  "author": "liuxiaocs7",
+  "base_sha": "1c6b68ece63bca6ca6b8af26142b4627af1d68b9",
+  "body": "## Summary\n\n`execution.inspect` exposed two operations, but Desktop calls only `execution.inspect.query` (with `kind: 'turn_trace'` and the Session/Turn trace kinds). `execution.inspect.resolve` was registered in the protocol, the operation table, and the coordinator, yet had **no non-test caller anywhere in the repository** \u2014 a second inspection contract that no shipped surface reads.\n\nThis removes `resolve` end to end across every layer that maintained it:\n\n- **Protocol** (`execution-inspect.ts`): the operation spec, its input/output decoders and assertions, the `ExecutionInspectCandidate` / `ExecutionInspectEntityKind` types, the candidate decoder, and the `EXECUTION_INSPECT_CANDIDATE_MAX_ITEMS` limit.\n- **Operation table** (`operations.ts`): the `execution.inspect.resolve` entry. `ExecutionInspectOperationKey` collapses to just `query` automatically.\n- **Coordinator** (`execution-inspect-coordinator.ts`): the handler entry, `#resolve`, its `#findSession` / `#findRunInSession` / `compareCandidates` helpers, and the now single-value `failure()` helper (assertion dropped).\n- **Storage**: `ExecutionAgentRunReader.findRunsById` \u2014 the only reader reachable exclusively from `resolve` \u2014 plus the resolve-only `core_agent_runs_identity` SQLite index. `AgentRunIdentitySearchResult` / `assertIdentitySearchLimit` stay; `listSessionRunsBounded` shares them.\n- **Compatibility epoch**: bumped `RUNTIME_HOST_COMPATIBILITY_EPOCH` to 64 (rebased onto main, which advanced it to 63) so a peer that still knows `resolve` fails the handshake rather than sending a removed operation mid-connection (same treatment `oauth.account.usage.fetch` received).\n- **Retired credential grant**: registered `execution.inspect.resolve` as a retired operation grant so an access file issued before the removal releases the grant on decode instead of throwing `RuntimeHostAccessInputError` and blocking Host startup.\n- **Storage schema**: bumped the core-execution schema version 5 \u2192 6 and drop the stale index on upgrade so existing databases reconcile to the new target schema.\n\n`execution.inspect.query` and all four of its result kinds (`session`, `agent_run`, `turn_trace`, `session_trace_page`) \u2014 including the Turn/Session trace paths Desktop renders \u2014 are untouched.\n\nFixes #3932\n\n## Verification\n\n- **Typecheck**: `@maka/core`, `@maka/storage`, and `@maka/runtime` build clean; `@maka/storage` and `@maka/runtime-host` both pass `tsc --noEmit` with zero errors. (An earlier run reported a `workhub-coordination-action-gate.test.ts` type error; that was a stale-dependency-dist artifact from building out of order and does **not** reproduce on a clean full build \u2014 noted here for transparency since the first revision's description mentioned it.)\n- **Affected suites pass locally** (`node --test` on built output):\n  - runtime-host: `execution-inspect-protocol`, `execution-inspect-coordinator`, `execution-inspect-uds`, `protocol` (incl. the new epoch-64 test), `access-credential-metadata` (incl. the new retired-grant regression test), `handshake-compatibility`.\n  - storage: `sqlite-core-execution-store` (incl. the new \"drops the obsolete AgentRun identity index on upgrade\" migration test).\n- **Lint/format**: `biome check` clean on all changed files.\n\n## Migration / Rollout\n\nRemoving `resolve` is a wire-contract change, so the compatibility epoch is bumped (mixed-version peers fail the handshake by design) and the core-execution schema version is bumped so an upgraded Host drops the obsolete index on first open. Both paths have regression tests. Access files that recorded the `resolve` grant now decode cleanly with the grant released.\n\n## AI use\n\nSelect exactly one:\n\n- [ ] No generative tool made a substantive contribution\n- [x] Generative tooling made a substantive contribution\n\nTool(s) and scope: Claude Opus (via Claude Code) \u2014 traced the reachable set, performed the end-to-end deletion, added the epoch/credential/schema retirements and their tests. Both commits carry a `Generated-by: Claude Opus` trailer.\n\n## Checklist\n\n- [x] Tests cover the change and fail without it \u2014 the epoch bump, retired grant, and index drop each have a regression test that fails on the pre-change behavior; the deleted `resolve` tests are removed and the retained `query` suites still pass.\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary / Migration above (handshake boundary + storage migration; no change to any shipped feature)\n- [ ] No\n",
+  "captured_at": "2026-08-30T01:09:29+00:00",
+  "case_id": "apache-maka-pr-3936",
+  "changed_files": 14,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows_recovery",
+      "status": "COMPLETED",
+      "workflowName": "Windows recovery"
+    }
+  ],
+  "comparison_base_sha": "01369b08248d8b66b6c5a1a6204f9683397a10a1",
+  "deletions": 373,
+  "files": [
+    {
+      "additions": 34,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/__tests__/access-credential-metadata.test.ts"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 36,
+      "path": "packages/runtime-host/src/__tests__/execution-inspect-coordinator.test.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 58,
+      "path": "packages/runtime-host/src/__tests__/execution-inspect-protocol.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "packages/runtime-host/src/__tests__/execution-inspect-uds.test.ts"
+    },
+    {
+      "additions": 9,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/__tests__/protocol.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 143,
+      "path": "packages/runtime-host/src/protocol/execution-inspect.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/protocol/index.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/runtime-host/src/protocol/operations.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/runtime-host/src/server/access-credential-store.ts"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 95,
+      "path": "packages/runtime-host/src/server/execution-inspect-coordinator.ts"
+    },
+    {
+      "additions": 29,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/storage/src/__tests__/sqlite-core-execution-store.test.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 23,
+      "path": "packages/storage/src/agent-run-store.ts"
+    },
+    {
+      "additions": 0,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "packages/storage/src/execution-stores.ts"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "packages/storage/src/sqlite-core-execution-schema.ts"
+    }
+  ],
+  "head_sha": "01c3e5d8aa771afb8f73ecb0d73fd6f6caf5b081",
+  "issues": [
+    {
+      "body": "## Problem\n\n`execution.inspect` exposes two operations. Desktop calls only `execution.inspect.query`, and only with `kind: 'turn_trace'` (`apps/desktop/src/main/runtime-host-boot.ts:1479`). `execution.inspect.resolve` is registered in the protocol (`packages/runtime-host/src/protocol/execution-inspect.ts:111`), in the operation table (`packages/runtime-host/src/protocol/operations.ts:255`), and handled by the coordinator (`packages/runtime-host/src/server/execution-inspect-coordinator.ts:73`), but it has no non-test caller anywhere in the repository.\n\n## Desired outcome\n\nDelete `execution.inspect.resolve` end to end: the operation spec, its input/output decoders and assertions, the operation-table entry, the coordinator branch, and any storage reader reachable only from it.\n\nKeep: `execution.inspect.query`, both of its result kinds, and the Turn trace path Desktop renders.\n\n## Scope note\n\nThe working draft estimated 2.2k\u20132.4k lines for this candidate. That number does not hold \u2014 `execution-inspect.ts` and `execution-inspect-coordinator.ts` are 380 and 555 lines together, and `query` stays. Expect a much smaller deletion, and confirm the real reachable set before sizing the PR.\n\n## Alternatives or workarounds\n\nKeeping `resolve` maintains a second inspection contract that no shipped surface reads.\n\nProposed in [#3618](https://github.com/apache/maka/discussions/3618). The rule for this issue is one end-to-end deletion, one PR, and strictly fewer maintained concepts; moving the same idea behind a new facade or compatibility bridge does not count.\n\nClaude verified the consumer claims below against current `main`. A human contributor must confirm them and own the resulting change.\n\n",
+      "number": 3932,
+      "title": "refactor(runtime-host): remove the uncalled execution.inspect.resolve operation",
+      "url": "https://github.com/apache/maka/issues/3932"
+    }
+  ],
+  "patch_sha256": "f94272860b6e4d0d291e57c9c53d8e05d6ca8b257c8608b3619e9c221cd73daa",
+  "pr_number": 3936,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "refactor(runtime-host): remove the uncalled execution.inspect.resolve operation",
+  "url": "https://github.com/apache/maka/pull/3936"
+}

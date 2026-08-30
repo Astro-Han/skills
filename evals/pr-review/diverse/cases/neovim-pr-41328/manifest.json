@@ -1,0 +1,348 @@
+{
+  "additions": 43,
+  "author": "justinmk",
+  "base_sha": "9cca923ab4f9ddca4b817e989eba546ddba675e1",
+  "body": "Problem:\r\nnvim_win_set_buf() on a non-current win, while the current win has\r\na win-local dir, changes the global CWD:\r\n\r\n    :vsplit | lcd ..\r\n    :call nvim_win_set_buf(other_win, buf)\r\n    :wincmd l\r\n    :verbose pwd\r\n    [global] /parent        \" expected: the initial cwd\r\n\r\nAnalysis:\r\n`globaldir` is where to return when no local dir applies; NULL means the\r\nprocess CWD is already there. Switching to a window with no local dir\r\nmakes update_cwd() chdir back to `globaldir` and clear it. kCtxKeepCwd\r\nrestores the process CWD but not that bookkeeping, so the restored\r\nwindow-local dir is mistaken for the global one.\r\n\r\nSolution:\r\nSave/restore `globaldir` with the CWD.\r\n\r\nfix https://github.com/neovim/neovim/issues/41238\r\n",
+  "captured_at": "2026-08-30T01:09:54+00:00",
+  "case_id": "neovim-pr-41328",
+  "changed_files": 3,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "Backport Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "backport"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "news.txt"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "s390x",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "s390x",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Backport Pull Request",
+      "status": "COMPLETED",
+      "workflowName": "backport"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "old-cmake",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze",
+      "status": "COMPLETED",
+      "workflowName": "codeql"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "docs",
+      "status": "COMPLETED",
+      "workflowName": "docs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "label",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-commits",
+      "status": "COMPLETED",
+      "workflowName": "lintcommit"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check",
+      "status": "COMPLETED",
+      "workflowName": "news.txt"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-reviewer",
+      "status": "COMPLETED",
+      "workflowName": "reviewers: add"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "remove-reviewers",
+      "status": "COMPLETED",
+      "workflowName": "reviewers: remove"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor",
+      "status": "COMPLETED",
+      "workflowName": "security: zizmor GHA analyzer"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lintc",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "FreeBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasmtime",
+      "status": "COMPLETED",
+      "workflowName": "wasm"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "windows-asan",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "windows-asan",
+      "status": "COMPLETED",
+      "workflowName": "optional"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "use-existing-src",
+      "status": "COMPLETED",
+      "workflowName": "build_dummy"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ai-assisted",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "OpenBSD",
+      "status": "COMPLETED",
+      "workflowName": "test-bsd"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "request-reviewer / request-reviewer",
+      "status": "COMPLETED",
+      "workflowName": "label-pr"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clang-analyzer",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu asan clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu tsan clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu release gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos intel clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang unittest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos arm clang oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc functionaltest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ubuntu puc-lua gcc oldtest",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (linux)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (macos 15)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build using zig build (windows)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (functional)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows / windows (old)",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "with-external-deps",
+      "status": "COMPLETED",
+      "workflowName": "test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "9cca923ab4f9ddca4b817e989eba546ddba675e1",
+  "deletions": 10,
+  "files": [
+    {
+      "additions": 19,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "src/nvim/context.c"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "src/nvim/context_defs.h"
+    },
+    {
+      "additions": 21,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "test/functional/ex_cmds/cd_spec.lua"
+    }
+  ],
+  "head_sha": "aeae2ff9577dc8784a13f6132284264ec40eec37",
+  "issues": [
+    {
+      "body": "### Problem\n\nUsing `nvim_win_set_buf` on not current window while current window has window-local cwd leads to the change of global cwd.\n\n### Steps to reproduce\n\n1. Create the following `init.lua`:\n\n    ```lua\n    local init_win_id = vim.api.nvim_get_current_win()\n    vim.cmd('vsplit')\n    vim.cmd('lcd ..')\n    vim.api.nvim_win_set_buf(init_win_id, vim.api.nvim_create_buf(false, true))\n    ```\n\n2. `nvim --clean -u init.lua`.\n3. `:verbose pwd` correctly shows `[window] <path to ..>`.\n4. `:wincmd l`\n5. `:verbose pwd` not correctly shows `[global] <path to ..>` (parent path as the global working directory). The expected output is `[global] <initial cwd>`.\n\nThis particular behavior has started to get observed after 59597316a60b (#41218), but even before it the behavior is not correct (step 3 shows `[window] <initial cwd>`) up until going before ea3868bcf99b (#33320).\n\ncc @erdivartanovich, @justinmk\n\n### Expected behavior\n\nExecuting `nvim_win_set_buf(win_id, buf_id)` can change local working directory only if `buf_id` has set buffer-local working directory.\n\n### Nvim version (nvim -v)\n\nNVIM v0.13.0-dev-1275+ga08607b8d6\n\n### Vim (not Nvim) behaves the same?\n\nNo, doesn't have this functionality\n\n### Operating system/version\n\nEndeavourOS Linux x86_64, 7.1.5-arch1-2\n\n### Terminal name/version\n\nGhostty 1.3.1-arch2\n\n### $TERM environment variable\n\nxterm-ghostty\n\n### Installation\n\nAppimage and from source",
+      "number": 41238,
+      "title": "`nvim_win_set_buf` might change global working directory",
+      "url": "https://github.com/neovim/neovim/issues/41238"
+    }
+  ],
+  "patch_sha256": "a7bd861ecbba44357dca31a96044a544aba2b52c4bfb6cde469317e6ce5dae77",
+  "pr_number": 41328,
+  "repo": "neovim/neovim",
+  "schema_version": 1,
+  "title": "fix(cwd): nvim_win_set_buf changes global CWD",
+  "url": "https://github.com/neovim/neovim/pull/41328"
+}

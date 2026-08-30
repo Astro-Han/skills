@@ -1,0 +1,410 @@
+{
+  "additions": 118,
+  "author": "tendstofortytwo",
+  "base_sha": "d4dce809278ecc0bfc50ea2d376459c66f2f3a66",
+  "body": "On switching from one tailnet with Connectors 2025 enabled to another, clear the address assignments and flow tables from the previous tailnet. They will not be useful in the new one (since the tailnet configuration and nodes are different), and could blackhole traffic if both tailnets happen to have a connector for the same domain.\r\n\r\nFixes tailscale/corp#45619.",
+  "captured_at": "2026-08-30T01:09:43+00:00",
+  "case_id": "tailscale-pr-20673",
+  "changed_files": 4,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "prepare",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "gomod-cache",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Analyze (go)",
+      "status": "COMPLETED",
+      "workflowName": "CodeQL"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "deploy",
+      "status": "COMPLETED",
+      "workflowName": "Dockerfile build"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checklocks",
+      "status": "COMPLETED",
+      "workflowName": "checklocks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "EasyEasy",
+      "status": "COMPLETED",
+      "workflowName": "natlab-basic"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "vet",
+      "status": "COMPLETED",
+      "workflowName": "tailscale.com/cmd/vet"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "matrix.test",
+      "status": "COMPLETED",
+      "workflowName": "natlab-test"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "fuzz",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (1/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (2/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (3/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "race-root-integration (4/4)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 1/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 2/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (amd64, -race, 3/3)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test (386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (benchmarks)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (1/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Windows (2/2)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "macos",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "privileged",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, 386)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, loong64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 5)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (linux, arm, 7)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (darwin, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (windows, arm64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (freebsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "cross (openbsd, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "ios",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (plan9, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (aix, ppc64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (solaris, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "crossmin (illumos, amd64)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "android",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "wasm",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tailscale_go",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "depaware",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "go_generate",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "make_tidy",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "licenses",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (macOS)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Windows)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Linux)",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (1/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (2/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (3/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "staticcheck (Portable (4/4))",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "notify_slack",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "merge_blocker",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability_strict",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_mergeability",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "CodeQL",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "DCO",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "514e50bd1bd0f0689f87ffb3a7adc306150290c8",
+  "deletions": 4,
+  "files": [
+    {
+      "additions": 54,
+      "changeType": "MODIFIED",
+      "deletions": 4,
+      "path": "feature/conn25/conn25.go"
+    },
+    {
+      "additions": 8,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "feature/conn25/datapath.go"
+    },
+    {
+      "additions": 17,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "feature/conn25/flowtable.go"
+    },
+    {
+      "additions": 39,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "feature/conn25/flowtable_test.go"
+    }
+  ],
+  "head_sha": "0905f9e2f93796c169f07ca66fa7e33669a58d29",
+  "issues": [],
+  "patch_sha256": "88d9c431726701bf039bd187f3a5c5f79aa4d77c6564f119031c4c78a1b4046d",
+  "pr_number": 20673,
+  "repo": "tailscale/tailscale",
+  "schema_version": 1,
+  "title": "feature/conn25: clear address assignments, flow tables on profile switch",
+  "url": "https://github.com/tailscale/tailscale/pull/20673"
+}

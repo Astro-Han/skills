@@ -1,0 +1,80 @@
+From 732da013c70124b6ef66c696091e736d0f07c33b Mon Sep 17 00:00:00 2001
+From: rawan10101 <rawan_khalid@aucegypt.edu>
+Date: Sun, 16 Aug 2026 18:38:38 +0300
+Subject: [PATCH] ci: bundle wasm build output with demo into a single release
+ zip
+
+---
+ .github/scripts/build_wasm.sh | 21 +++++++++++++++++++++
+ .github/workflows/release.yml | 14 ++++++++------
+ 2 files changed, 29 insertions(+), 6 deletions(-)
+
+diff --git a/.github/scripts/build_wasm.sh b/.github/scripts/build_wasm.sh
+index 0ca95da3816c08..a516709c7dbf9b 100755
+--- a/.github/scripts/build_wasm.sh
++++ b/.github/scripts/build_wasm.sh
+@@ -79,3 +79,24 @@ if [ "${#missing[@]}" -ne 0 ]; then
+ fi
+ 
+ echo "build-wasm.sh finished successfully."
++
++if [ "${BUNDLE_WASM:-0}" = "1" ]; then
++  BUNDLE_DIR="$ROOT/bundle-wasm"
++  ZIP_PATH="$ROOT/nvim-wasm-emscripten.zip"
++
++  rm -rf "$BUNDLE_DIR" "$ZIP_PATH"
++  mkdir -p "$BUNDLE_DIR"
++
++  cp "$OUTDIR"/nvim.wasm "$OUTDIR"/nvim.js "$OUTDIR"/nvim.data "$BUNDLE_DIR"/
++
++  cp "$ROOT"/src/wasm/*.py "$ROOT"/src/wasm/*.html "$ROOT"/src/wasm/*.js "$ROOT"/src/wasm/*.css "$BUNDLE_DIR"/
++
++  # Rewrite repo relative paths for the flat bundle layout
++  sed -i 's#\.\./\.\./zig-out/bin/#./#g' "$BUNDLE_DIR/nvim-worker.js"
++  sed -i 's#Path(__file__)\.resolve()\.parents\[2\]#Path(__file__).resolve().parent#' "$BUNDLE_DIR/serve.py"
++
++  ( cd "$BUNDLE_DIR" && zip -r "$ZIP_PATH" . )
++  rm -rf "$BUNDLE_DIR"
++
++  echo "Created $ZIP_PATH"
++fi
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 5f8e227f8ed5be..421ebda8bd05fc 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -210,7 +210,7 @@ jobs:
+         run: |
+           sudo apt-get update
+           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+-            python3 python3-pip curl unzip
++            python3 python3-pip curl unzip zip
+ 
+       - name: Install Emscripten SDK
+         run: |
+@@ -223,12 +223,14 @@ jobs:
+ 
+       - name: Build nvim.wasm
+         run: .github/scripts/build_wasm.sh
+-        
++        env:
++          BUNDLE_WASM: "1"
++
+       - name: Upload wasm artifact
+         uses: actions/upload-artifact@v7
+         with:
+-          name: nvim-wasm
+-          path: build-wasm/*
++          name: nvim-wasm-emscripten
++          path: nvim-wasm-emscripten.zip
+           retention-days: 1
+ 
+   publish:
+@@ -285,6 +287,6 @@ jobs:
+         run: |
+           envsubst < "$GITHUB_WORKSPACE/.github/workflows/notes.md" > "$RUNNER_TEMP/notes.md"
+           if [ "$TAG_NAME" != "nightly" ]; then
+-            gh release create stable $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos-x86_64/* nvim-macos-arm64/* nvim-linux-x86_64/* nvim-linux-arm64/* nvim-appimage-x86_64/* nvim-appimage-arm64/* nvim-win-x86_64/* nvim-win-arm64/* nvim-wasm/*
++            gh release create stable $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos-x86_64/* nvim-macos-arm64/* nvim-linux-x86_64/* nvim-linux-arm64/* nvim-appimage-x86_64/* nvim-appimage-arm64/* nvim-win-x86_64/* nvim-win-arm64/* nvim-wasm-emscripten/*
+           fi
+-          gh release create $TAG_NAME $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos-x86_64/* nvim-macos-arm64/* nvim-linux-x86_64/* nvim-linux-arm64/* nvim-appimage-x86_64/* nvim-appimage-arm64/* nvim-win-x86_64/* nvim-win-arm64/* nvim-wasm/*
++          gh release create $TAG_NAME $PRERELEASE --notes-file "$RUNNER_TEMP/notes.md" --title "$SUBJECT" --target $GITHUB_SHA nvim-macos-x86_64/* nvim-macos-arm64/* nvim-linux-x86_64/* nvim-linux-arm64/* nvim-appimage-x86_64/* nvim-appimage-arm64/* nvim-win-x86_64/* nvim-win-arm64/* nvim-wasm-emscripten/*

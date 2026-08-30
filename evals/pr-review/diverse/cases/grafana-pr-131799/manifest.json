@@ -1,0 +1,1181 @@
+{
+  "additions": 28,
+  "author": "pstibrany",
+  "base_sha": "37738a8fe646c898cf6cfb9f43a6cd90171adca7",
+  "body": "`registerOrReuse` catches `AlreadyRegisteredError` and returns the collector already registered. See #131798 for why that is the wrong answer to a duplicate registration.\n\nNothing needs it here. `newInformerMetrics` has one caller (`informer/job.go`), and the recorders within a delta source share one instance by being handed it, each passing its own resource label. Only a test built it twice against one registry; that test now checks what actually happens in production \u2014 two recorders writing distinct resource series through one instance.\n\nNo metric names, labels or values change.\n\nNote this is the second of the two copies. The unified storage one is #131792, which needed const labels because it genuinely had three consumers per process.",
+  "captured_at": "2026-08-30T01:09:54+00:00",
+  "case_id": "grafana-pr-131799",
+  "changed_files": 2,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "trigger",
+      "status": "COMPLETED",
+      "workflowName": "Backport (trigger)"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "signed-commits",
+      "status": "COMPLETED",
+      "workflowName": "Display info box when PR contains unsigned commits"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Setup and establish latest",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "update",
+      "status": "COMPLETED",
+      "workflowName": "Update Go Workspace for Dependabot PRs"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "Auto-milestone"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "Auto-milestone"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Backend Code Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/amd64",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect frontend changes",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "codeowners-validator",
+      "status": "COMPLETED",
+      "workflowName": "Codeowners Validator"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dispatch-job",
+      "status": "COMPLETED",
+      "workflowName": "Dispatch check for patch conflicts"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "signed-commits",
+      "status": "COMPLETED",
+      "workflowName": "Display info box when PR contains unsigned commits"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "detect-changes",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "handle-ephemeral-instances",
+      "status": "COMPLETED",
+      "workflowName": "Ephemeral instances"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Capture PR metadata for handler",
+      "status": "COMPLETED",
+      "workflowName": "External PR Notify Trigger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Feature toggles CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-separation",
+      "status": "COMPLETED",
+      "workflowName": "MT Service Compatibility"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "PR Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "main",
+      "status": "COMPLETED",
+      "workflowName": "PR automation"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "reject-gh-secrets",
+      "status": "COMPLETED",
+      "workflowName": "Reject GitHub secrets"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "dashboard-schema-v2-e2e",
+      "status": "COMPLETED",
+      "workflowName": "Run dashboard schema v2 e2e"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Shellcheck scripts",
+      "status": "COMPLETED",
+      "workflowName": "Shellcheck"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "Swagger generated code"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TruffleHog Secret Scan / trufflehog-scan",
+      "status": "COMPLETED",
+      "workflowName": "TruffleHog Secret Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run Trufflehog",
+      "status": "COMPLETED",
+      "workflowName": "Trufflehog"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check-separation",
+      "status": "COMPLETED",
+      "workflowName": "Unified Storage Compatibility"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "verify-i18n / verify-i18n",
+      "status": "COMPLETED",
+      "workflowName": "Verify i18n"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Detect whether code changed",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "govulncheck",
+      "status": "COMPLETED",
+      "workflowName": "govulncheck"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check whether there are things to scan",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/arm64",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/s390x",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/armv6",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/armv7",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "darwin/arm64",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "darwin/amd64",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows/arm64",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Grafana (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Build ${{ matrix.target }} frontend",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "dispatch-job-fork",
+      "status": "COMPLETED",
+      "workflowName": "Dispatch check for patch conflicts"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check-endpoint-migration",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Generate golden files",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Sqlite (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify API clients",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create next release branch (Grafana)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run Storybook a11y tests (${{ matrix.STORYBOOK_THEME }} theme)",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Validate Backend Configs",
+      "status": "COMPLETED",
+      "workflowName": "Backend Code Checks"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/amd64 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build backend",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Feature toggles documentation is in sync with source",
+      "status": "COMPLETED",
+      "workflowName": "Feature toggles CI"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Go Workspace Check",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "setup",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify committed API specs match",
+      "status": "COMPLETED",
+      "workflowName": "Swagger generated code"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "TruffleHog Secret Scan / Send TruffleHog metrics to Prometheus via Grafana Bench",
+      "status": "COMPLETED",
+      "workflowName": "TruffleHog Secret Scanning"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "go-fmt",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / job-workflow-ref",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/arm64 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/s390x (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/armv6 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "linux/armv7 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "darwin/arm64 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "darwin/amd64 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "windows/arm64 (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Check bundle size impact",
+      "status": "COMPLETED",
+      "workflowName": "Bundle size"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Decoupled plugin tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "MySQL (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create next release branch (Grafana Enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (1/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "verify rpm stig (linux/amd64)",
+      "status": "COMPLETED",
+      "workflowName": "Build Go (matrix)"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Build frontend",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "endpoint-toggle-result",
+      "status": "COMPLETED",
+      "workflowName": "Endpoint Migration Feature Toggle Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Check Wire Changes",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify API clients (enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build frontend",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Storybook a11y tests",
+      "status": "COMPLETED",
+      "workflowName": "Run Storybook a11y tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-go",
+      "status": "COMPLETED",
+      "workflowName": "golangci-lint"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / Generate and upload zizmor results \ud83c\udf08",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (2/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (3/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (4/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (5/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (6/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (7/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Grafana Enterprise (8/8)",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Rspack plugin tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Postgres (${{ matrix.shard }})",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Create security branch (Enterprise)",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All backend unit tests complete",
+      "status": "COMPLETED",
+      "workflowName": "Backend Unit Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Verify Storybook (Playwright)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All Go Workspace Checks complete",
+      "status": "COMPLETED",
+      "workflowName": "Go Workspace Check"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build backend",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Run zizmor / Send zizmor metrics to Prometheus via Grafana Bench",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Packages unit tests",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Lint",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "create_github_release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run zizmor / Delete branch with dangerous-trigger vulnerability",
+      "status": "COMPLETED",
+      "workflowName": "zizmor GitHub Actions static analysis"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (1/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (1/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build targz",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (2/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (2/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (3/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (3/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (4/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (4/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (5/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (5/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (6/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (6/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (7/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (7/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Playwright E2E tests (8/8)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (8/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (9/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (10/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (11/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (12/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (13/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (14/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (15/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Sqlite Enterprise (16/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Unit tests (${{ matrix.shard }} / ${{ matrix.total }})",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Typecheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Diagnostics e2e (on-prem) / Download diagnostics e2e (on-prem)",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (1/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build docker",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (2/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (3/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (4/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (5/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (6/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (7/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (8/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (9/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (10/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (11/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (12/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (13/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (14/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (15/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "MySQL Enterprise (16/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Publish metrics",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Unit tests (${{ matrix.shard }} / ${{ matrix.total }})",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Typecheck",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (1/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Push PR Docker image",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (2/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (3/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (4/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (5/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (6/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (7/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (8/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (9/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (10/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (11/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (12/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (13/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (14/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (15/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Postgres Enterprise (16/16)",
+      "status": "COMPLETED",
+      "workflowName": "Integration Tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify OpenAPI specs",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Run Meticulous tests",
+      "status": "COMPLETED",
+      "workflowName": "PR build Docker image"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "post_on_slack",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All Playwright tests complete",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All frontend unit tests complete",
+      "status": "COMPLETED",
+      "workflowName": "Frontend tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Verify packed frontend packages",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "migrate_prs_grafana",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Report Playwright benchmarks",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Check circular dependencies",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "migrate_prs_enterprise",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "All E2E tests complete",
+      "status": "COMPLETED",
+      "workflowName": "End-to-end tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "lint-knip",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Export SBOM and attach to the GitHub release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Validate yarn install",
+      "status": "COMPLETED",
+      "workflowName": "Lint Frontend"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "Attach Linux packages to the GitHub release",
+      "status": "COMPLETED",
+      "workflowName": "Post-release"
+    },
+    {
+      "conclusion": "NEUTRAL",
+      "name": "zizmor",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Cursor Bugbot",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "Socket Security: Project Report",
+      "status": "COMPLETED",
+      "workflowName": ""
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "semgrep-cloud-platform/scan",
+      "status": "COMPLETED",
+      "workflowName": ""
+    }
+  ],
+  "comparison_base_sha": "2fa495ab9d5a10dcfb67416680d0dc117d5264a8",
+  "deletions": 45,
+  "files": [
+    {
+      "additions": 19,
+      "changeType": "MODIFIED",
+      "deletions": 36,
+      "path": "pkg/registry/apis/provisioning/informer/metrics.go"
+    },
+    {
+      "additions": 9,
+      "changeType": "MODIFIED",
+      "deletions": 9,
+      "path": "pkg/registry/apis/provisioning/informer/metrics_test.go"
+    }
+  ],
+  "head_sha": "38ff10fb104765055ffc1e28880272cf5fe5b938",
+  "issues": [],
+  "patch_sha256": "b170952e08e537750777ba56e0aeec2ab04b24101a57c9e91ae10d77e534ed66",
+  "pr_number": 131799,
+  "repo": "grafana/grafana",
+  "schema_version": 1,
+  "title": "Provisioning: drop registerOrReuse from informer metrics",
+  "url": "https://github.com/grafana/grafana/pull/131799"
+}

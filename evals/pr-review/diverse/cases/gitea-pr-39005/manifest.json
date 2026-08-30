@@ -1,0 +1,224 @@
+{
+  "additions": 85,
+  "author": "bircni",
+  "base_sha": "a52e5f53c096961b61e4016a35b693aa72b51339",
+  "body": "Preserve fork pull request restrictions across review-triggered workflows, reusable workflow access, job scheduling, and filtered workflow statuses.\r\n\r\nThis prevents untrusted fork workflow content from bypassing approval, accessing private reusable workflows, or satisfying protected status checks.\r\n\r\n\r\n_Assisted-by: Codex:GPT-5_\r\n",
+  "captured_at": "2026-08-30T01:09:41+00:00",
+  "case_id": "gitea-pr-39005",
+  "changed_files": 7,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "files-changed / detect",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "giteabot",
+      "status": "COMPLETED",
+      "workflowName": "giteabot"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "labeler",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-amd64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-pgsql-shard-1",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-e2e",
+      "status": "COMPLETED",
+      "workflowName": "e2e-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "pr-title",
+      "status": "COMPLETED",
+      "workflowName": "labeler"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-arm64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "lint-on-demand",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-pgsql-shard-2",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "container-riscv64",
+      "status": "COMPLETED",
+      "workflowName": "docker-dryrun"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "checks-backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-sqlite",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "frontend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-unit",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "backend",
+      "status": "COMPLETED",
+      "workflowName": "compliance"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-mysql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "test-mssql",
+      "status": "COMPLETED",
+      "workflowName": "db-tests"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "a52e5f53c096961b61e4016a35b693aa72b51339",
+  "deletions": 3,
+  "files": [
+    {
+      "additions": 12,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "models/perm/access/actions_repo_permission_test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "models/perm/access/repo_permission.go"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "services/actions/job_emitter.go"
+    },
+    {
+      "additions": 29,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "services/actions/job_emitter_test.go"
+    },
+    {
+      "additions": 1,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "services/actions/notifier.go"
+    },
+    {
+      "additions": 13,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "services/actions/notifier_helper.go"
+    },
+    {
+      "additions": 24,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "services/actions/notifier_helper_test.go"
+    }
+  ],
+  "head_sha": "071a6aafa52f624519c26f4953342d4d2a44c136",
+  "issues": [],
+  "patch_sha256": "84a4b7fecd2a05c11bbc648930fbab95af2a06bf81f6d37a618aa6dd524254b6",
+  "pr_number": 39005,
+  "repo": "go-gitea/gitea",
+  "schema_version": 1,
+  "title": "fix(actions): enforce fork pull request trust boundaries",
+  "url": "https://github.com/go-gitea/gitea/pull/39005"
+}

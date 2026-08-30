@@ -1,0 +1,305 @@
+From d174a7af1829e4761bb0faec62f9391401e9ee93 Mon Sep 17 00:00:00 2001
+From: konstin <konstin@mailbox.org>
+Date: Mon, 24 Aug 2026 10:08:05 +0000
+Subject: [PATCH] Return errors for invalid bearer authorization headers
+
+Propagate header-conversion failures instead of panicking on bearer token bytes. Cover both environment-token aliases with offline credential-helper snapshots.
+---
+ crates/uv-auth/src/credentials.rs     | 45 +++++++++++++--------------
+ crates/uv-client/src/base_client.rs   |  7 ++++-
+ crates/uv-publish/src/lib.rs          | 25 +++++++++------
+ crates/uv/src/commands/auth/helper.rs |  1 +
+ crates/uv/src/commands/auth/logout.rs |  2 +-
+ crates/uv/tests/it/auth.rs            | 24 ++++++++++++++
+ 6 files changed, 68 insertions(+), 36 deletions(-)
+
+diff --git a/crates/uv-auth/src/credentials.rs b/crates/uv-auth/src/credentials.rs
+index 027f16ac742..c9ba261ac0e 100644
+--- a/crates/uv-auth/src/credentials.rs
++++ b/crates/uv-auth/src/credentials.rs
+@@ -12,7 +12,7 @@ use reqsign::aws::DefaultSigner as AwsDefaultSigner;
+ use reqsign::azure::DefaultSigner as AzureDefaultSigner;
+ use reqsign::google::DefaultSigner as GcsDefaultSigner;
+ use reqwest::Request;
+-use reqwest::header::{HeaderName, HeaderValue};
++use reqwest::header::{HeaderName, HeaderValue, InvalidHeaderValue};
+ use serde::{Deserialize, Serialize};
+ use thiserror::Error;
+ use url::Url;
+@@ -339,11 +339,11 @@ impl Credentials {
+         None
+     }
+ 
+-    /// Create an HTTP Basic Authentication header for the credentials.
++    /// Create an HTTP authorization header for the credentials.
+     ///
+-    /// Panics if the username or password cannot be base64 encoded.
+-    pub fn to_header_value(&self) -> HeaderValue {
+-        match self {
++    /// Returns an error if the bearer token contains invalid header characters.
++    pub fn to_header_value(&self) -> Result<HeaderValue, InvalidHeaderValue> {
++        let header_bytes = match self {
+             Self::Basic { .. } => {
+                 // See: <https://github.com/seanmonstar/reqwest/blob/2c11ef000b151c2eebeed2c18a7b81042220c6b0/src/util.rs#L3>
+                 let mut buf = b"Basic ".to_vec();
+@@ -356,18 +356,13 @@ impl Credentials {
+                             .expect("Write to base64 encoder should succeed");
+                     }
+                 }
+-                let mut header =
+-                    HeaderValue::from_bytes(&buf).expect("base64 is always valid HeaderValue");
+-                header.set_sensitive(true);
+-                header
+-            }
+-            Self::Bearer { token } => {
+-                let mut header = HeaderValue::from_bytes(&[b"Bearer ", token.as_slice()].concat())
+-                    .expect("Bearer token is always valid HeaderValue");
+-                header.set_sensitive(true);
+-                header
++                buf
+             }
+-        }
++            Self::Bearer { token } => [b"Bearer ", token.as_slice()].concat(),
++        };
++        let mut header = HeaderValue::from_bytes(&header_bytes)?;
++        header.set_sensitive(true);
++        Ok(header)
+     }
+ 
+     /// Apply the credentials to the given URL.
+@@ -387,12 +382,11 @@ impl Credentials {
+     /// Attach the credentials to the given request.
+     ///
+     /// Any existing credentials will be overridden.
+-    #[must_use]
+-    pub fn authenticate(&self, mut request: Request) -> Request {
++    pub fn authenticate(&self, mut request: Request) -> Result<Request, InvalidHeaderValue> {
+         request
+             .headers_mut()
+-            .insert(reqwest::header::AUTHORIZATION, Self::to_header_value(self));
+-        request
++            .insert(reqwest::header::AUTHORIZATION, Self::to_header_value(self)?);
++        Ok(request)
+     }
+ }
+ 
+@@ -413,6 +407,9 @@ pub(crate) enum Authentication {
+ 
+ #[derive(Debug, Error)]
+ pub(crate) enum AuthenticationError {
++    #[error("Invalid authorization header")]
++    InvalidHeaderValue(#[from] InvalidHeaderValue),
++
+     #[error("Failed to convert request URL to URI")]
+     InvalidUri(#[from] http::uri::InvalidUri),
+ 
+@@ -528,7 +525,7 @@ impl Authentication {
+         mut request: Request,
+     ) -> Result<Request, AuthenticationError> {
+         match self {
+-            Self::Credentials(credentials) => Ok(credentials.authenticate(request)),
++            Self::Credentials(credentials) => Ok(credentials.authenticate(request)?),
+             Self::AwsSigner(signer) => {
+                 // Build an `http::Request` from the `reqwest::Request`.
+                 let uri = Uri::from_str(request.url().as_str())?;
+@@ -750,7 +747,7 @@ mod tests {
+         let credentials = Credentials::from_url(&auth_url).unwrap().unwrap();
+ 
+         let mut request = Request::new(reqwest::Method::GET, url);
+-        request = credentials.authenticate(request);
++        request = credentials.authenticate(request).unwrap();
+ 
+         let mut header = request
+             .headers()
+@@ -772,7 +769,7 @@ mod tests {
+         let credentials = Credentials::from_url(&auth_url).unwrap().unwrap();
+ 
+         let mut request = Request::new(reqwest::Method::GET, url);
+-        request = credentials.authenticate(request);
++        request = credentials.authenticate(request).unwrap();
+ 
+         let mut header = request
+             .headers()
+@@ -794,7 +791,7 @@ mod tests {
+         let credentials = Credentials::from_url(&auth_url).unwrap().unwrap();
+ 
+         let mut request = Request::new(reqwest::Method::GET, url);
+-        request = credentials.authenticate(request);
++        request = credentials.authenticate(request).unwrap();
+ 
+         let mut header = request
+             .headers()
+diff --git a/crates/uv-client/src/base_client.rs b/crates/uv-client/src/base_client.rs
+index aaeee20fb24..90cd1595f82 100644
+--- a/crates/uv-client/src/base_client.rs
++++ b/crates/uv-client/src/base_client.rs
+@@ -1061,7 +1061,12 @@ fn request_into_redirect(
+         {
+             let _ = redirect_url.set_username("");
+             let _ = redirect_url.set_password(None);
+-            headers.insert(AUTHORIZATION, credentials.to_header_value());
++            headers.insert(
++                AUTHORIZATION,
++                credentials
++                    .to_header_value()
++                    .map_err(reqwest_middleware::Error::middleware)?,
++            );
+         }
+     }
+ 
+diff --git a/crates/uv-publish/src/lib.rs b/crates/uv-publish/src/lib.rs
+index 0543855f563..7c8bd0c196c 100644
+--- a/crates/uv-publish/src/lib.rs
++++ b/crates/uv-publish/src/lib.rs
+@@ -9,7 +9,7 @@ use fs_err::tokio::File;
+ use futures::TryStreamExt;
+ use glob::{GlobError, PatternError, glob};
+ use itertools::Itertools;
+-use reqwest::header::{AUTHORIZATION, LOCATION, ToStrError};
++use reqwest::header::{AUTHORIZATION, InvalidHeaderValue, LOCATION, ToStrError};
+ use reqwest::multipart::Part;
+ use reqwest::{Body, Response, StatusCode};
+ use reqwest_retry::RetryError;
+@@ -109,6 +109,8 @@ pub enum PublishError {
+ pub enum PublishPrepareError {
+     #[error(transparent)]
+     Io(#[from] io::Error),
++    #[error("Invalid authorization header")]
++    InvalidHeaderValue(#[from] InvalidHeaderValue),
+     #[error("Failed to read metadata")]
+     Metadata(#[from] uv_metadata::Error),
+     #[error("Failed to read metadata")]
+@@ -682,7 +684,8 @@ pub async fn validate(
+             client,
+             credentials,
+             form_metadata,
+-        );
++        )
++        .map_err(|err| PublishError::PublishPrepare(file.to_path_buf(), err.into()))?;
+ 
+         let response = request.send().await.map_err(|err| {
+             PublishError::Validate(
+@@ -772,7 +775,8 @@ pub async fn upload_two_phase(
+         client,
+         credentials,
+         form_metadata,
+-    );
++    )
++    .map_err(|err| PublishError::PublishPrepare(group.file.clone(), err.into()))?;
+ 
+     let response = reserve_request.send().await.map_err(|err| {
+         PublishError::Reserve(
+@@ -931,7 +935,8 @@ pub async fn upload_two_phase(
+         client,
+         credentials,
+         form_metadata,
+-    );
++    )
++    .map_err(|err| PublishError::PublishPrepare(group.file.clone(), err.into()))?;
+ 
+     let response = finalize_request.send().await.map_err(|err| {
+         PublishError::Finalize(
+@@ -1444,12 +1449,12 @@ async fn build_upload_request<'a>(
+         Credentials::Basic { password, .. } => {
+             if password.is_some() {
+                 debug!("Using HTTP Basic authentication");
+-                request = request.header(AUTHORIZATION, credentials.to_header_value());
++                request = request.header(AUTHORIZATION, credentials.to_header_value()?);
+             }
+         }
+         Credentials::Bearer { .. } => {
+             debug!("Using Bearer token authentication");
+-            request = request.header(AUTHORIZATION, credentials.to_header_value());
++            request = request.header(AUTHORIZATION, credentials.to_header_value()?);
+         }
+     }
+ 
+@@ -1463,7 +1468,7 @@ fn build_metadata_request<'a>(
+     client: &'a BaseClient,
+     credentials: &Credentials,
+     form_metadata: &FormMetadata,
+-) -> RequestBuilder<'a> {
++) -> Result<RequestBuilder<'a>, PublishPrepareError> {
+     let mut form = reqwest::multipart::Form::new();
+     for (key, value) in form_metadata.iter() {
+         form = form.text(*key, value.clone());
+@@ -1499,16 +1504,16 @@ fn build_metadata_request<'a>(
+         Credentials::Basic { password, .. } => {
+             if password.is_some() {
+                 debug!("Using HTTP Basic authentication");
+-                request = request.header(AUTHORIZATION, credentials.to_header_value());
++                request = request.header(AUTHORIZATION, credentials.to_header_value()?);
+             }
+         }
+         Credentials::Bearer { .. } => {
+             debug!("Using Bearer token authentication");
+-            request = request.header(AUTHORIZATION, credentials.to_header_value());
++            request = request.header(AUTHORIZATION, credentials.to_header_value()?);
+         }
+     }
+ 
+-    request
++    Ok(request)
+ }
+ 
+ /// Log response information and map response to an error variant if not successful.
+diff --git a/crates/uv/src/commands/auth/helper.rs b/crates/uv/src/commands/auth/helper.rs
+index 2357029dade..d5cdc51570c 100644
+--- a/crates/uv/src/commands/auth/helper.rs
++++ b/crates/uv/src/commands/auth/helper.rs
+@@ -47,6 +47,7 @@ impl TryFrom<Credentials> for BazelCredentialResponse {
+     fn try_from(creds: Credentials) -> Result<Self> {
+         let header_str = creds
+             .to_header_value()
++            .context("Invalid authorization header")?
+             .to_str()
+             // TODO: this is infallible in practice
+             .context("Failed to convert header value to string")?
+diff --git a/crates/uv/src/commands/auth/logout.rs b/crates/uv/src/commands/auth/logout.rs
+index ac6c70791b5..cef3ff08dd2 100644
+--- a/crates/uv/src/commands/auth/logout.rs
++++ b/crates/uv/src/commands/auth/logout.rs
+@@ -120,7 +120,7 @@ async fn pyx_logout(
+ 
+     // Build a basic request first, then authenticate it
+     let request = reqwest::Request::new(reqwest::Method::GET, url.into());
+-    let request = Credentials::from(tokens).authenticate(request);
++    let request = Credentials::from(tokens).authenticate(request)?;
+ 
+     // Hit the logout endpoint using the client's execute method
+     let response = client.execute(request).await?;
+diff --git a/crates/uv/tests/it/auth.rs b/crates/uv/tests/it/auth.rs
+index 089b4a8f140..3199145ba57 100644
+--- a/crates/uv/tests/it/auth.rs
++++ b/crates/uv/tests/it/auth.rs
+@@ -1779,6 +1779,30 @@ fn bazel_helper_token() {
+     );
+ }
+ 
++#[test]
++fn bazel_helper_invalid_bearer_token() {
++    let context = uv_test::test_context_with_versions!(&[]);
++
++    allow_duplicates! {
++        for env_var in [EnvVars::PYX_AUTH_TOKEN, EnvVars::UV_AUTH_TOKEN] {
++            uv_snapshot!(context.filters(), context.auth_helper()
++                .arg("--protocol=bazel")
++                .arg("get")
++                .arg("--offline")
++                .env(EnvVars::UV_PREVIEW_FEATURES, "auth-helper")
++                .env(env_var, "secret\nvalue"),
++                input=r#"{"uri":"https://api.pyx.dev"}"#,
++                @"
++            exit_code: 2 (failure)
++            ----- stderr -----
++            error: Invalid authorization header
++              Caused by: failed to parse header value
++            "
++            );
++        }
++    }
++}
++
+ /// Test credential helper with no credentials found
+ #[test]
+ fn bazel_helper_no_credentials() {

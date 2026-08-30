@@ -1,0 +1,227 @@
+{
+  "additions": 254,
+  "author": "butvinm",
+  "base_sha": "d9ad6aff67e47de43abb270d22de75dd950f1b48",
+  "body": "# Objective\r\n\r\nPressing the recent projects shortcut right after launching Zed opens the picker, which then dismisses itself a moment later. The terminal panel takes focus after the keystroke, and the picker cancels on blur.\r\n\r\n## Solution\r\n\r\nTwo paths focused the panel unconditionally at the end of async startup work: the tail of `TerminalPanel::restore_serialized_state`, and `RevealStrategy::Always` in `add_terminal_shell` (which `finish_restoration` uses to spawn the default shell). Both now check `has_active_modal`, as `add_center_terminal` already did. For the shell path the check is at reveal time, because the spawn is itself async.\r\n\r\n## Testing\r\n\r\nThree tests in `terminal_panel.rs`. Two of them fail with the source change reverted. Manually tested on Linux.\r\n\r\n## Before:\r\n\r\n\r\nhttps://github.com/user-attachments/assets/66ab9860-b381-46da-8f85-f7a58c5157e6\r\n\r\n\r\n## After:\r\n\r\n\r\nhttps://github.com/user-attachments/assets/57583fe2-3c8a-40e0-9130-bbb612c1e158\r\n\r\n\r\nRelease Notes:\r\n\r\n- Fixed the terminal panel dismissing an open modal when terminals finish restoring during startup\r\n",
+  "captured_at": "2026-08-30T01:09:54+00:00",
+  "case_id": "zed-pr-63097",
+  "changed_files": 1,
+  "checks": [
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "danger",
+      "status": "COMPLETED",
+      "workflowName": "danger"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "orchestrate",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_nix_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "nix_build"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_style",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "build_static_bwrap_linux_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "clippy_mac_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_aarch64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_windows",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "bundle_windows_x86_64",
+      "status": "COMPLETED",
+      "workflowName": "run_bundling"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_linux",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "run_tests_mac",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "miri_scheduler",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "doctests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_workspace_binaries",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "build_visual_tests_binary",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_wasm",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_dependencies",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_docs",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_licenses",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "check_scripts",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "check_postgres_and_protobuf_migrations",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SKIPPED",
+      "name": "extension_tests",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "conclusion": "SUCCESS",
+      "name": "tests_pass",
+      "status": "COMPLETED",
+      "workflowName": "run_tests"
+    },
+    {
+      "state": "SUCCESS"
+    },
+    {
+      "state": "SUCCESS"
+    }
+  ],
+  "comparison_base_sha": "fd82517a115d97a07835b52f0512b22b38e38ccf",
+  "deletions": 13,
+  "files": [
+    {
+      "additions": 254,
+      "changeType": "MODIFIED",
+      "deletions": 13,
+      "path": "crates/terminal_view/src/terminal_panel.rs"
+    }
+  ],
+  "head_sha": "17f3aa269daeb704fac84f2a6b185f7d455541ba",
+  "issues": [],
+  "patch_sha256": "84ea85810a3b40f39f683873978e6b97811bd5e601986848b8465b0af9b8fb9b",
+  "pr_number": 63097,
+  "repo": "zed-industries/zed",
+  "schema_version": 1,
+  "title": "terminal_view: Don't steal focus from an open modal when terminals appear",
+  "url": "https://github.com/zed-industries/zed/pull/63097"
+}

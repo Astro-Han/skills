@@ -1,0 +1,119 @@
+{
+  "additions": 210,
+  "author": "Astro-Han",
+  "base_sha": "4b202615f1b2aec5018dfa52cdc4650c4a9ec8e9",
+  "body": "## Summary\n\nA failed turn's banner made three promises it could not keep.\n\n**It named an action that does not exist.** The banner joins `describeTurnErrorClass()` and `deriveFailedTurnRecovery()` with a CSS `::before` dot, so a rate limit rendered as \u300c\u89e6\u53d1\u6a21\u578b\u901f\u7387\u9650\u5236 \u00b7 \u5df2\u4fdd\u7559\u90e8\u5206\u8f93\u51fa\uff0c\u53ef\u4ece\u8fd9\u91cc\u7ee7\u7eed\u300d. There is no \"here\" to continue from \u2014 `partialOutputRetained` only records that the turn produced assistant text or a tool result, and the one real resume path is `app_restarted`'s safe resume, gated on `latestInterruptedResumeTurnId`. `FailedTurnRecoveryAction`'s four values were never read by any renderer, only `label` was, so the recovery layer existed solely to phrase guidance no surface could honor. It is deleted. Each `turnError` string now says what happened and what to do in one sentence, and what it asks for \u2014 send another message \u2014 always works.\n\n**It painted its own error surface.** `Marker variant=\"failed-banner\"` plus hand-rolled `oklch(from var(--destructive) \u2026)` borders reimplemented Astryx's `Banner`, which this same file already uses for the provider retry indicator and which the app uses in ~50 other places. Reason \u2192 `title`, park diagnostic \u2192 `description`, safe resume \u2192 `endContent`. Three `MarkerVariant`s, the bespoke `AlertOctagon`, and the shell CSS go with it. Severity follows the app's existing `tone === 'destructive' ? 'error' : 'warning'` grading, so \"restarted, press continue\" stops looking as severe as blocked billing.\n\n**It rendered above the work it described.** The banner sat at the head of `maka-assistant-answer-content`, before `segment.items.map()` \u2014 an outcome reading as a header on reasoning and tool calls that had all succeeded. It now follows the timeline it concludes.\n\nSafe resume is kept: it is the only recovery with a real backend, replaying an interrupted turn's own context instead of asking the user to restate it. Its button and the strings around it move from \u300c\u5b89\u5168\u6062\u590d\u300d to \u300c\u7ee7\u7eed\u8fd9\u4e00\u8f6e\u300d so the control, its pending state, its park description, and its toasts stop describing one act four ways.\n\nNet \u2212122 lines.\n\n## Verification\n\n- `npm --workspace @maka/ui run build` \u2014 pass\n- `npm --workspace @maka/desktop run typecheck` (preload + main + renderer + storybook) \u2014 pass\n- `npm run format:check` \u2014 clean\n- `node --test` on the three affected files (`session-status-presentation`, `session-error-presentation`, `chat-turn-steering-order`) \u2014 7/7 pass\n- Not run: the full repository suite, left to CI.\n\nRendered through the real `TurnView` + Astryx CSS. Banner now follows the answer; app-restart is `warning` with the resume button, rate limit and auth are `error` with copy only:\n\n![image](https://github.com/user-attachments/assets/9a971846-313b-4645-980a-5004ffddc77f)\n\n![image](https://github.com/user-attachments/assets/80f37020-2aac-415f-bd7c-f4ea328ff992)\n\n## Review focus\n\nThe copy is the substance of this change \u2014 every `turnError` string in both locales was rewritten. Worth reading as user-facing text rather than as a diff.\n\n## AI use\n\nSelect exactly one:\n\n- [ ] No generative tool made a substantive contribution\n- [x] Generative tooling made a substantive contribution\n\nTool(s) and scope: Claude Code (Opus 5) \u2014 traced the three defects to their sources, wrote the change, and rewrote the copy under review by the contributor of record, who chose the approach at each branch (drop the unbacked recovery layer rather than build buttons for it; keep safe resume; grade severity in two tiers).\n\n## Checklist\n\n- [x] Tests cover the change and fail without it\n- [x] Lint, format, typecheck and the affected suites pass locally\n\nDoes this PR entail a change in behavior?\n\n- [x] Yes \u2014 described under Summary above\n- [ ] No\n",
+  "captured_at": "2026-08-30T01:09:29+00:00",
+  "case_id": "apache-maka-pr-4073",
+  "changed_files": 15,
+  "checks": [
+    {
+      "conclusion": "SUCCESS",
+      "name": "test",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "comparison_base_sha": "4b202615f1b2aec5018dfa52cdc4650c4a9ec8e9",
+  "deletions": 217,
+  "files": [
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": "apps/desktop/src/main/__tests__/session-error-presentation.test.ts"
+    },
+    {
+      "additions": 54,
+      "changeType": "MODIFIED",
+      "deletions": 67,
+      "path": "apps/desktop/src/main/__tests__/session-status-presentation.test.ts"
+    },
+    {
+      "additions": 20,
+      "changeType": "MODIFIED",
+      "deletions": 8,
+      "path": "apps/desktop/src/renderer/app-shell-turn-view-model.ts"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "apps/desktop/src/renderer/features/workbar/tools/side-chat/quote-companion-panel.tsx"
+    },
+    {
+      "additions": 3,
+      "changeType": "MODIFIED",
+      "deletions": 3,
+      "path": "apps/desktop/src/renderer/locales/conversation-copy.ts"
+    },
+    {
+      "additions": 6,
+      "changeType": "MODIFIED",
+      "deletions": 6,
+      "path": "apps/desktop/src/renderer/locales/shell-copy.ts"
+    },
+    {
+      "additions": 40,
+      "changeType": "MODIFIED",
+      "deletions": 48,
+      "path": "apps/desktop/src/renderer/session-status-presentation.ts"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "apps/desktop/src/renderer/styles/chat-detail.css"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 0,
+      "path": "packages/ui/src/__tests__/chat-turn-steering-order.test.ts"
+    },
+    {
+      "additions": 53,
+      "changeType": "MODIFIED",
+      "deletions": 32,
+      "path": "packages/ui/src/chat-turn.tsx"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 1,
+      "path": "packages/ui/src/chat-view.tsx"
+    },
+    {
+      "additions": 2,
+      "changeType": "MODIFIED",
+      "deletions": 2,
+      "path": "packages/ui/src/conversation-copy.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 10,
+      "path": "packages/ui/src/primitives/chat.tsx"
+    },
+    {
+      "additions": 5,
+      "changeType": "MODIFIED",
+      "deletions": 5,
+      "path": "packages/ui/src/runtime-resume-copy.ts"
+    },
+    {
+      "additions": 4,
+      "changeType": "MODIFIED",
+      "deletions": 19,
+      "path": "packages/ui/src/styles.css"
+    }
+  ],
+  "head_sha": "c8e78ded56391423889b4a502486892260dfdda5",
+  "issues": [],
+  "patch_sha256": "2c53317e767bc93ba4973fb25c4010a48738eeddaaf05db96390cb5ec3cc3620",
+  "pr_number": 4073,
+  "repo": "apache/maka",
+  "schema_version": 1,
+  "title": "fix(desktop): state a failed turn's outcome where it happened",
+  "url": "https://github.com/apache/maka/pull/4073"
+}
