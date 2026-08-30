@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "policy_digest": "b01c223094a12da9bc528887c248c4efb6678c0925e54e960e5211a0f45acc92",
+  "candidates_digest": "df267de3271ff86335b3e0b8e566831bf291f78f653a24b7670d2c631e8a0622",
+  "curation": {
+    "reviewer_a_report_digest": "1e4eb8eeee83efad4e9b9b9b4e2d7a763c2c4ed248aea1c9e33e9956ba99347e",
+    "reviewer_b_report_digest": "eec2ef2152e52bffe79c2e0f3369bc51aa657725fc1f33dda26fcca63ce119c6",
+    "reviewer_a_eligible": 36,
+    "reviewer_b_eligible": 42,
+    "both_eligible": 35,
+    "both_ineligible": 17,
+    "disagreements": 8,
+    "final_hard_blockers": 0
+  },
+  "cases": [
+    "apache/maka#3936",
+    "apache/maka#3958",
+    "apache/maka#4073",
+    "apache/maka#4229",
+    "astral-sh/uv#21137",
+    "astral-sh/uv#21144",
+    "astral-sh/uv#21282",
+    "go-gitea/gitea#38991",
+    "go-gitea/gitea#39005",
+    "go-gitea/gitea#39026",
+    "django/django#21690",
+    "django/django#21750",
+    "django/django#21784",
+    "tailscale/tailscale#20673",
+    "tailscale/tailscale#20841",
+    "tailscale/tailscale#20848",
+    "neovim/neovim#41328",
+    "neovim/neovim#41342",
+    "grafana/grafana#131692",
+    "grafana/grafana#131799",
+    "zed-industries/zed#62844",
+    "zed-industries/zed#63097",
+    "pydantic/pydantic#13495",
+    "pydantic/pydantic#13604"
+  ]
+}

@@ -256,6 +256,35 @@ def capture_diverse_selection(pool_paths, policy_path: Path, output: Path):
     write_json(output, selection)
 
 
+def verify_diverse_selection(candidates_path: Path, policy_path: Path, selection_path: Path):
+    selection = read_json(selection_path)
+    if selection["policy_digest"] != digest(policy_path):
+        raise ValueError("diverse selection policy digest mismatch")
+    if selection["candidates_digest"] != digest(candidates_path):
+        raise ValueError("diverse candidate digest mismatch")
+    selected_ids = selection["cases"]
+    if len(selected_ids) != len(set(selected_ids)):
+        raise ValueError("diverse selection contains duplicate cases")
+    candidates = read_json(candidates_path)
+    candidate_ids = {f"{case['repo']}#{case['number']}" for case in candidates["cases"]}
+    unknown = set(selected_ids) - candidate_ids
+    if unknown:
+        raise ValueError(f"diverse selection contains unknown cases: {sorted(unknown)}")
+    actual_counts = {}
+    for case_id in selected_ids:
+        repo, _ = case_id.rsplit("#", 1)
+        actual_counts[repo] = actual_counts.get(repo, 0) + 1
+    policy = read_json(policy_path)
+    expected_counts = {
+        item["repo"]: int(item["final_case_count"]) for item in policy["repositories"]
+    }
+    if actual_counts != expected_counts:
+        raise ValueError(
+            f"diverse selection repo quotas differ: expected {expected_counts}, got {actual_counts}"
+        )
+    return len(selected_ids)
+
+
 def github_json(args):
     return json.loads(run(["gh", *args]))
 
@@ -592,6 +621,10 @@ def build_parser():
     diverse.add_argument("--pool", type=Path, action="append", required=True)
     diverse.add_argument("--policy", type=Path, required=True)
     diverse.add_argument("--output", type=Path, required=True)
+    diverse_verify = sub.add_parser("verify-diverse-selection")
+    diverse_verify.add_argument("--candidates", type=Path, required=True)
+    diverse_verify.add_argument("--policy", type=Path, required=True)
+    diverse_verify.add_argument("--selection", type=Path, required=True)
     capture = sub.add_parser("capture")
     capture.add_argument("--repo", required=True)
     capture.add_argument("--number", type=int, required=True)
@@ -618,6 +651,11 @@ def main():
         capture_selected(args.pool, args.policy, args.output)
     elif args.command == "select-diverse":
         capture_diverse_selection(args.pool, args.policy, args.output)
+    elif args.command == "verify-diverse-selection":
+        print(
+            f"verified {verify_diverse_selection(args.candidates, args.policy, args.selection)} "
+            "diverse PR cases"
+        )
     elif args.command == "capture":
         capture_case(args.repo, args.number, args.case_id, args.output_root)
     elif args.command == "verify":

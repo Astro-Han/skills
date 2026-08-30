@@ -64,3 +64,24 @@ code evidence, and calibrated severity. Store private answer keys outside execut
 
 Cases opened to change the Skill become development cases and must be replaced by untouched
 holdouts. Repeated executions measure model variance; they never replace independent PRs.
+
+## Frozen selection
+
+Two independent reviewers assessed all 60 candidates before any new A/B execution. They agreed on
+35 eligible and 17 ineligible cases and disagreed on eight. Reconciliation retained 24 cases at the
+predeclared repository quotas; both reviewers then reported no hard obstacle to building reliable
+gold for the final list. [`selection.json`](selection.json) records the selected IDs, input digests,
+review-report digests, and agreement counts without exposing findings.
+
+Verify its input identities, membership, uniqueness, and repository quotas before capture:
+
+```bash
+python3 evals/pr-review/real_fixture.py verify-diverse-selection \
+  --candidates evals/pr-review/diverse/candidates.json \
+  --policy evals/pr-review/diverse/selection-policy.json \
+  --selection evals/pr-review/diverse/selection.json
+```
+
+The selection is not yet runnable evaluation evidence. The next gate is two independent private
+answer keys for all 24 cases, followed by reconciliation and immutable case capture. Do not inspect
+model outputs or change the Skill while preparing those keys.

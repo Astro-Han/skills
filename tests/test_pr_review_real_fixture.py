@@ -159,6 +159,43 @@ class RealFixtureTests(unittest.TestCase):
             )
             self.assertEqual(result["policy_digest"], fixture.digest(policy))
 
+    def test_diverse_selection_verifier_accepts_exact_repo_quotas(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            policy = root / "policy.json"
+            candidates = root / "candidates.json"
+            fixture.write_json(
+                policy,
+                {
+                    "repositories": [
+                        {"repo": "a/one", "final_case_count": 1},
+                        {"repo": "b/two", "final_case_count": 1},
+                    ]
+                },
+            )
+            fixture.write_json(
+                candidates,
+                {
+                    "cases": [
+                        {"repo": "a/one", "number": 1},
+                        {"repo": "b/two", "number": 2},
+                    ]
+                },
+            )
+            selection = root / "selection.json"
+            fixture.write_json(
+                selection,
+                {
+                    "policy_digest": fixture.digest(policy),
+                    "candidates_digest": fixture.digest(candidates),
+                    "cases": ["a/one#1", "b/two#2"],
+                },
+            )
+
+            self.assertEqual(
+                fixture.verify_diverse_selection(candidates, policy, selection), 2
+            )
+
     def test_capture_patch_routes_through_gh(self):
         with mock.patch.object(fixture, "run", return_value="patch") as call:
             self.assertEqual(fixture.capture_patch("o/r", 42), "patch")
