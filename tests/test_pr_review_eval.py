@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import re
 import subprocess
 import sys
@@ -35,6 +36,34 @@ class PrReviewEvalTests(unittest.TestCase):
         self.assertEqual(len(runs), 96)
         self.assertEqual(len(runs) // 2, 48)
         self.assertEqual(len({run["eval"] for run in runs}), 12)
+
+    def test_evidence_reconciliation_diagnostic_is_16_pairs(self):
+        runs = runner.suite_runs(
+            "codex", reps=2, suite="pr-review-evidence-reconciliation"
+        )
+        self.assertEqual(len(runs), 32)
+        self.assertEqual(len(runs) // 2, 16)
+        self.assertEqual(
+            {run["arm"] for run in runs},
+            {"baseline_skill", "candidate_skill"},
+        )
+        self.assertEqual(len({run["eval"] for run in runs}), 8)
+
+    def test_evidence_reconciliation_selection_balances_roles(self):
+        selection = json.loads(
+            (
+                ROOT
+                / "evals/pr-review/evidence-reconciliation/selection.json"
+            ).read_text()
+        )
+        roles = selection["roles"]
+        self.assertEqual(len(roles["positive"]), 4)
+        self.assertEqual(len(roles["clean_or_intentional_tradeoff_control"]), 4)
+        self.assertEqual(
+            set(selection["cases"]),
+            set(roles["positive"])
+            | set(roles["clean_or_intentional_tradeoff_control"]),
+        )
 
     def test_reachability_regression_compares_frozen_and_shipped_skills(self):
         runs = runner.suite_runs("codex", reps=4, suite="pr-review-reachability")

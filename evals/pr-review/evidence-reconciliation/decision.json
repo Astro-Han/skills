@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "decision": "Advance the candidate to a fresh real-PR holdout only if it makes contradictory production evidence authoritative in the final verdict without weakening calibration or increasing review work materially.",
+  "baseline": {
+    "commit": "e28f7da5a9503ec0a93c4db86108d6e8f222fd7d",
+    "skill_path": "skills/pr-review/SKILL.md",
+    "sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2"
+  },
+  "candidate_sha256": "885408a38612a4eeb8a38224c7b3718117c1d445928aa8d114bafe6591a52a07",
+  "candidate_change": "Replace the existing evidence gate in Report only real findings with one evidence-reconciliation sentence. Do not add search branches, a ledger, another reviewer pass, or another state.",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "sample": {
+    "development_cases": 8,
+    "positive_cases": 4,
+    "clean_or_intentional_tradeoff_controls": 4,
+    "paired_repetitions_per_case": 2,
+    "model_runs": 32,
+    "fresh_holdout": false
+  },
+  "advance_only_if": {
+    "minimum_candidate_observed_to_resolved_rate": 0.8,
+    "minimum_observed_to_resolved_rate_gain": 0.25,
+    "minimum_candidate_only_required_finding_runs": 2,
+    "baseline_only_required_finding_runs": 0,
+    "unsupported_p1_p2_responses_must_not_increase": true,
+    "decision_ready_reviews_must_not_decrease": true,
+    "maximum_median_command_and_output_growth_percent": 20
+  },
+  "definitions": {
+    "observed_contradiction": "The transcript contains concrete production-path evidence that the changed behavior reaches a wrong result or state.",
+    "resolved_contradiction": "The final verdict reports the smallest justified finding or explicitly rules the evidence out as inapplicable, pre-existing, intentionally restored, or unreachable.",
+    "unsupported_p1_p2": "A P1 or P2 claim without a supported production entry and observable consequence, including an intentionally restored legacy limitation presented as a defect of the rollback."
+  },
+  "outcomes": {
+    "all_gates_pass": "advance_to_fresh_holdout",
+    "mechanism_gate_fails": "reject_wording_and_stop_prompt_iteration",
+    "calibration_or_cost_gate_fails": "reject_wording",
+    "too_few_observed_contradictions_to_score": "insufficient"
+  }
+}

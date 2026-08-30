@@ -40,6 +40,9 @@ DIVERSE_PR_CASES = ROOT / "pr-review" / "diverse" / "cases"
 DIVERSE_PR_SELECTION = ROOT / "pr-review" / "diverse" / "selection.json"
 RECALL_PR_CASES = ROOT / "pr-review" / "recall" / "cases"
 RECALL_PR_SELECTION = ROOT / "pr-review" / "recall" / "selection.json"
+EVIDENCE_RECONCILIATION_SELECTION = (
+    ROOT / "pr-review" / "evidence-reconciliation" / "selection.json"
+)
 
 # The arm under test is the shipped skill itself, read from skills/<name>/. A named arm is a
 # frozen historical baseline under evals/baselines/ — those exist to be compared against, and
@@ -207,8 +210,14 @@ PROVIDERS = {
 
 def suite_runs(provider_name, reps=3, suite=None):
     runs = []
-    real_suites = {"pr-review-real", "pr-review-diverse", "pr-review-recall"}
-    if suite in real_suites and reps != 1:
+    real_suites = {
+        "pr-review-real",
+        "pr-review-diverse",
+        "pr-review-recall",
+        "pr-review-evidence-reconciliation",
+    }
+    single_run_real_suites = {"pr-review-real", "pr-review-diverse", "pr-review-recall"}
+    if suite in single_run_real_suites and reps != 1:
         raise ValueError("the real PR holdout requires exactly one paired run per case")
     pr_review_suites = {
         "pr-review": PR_REVIEW_DESIGN_CASES,
@@ -221,6 +230,7 @@ def suite_runs(provider_name, reps=3, suite=None):
         "pr-review-real",
         "pr-review-diverse",
         "pr-review-recall",
+        "pr-review-evidence-reconciliation",
         "review-feedback-causal-design",
         "review-feedback-causal-holdout",
         "review-feedback-structural-compression",
@@ -295,6 +305,38 @@ def suite_runs(provider_name, reps=3, suite=None):
                                  "skill_arm": skill_arm,
                                  "skill_name": "pr-review",
                                  "installed_skill_name": "pr-review-eval"})
+            continue
+
+        if suite == "pr-review-evidence-reconciliation":
+            selected_ids = json.loads(
+                EVIDENCE_RECONCILIATION_SELECTION.read_text()
+            )["cases"]
+            indexed = {}
+            for manifest_path in RECALL_PR_CASES.glob("*/manifest.json"):
+                manifest = json.loads(manifest_path.read_text())
+                indexed[f"{manifest['repo']}#{manifest['pr_number']}"] = (
+                    manifest_path.parent,
+                    manifest,
+                )
+            for selected_id in selected_ids:
+                case_dir, manifest = indexed[selected_id]
+                arms = (
+                    ("baseline_skill", "git:" + PR_REVIEW_RECALL_BASELINE_REF),
+                    ("candidate_skill", SHIPPED),
+                )
+                for arm, skill_arm in arms:
+                    runs.append({
+                        "workspace": "pr-review-evidence-reconciliation-workspace",
+                        "eval": manifest["case_id"],
+                        "rep": rep,
+                        "arm": arm,
+                        "real_case": case_dir,
+                        "repo": manifest["repo"],
+                        "review_only": True,
+                        "skill_arm": skill_arm,
+                        "skill_name": "pr-review",
+                        "installed_skill_name": "pr-review-eval",
+                    })
             continue
 
         if suite in pr_review_suites:
@@ -569,6 +611,7 @@ def main():
                                             "pr-review-reachability", "pr-review-partial-facts",
                                             "pr-review-no-statuses", "pr-review-real",
                                             "pr-review-diverse", "pr-review-recall",
+                                            "pr-review-evidence-reconciliation",
                                             "review-feedback-causal-design",
                                             "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "cases": [
+    "pydantic/pydantic#13503",
+    "neovim/neovim#41398",
+    "grafana/grafana#127578",
+    "zed-industries/zed#61467",
+    "astral-sh/uv#20417",
+    "go-gitea/gitea#38251",
+    "grafana/grafana#127870",
+    "pydantic/pydantic#13536"
+  ],
+  "roles": {
+    "positive": [
+      "pydantic/pydantic#13503",
+      "neovim/neovim#41398",
+      "grafana/grafana#127578",
+      "zed-industries/zed#61467"
+    ],
+    "clean_or_intentional_tradeoff_control": [
+      "astral-sh/uv#20417",
+      "go-gitea/gitea#38251",
+      "grafana/grafana#127870",
+      "pydantic/pydantic#13536"
+    ]
+  }
+}

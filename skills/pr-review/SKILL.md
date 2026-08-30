@@ -40,7 +40,7 @@ Judge concepts, not lines; process tests can matter more than large fixture matr
 
 ## Report only real findings
 
-Before P0–P3, show a supported entry reaching an observable consequence through production checks. If a link is unproven or blocked, record an evidence gap or **No finding**.
+Before P0–P3 or no finding, reconcile all concrete production-path evidence with the verdict: show a supported entry reaching an observable consequence, or explain why contrary evidence is inapplicable, pre-existing, intentionally restored, or unreachable.
 
 Classify the path:
 
