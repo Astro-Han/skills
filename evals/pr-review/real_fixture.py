@@ -621,6 +621,19 @@ def verify_materialization(cases_root: Path, repo_cache: Path):
     return len(case_dirs)
 
 
+def verify_diverse_materialization(cases_root: Path, repo_cache_root: Path):
+    case_dirs = sorted(path.parent for path in cases_root.glob("*/manifest.json"))
+    if not case_dirs:
+        raise ValueError("no diverse PR cases found")
+    with tempfile.TemporaryDirectory(prefix="pr-review-diverse-fixtures-") as temp:
+        root = Path(temp)
+        for case_dir in case_dirs:
+            manifest = read_json(case_dir / "manifest.json")
+            repo_cache = repo_cache_root / manifest["repo"].replace("/", "--")
+            materialize(case_dir, repo_cache, root / case_dir.name)
+    return len(case_dirs)
+
+
 def build_parser():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -660,6 +673,9 @@ def build_parser():
     material_check = sub.add_parser("verify-materialization")
     material_check.add_argument("--cases-root", type=Path, required=True)
     material_check.add_argument("--repo-cache", type=Path, required=True)
+    diverse_material_check = sub.add_parser("verify-diverse-materialization")
+    diverse_material_check.add_argument("--cases-root", type=Path, required=True)
+    diverse_material_check.add_argument("--repo-cache-root", type=Path, required=True)
     return parser
 
 
@@ -691,6 +707,12 @@ def main():
     elif args.command == "verify-materialization":
         print(
             f"materialized {verify_materialization(args.cases_root, args.repo_cache)} real PR cases"
+        )
+    elif args.command == "verify-diverse-materialization":
+        print(
+            "materialized "
+            f"{verify_diverse_materialization(args.cases_root, args.repo_cache_root)} "
+            "diverse real PR cases"
         )
 
 

@@ -107,3 +107,12 @@ python3 evals/runner.py --provider codex --model gpt-5.6-luna \
 
 Remove `--dry-run` only after the gold gate is complete. The runner materializes each case from its
 own repository cache and keeps the same isolated Skill/no-Skill boundary as the first real-PR suite.
+
+Before any model call, verify that every frozen patch applies to its repository's historical
+production tree:
+
+```bash
+python3 evals/pr-review/real_fixture.py verify-diverse-materialization \
+  --cases-root evals/pr-review/diverse/cases \
+  --repo-cache-root /path/to/cache-root
+```

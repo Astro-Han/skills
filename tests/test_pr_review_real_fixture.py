@@ -231,6 +231,24 @@ class RealFixtureTests(unittest.TestCase):
 
             self.assertEqual(fixture.verify_diverse_cases(cases, selection), 1)
 
+    def test_diverse_materialization_routes_each_case_to_its_repo_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            cases = root / "cases"
+            for case_id, repo in (("one", "a/one"), ("two", "b/two")):
+                case = cases / case_id
+                case.mkdir(parents=True)
+                fixture.write_json(case / "manifest.json", {"repo": repo})
+            cache_root = root / "caches"
+            with mock.patch.object(fixture, "materialize") as materialize:
+                count = fixture.verify_diverse_materialization(cases, cache_root)
+
+        self.assertEqual(count, 2)
+        routed = {
+            (call.args[0].name, call.args[1].name) for call in materialize.call_args_list
+        }
+        self.assertEqual(routed, {("one", "a--one"), ("two", "b--two")})
+
     def test_capture_patch_routes_through_gh(self):
         with mock.patch.object(fixture, "run", return_value="patch") as call:
             self.assertEqual(fixture.capture_patch("o/r", 42), "patch")
