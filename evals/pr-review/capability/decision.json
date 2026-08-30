@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "decision": "Adopt the candidate only if it improves core review capability across diverse pull-request types without increasing Skill structure, false positives, severity inflation, or review cost materially.",
+  "baseline": {
+    "commit": "1095a1c3a7ce59c7b5a5b489d934b629a4b5f4a2",
+    "skill_path": "skills/pr-review/SKILL.md",
+    "sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "words": 743,
+    "sections": 6,
+    "references": 1,
+    "scripts": 0,
+    "review_authorities": 1
+  },
+  "candidate": {
+    "sha256": "ea57669f319b30609c321d01c1d4b82bb394c37d2ee64ea8bfe190624bff5e58",
+    "words": 743,
+    "sections": 6,
+    "references": 1,
+    "scripts": 0,
+    "review_authorities": 1,
+    "change": "Rewrite the existing problem, production-path, and simplification guidance around a falsifiable production contract, responsible owner, and shortest supported path that could prove the solution wrong. Add no section, reference, script, state, or reviewer pass."
+  },
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "sample": {
+    "unique_pull_requests": 32,
+    "positive_cases": 16,
+    "clean_or_intentional_tradeoff_controls": 16,
+    "runs_per_arm_per_case": 1,
+    "model_runs": 64,
+    "minimum_repositories": 10,
+    "minimum_languages_or_stacks": 5,
+    "change_types": [
+      "representation-transformation-serialization",
+      "ownership-composition-launch",
+      "lifecycle-concurrency-recovery",
+      "migration-compatibility-rollback",
+      "trust-boundary-validation-permissions",
+      "dependency-api-version-contract",
+      "ui-ux-user-interaction",
+      "local-fix-refactor-simplification"
+    ],
+    "cases_per_change_type": 4,
+    "candidate_frozen_before_case_implementation_review": true,
+    "exclude_all_prior_design_diagnosis_and_evaluation_cases": true
+  },
+  "gold": {
+    "completed_before_model_execution": true,
+    "independent_reviewers": 2,
+    "positive_requires_frozen_supported_entry_owner_observable_consequence_and_reachable_evidence": true,
+    "hindsight_only_findings_are_invalid": true,
+    "clean_controls_require_independent_full_review": true
+  },
+  "adopt_only_if": {
+    "candidate_only_minus_baseline_only_required_finding_cases_at_least": 4,
+    "candidate_only_required_findings_span_minimum_change_types": 4,
+    "candidate_only_required_findings_span_minimum_repositories": 4,
+    "baseline_only_p0_p1_required_finding_cases": 0,
+    "unsupported_p1_p2_responses_must_not_increase": true,
+    "severity_overgrading_must_not_increase": true,
+    "decision_ready_reviews_must_not_decrease": true,
+    "valid_removal_or_consolidation_recommendations_must_not_decrease": true,
+    "harmful_removal_or_consolidation_recommendations_must_not_increase": true,
+    "maximum_median_command_growth_percent": 20,
+    "maximum_median_token_growth_percent": 20,
+    "skill_words_sections_resources_scripts_states_and_authorities_must_not_increase": true
+  },
+  "outcomes": {
+    "all_gates_pass": "support_adoption",
+    "core_capability_improves_but_any_safety_cost_or_structure_gate_fails": "reject",
+    "mixed_wins_and_losses_or_improvement_concentrated_in_fewer_than_four_change_types": "insufficient",
+    "equal_or_lower_core_capability": "reject",
+    "fewer_than_sixteen_reachable_positive_cases": "insufficient"
+  }
+}
