@@ -38,6 +38,127 @@ def pr(number, *, state="MERGED", merged=True, files=1, additions=10, deletions=
 
 
 class RealFixtureTests(unittest.TestCase):
+    def test_capture_pool_respects_the_frozen_query_limit(self):
+        with tempfile.TemporaryDirectory() as temp:
+            output = Path(temp) / "pool.json"
+            with mock.patch.object(fixture, "run", return_value="[]") as call:
+                fixture.capture_pool(
+                    "o/r", "2026-05-30", "2026-08-29", output, limit=200
+                )
+
+        command = call.call_args.args[0]
+        self.assertEqual(command[command.index("--limit") + 1], "200")
+
+    def test_diverse_candidate_selection_is_deterministic_and_respects_repo_quotas(self):
+        pools = [
+            {
+                "schema_version": 1,
+                "repo": "a/one",
+                "pull_requests": [
+                    pr(1, title="fix: reachable bug", additions=30),
+                    pr(2, title="feat: useful path", additions=40),
+                    pr(3, title="chore(deps): bump library", additions=20),
+                    {**pr(4, title="fix: drafted", additions=20), "isDraft": True},
+                    pr(5, title="fix: replacement case", additions=35),
+                ],
+            },
+            {
+                "schema_version": 1,
+                "repo": "b/two",
+                "pull_requests": [
+                    pr(10, title="fix: state transition", additions=50),
+                    pr(11, title="refactor: one owner", additions=60),
+                    pr(12, title="fix: enormous", additions=600),
+                ],
+            },
+        ]
+        policy = {
+            "schema_version": 1,
+            "seed": "diverse-fixed",
+            "eligibility": {
+                "minimum_churn": 20,
+                "maximum_churn": 500,
+                "maximum_changed_files": 20,
+                "excluded_title_patterns": ["^chore\\(deps\\):"],
+            },
+            "repositories": [
+                {
+                    "repo": "a/one",
+                    "candidate_count": 2,
+                    "final_case_count": 1,
+                    "exclude_numbers": [2],
+                },
+                {"repo": "b/two", "candidate_count": 2, "final_case_count": 1},
+            ],
+        }
+
+        first = fixture.select_diverse_candidates(pools, policy)
+        second = fixture.select_diverse_candidates(pools, policy)
+
+        self.assertEqual(first, second)
+        self.assertEqual(first["candidate_count"], 4)
+        self.assertEqual(first["planned_final_case_count"], 2)
+        selected = {(case["repo"], case["number"]) for case in first["cases"]}
+        self.assertEqual(selected, {("a/one", 1), ("a/one", 5), ("b/two", 10), ("b/two", 11)})
+
+    def test_select_diverse_cli_records_each_frozen_pool_digest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            pools = []
+            repositories = []
+            for repo, number in (("a/one", 1), ("b/two", 2)):
+                path = root / f"{repo.replace('/', '--')}.json"
+                fixture.write_json(
+                    path,
+                    {
+                        "schema_version": 1,
+                        "repo": repo,
+                        "pull_requests": [pr(number, additions=30)],
+                    },
+                )
+                pools.append(path)
+                repositories.append(
+                    {"repo": repo, "candidate_count": 1, "final_case_count": 1}
+                )
+            policy = root / "policy.json"
+            fixture.write_json(
+                policy,
+                {
+                    "schema_version": 1,
+                    "seed": "fixed",
+                    "eligibility": {
+                        "minimum_churn": 20,
+                        "maximum_churn": 500,
+                        "maximum_changed_files": 20,
+                        "excluded_title_patterns": [],
+                    },
+                    "repositories": repositories,
+                },
+            )
+            output = root / "selection.json"
+
+            subprocess.run(
+                [
+                    "python",
+                    str(ROOT / "evals/pr-review/real_fixture.py"),
+                    "select-diverse",
+                    *sum((["--pool", str(path)] for path in pools), []),
+                    "--policy",
+                    str(policy),
+                    "--output",
+                    str(output),
+                ],
+                check=True,
+            )
+
+            result = fixture.read_json(output)
+            self.assertEqual(result["candidate_count"], 2)
+            self.assertEqual(
+                result["pool_digests"],
+                {path.name: fixture.digest(path) for path in pools},
+            )
+            self.assertEqual(result["policy_digest"], fixture.digest(policy))
+
     def test_capture_patch_routes_through_gh(self):
         with mock.patch.object(fixture, "run", return_value="patch") as call:
             self.assertEqual(fixture.capture_patch("o/r", 42), "patch")

@@ -1,0 +1,560 @@
+{
+  "candidate_count": 60,
+  "cases": [
+    {
+      "additions": 51,
+      "changed_files": 10,
+      "deletions": 11,
+      "number": 3948,
+      "repo": "apache/maka",
+      "title": "ci: hold every pull request lane to one 45-minute limit",
+      "url": "https://github.com/apache/maka/pull/3948"
+    },
+    {
+      "additions": 79,
+      "changed_files": 4,
+      "deletions": 6,
+      "number": 4120,
+      "repo": "apache/maka",
+      "title": "feat(inspector): collapse loaded history",
+      "url": "https://github.com/apache/maka/pull/4120"
+    },
+    {
+      "additions": 210,
+      "changed_files": 15,
+      "deletions": 217,
+      "number": 4073,
+      "repo": "apache/maka",
+      "title": "fix(desktop): state a failed turn's outcome where it happened",
+      "url": "https://github.com/apache/maka/pull/4073"
+    },
+    {
+      "additions": 29,
+      "changed_files": 4,
+      "deletions": 4,
+      "number": 4229,
+      "repo": "apache/maka",
+      "title": "fix(desktop): enable relay discovery for Peer Mesh",
+      "url": "https://github.com/apache/maka/pull/4229"
+    },
+    {
+      "additions": 304,
+      "changed_files": 4,
+      "deletions": 8,
+      "number": 3958,
+      "repo": "apache/maka",
+      "title": "fix(runtime): avoid OpenAI tool_search name collision",
+      "url": "https://github.com/apache/maka/pull/3958"
+    },
+    {
+      "additions": 61,
+      "changed_files": 10,
+      "deletions": 219,
+      "number": 4086,
+      "repo": "apache/maka",
+      "title": "feat(desktop): drop the rail-footer build stamp",
+      "url": "https://github.com/apache/maka/pull/4086"
+    },
+    {
+      "additions": 93,
+      "changed_files": 14,
+      "deletions": 373,
+      "number": 3936,
+      "repo": "apache/maka",
+      "title": "refactor(runtime-host): remove the uncalled execution.inspect.resolve operation",
+      "url": "https://github.com/apache/maka/pull/3936"
+    },
+    {
+      "additions": 62,
+      "changed_files": 1,
+      "deletions": 0,
+      "number": 3987,
+      "repo": "apache/maka",
+      "title": "test(runtime-host): cover canonical WebSocket paths",
+      "url": "https://github.com/apache/maka/pull/3987"
+    },
+    {
+      "additions": 12,
+      "changed_files": 1,
+      "deletions": 29,
+      "number": 21180,
+      "repo": "astral-sh/uv",
+      "title": "Reuse package-name lookups for root dependencies",
+      "url": "https://github.com/astral-sh/uv/pull/21180"
+    },
+    {
+      "additions": 94,
+      "changed_files": 2,
+      "deletions": 6,
+      "number": 21144,
+      "repo": "astral-sh/uv",
+      "title": "Do not treat a URL ending in `.py` as a script path",
+      "url": "https://github.com/astral-sh/uv/pull/21144"
+    },
+    {
+      "additions": 68,
+      "changed_files": 6,
+      "deletions": 36,
+      "number": 21282,
+      "repo": "astral-sh/uv",
+      "title": "Return errors for invalid bearer authorization headers",
+      "url": "https://github.com/astral-sh/uv/pull/21282"
+    },
+    {
+      "additions": 52,
+      "changed_files": 2,
+      "deletions": 2,
+      "number": 21137,
+      "repo": "astral-sh/uv",
+      "title": "Consistently use creation time for directory `cache-keys` entries regardless of libc",
+      "url": "https://github.com/astral-sh/uv/pull/21137"
+    },
+    {
+      "additions": 27,
+      "changed_files": 3,
+      "deletions": 19,
+      "number": 21158,
+      "repo": "astral-sh/uv",
+      "title": "Fix riscv64 musl TLS segfaults by updating aws-lc-rs",
+      "url": "https://github.com/astral-sh/uv/pull/21158"
+    },
+    {
+      "additions": 16,
+      "changed_files": 2,
+      "deletions": 11,
+      "number": 21355,
+      "repo": "astral-sh/uv",
+      "title": "ci: devolve check-lock into a script",
+      "url": "https://github.com/astral-sh/uv/pull/21355"
+    },
+    {
+      "additions": 31,
+      "changed_files": 6,
+      "deletions": 10,
+      "number": 21204,
+      "repo": "astral-sh/uv",
+      "title": "Remove more uvx usages, add typos to check group",
+      "url": "https://github.com/astral-sh/uv/pull/21204"
+    },
+    {
+      "additions": 145,
+      "changed_files": 11,
+      "deletions": 88,
+      "number": 39011,
+      "repo": "go-gitea/gitea",
+      "title": "fix: make local queue PopItem can be notified",
+      "url": "https://github.com/go-gitea/gitea/pull/39011"
+    },
+    {
+      "additions": 58,
+      "changed_files": 3,
+      "deletions": 3,
+      "number": 39014,
+      "repo": "go-gitea/gitea",
+      "title": "fix(api): enforce repository creation token authorization (#39007)",
+      "url": "https://github.com/go-gitea/gitea/pull/39014"
+    },
+    {
+      "additions": 46,
+      "changed_files": 4,
+      "deletions": 0,
+      "number": 38991,
+      "repo": "go-gitea/gitea",
+      "title": "enhance(ui): forced colors mode enhancements",
+      "url": "https://github.com/go-gitea/gitea/pull/38991"
+    },
+    {
+      "additions": 85,
+      "changed_files": 7,
+      "deletions": 3,
+      "number": 39005,
+      "repo": "go-gitea/gitea",
+      "title": "fix(actions): enforce fork pull request trust boundaries",
+      "url": "https://github.com/go-gitea/gitea/pull/39005"
+    },
+    {
+      "additions": 22,
+      "changed_files": 2,
+      "deletions": 3,
+      "number": 39026,
+      "repo": "go-gitea/gitea",
+      "title": "fix(packages): bound Alpine metadata entries",
+      "url": "https://github.com/go-gitea/gitea/pull/39026"
+    },
+    {
+      "additions": 42,
+      "changed_files": 2,
+      "deletions": 4,
+      "number": 39016,
+      "repo": "go-gitea/gitea",
+      "title": "fix(git): restrict hook permissions (#39008)",
+      "url": "https://github.com/go-gitea/gitea/pull/39016"
+    },
+    {
+      "additions": 27,
+      "changed_files": 2,
+      "deletions": 0,
+      "number": 39032,
+      "repo": "go-gitea/gitea",
+      "title": "fix(packages): limit Swift package manifests (#39025)",
+      "url": "https://github.com/go-gitea/gitea/pull/39032"
+    },
+    {
+      "additions": 0,
+      "changed_files": 6,
+      "deletions": 20,
+      "number": 21807,
+      "repo": "django/django",
+      "title": "Removed more versionadded/versionchanged directives for 6.1.",
+      "url": "https://github.com/django/django/pull/21807"
+    },
+    {
+      "additions": 88,
+      "changed_files": 4,
+      "deletions": 1,
+      "number": 21750,
+      "repo": "django/django",
+      "title": "Fixed #37260 -- Avoided DDL when altering only Python-level on_delete options.",
+      "url": "https://github.com/django/django/pull/21750"
+    },
+    {
+      "additions": 75,
+      "changed_files": 4,
+      "deletions": 14,
+      "number": 21784,
+      "repo": "django/django",
+      "title": "Fixed #37278 -- Made QuerySet.totally_ordered understand aliases to pure Col/ColPairs.",
+      "url": "https://github.com/django/django/pull/21784"
+    },
+    {
+      "additions": 35,
+      "changed_files": 13,
+      "deletions": 33,
+      "number": 21696,
+      "repo": "django/django",
+      "title": "Refs #28586 -- Renamed RAISE fetch mode to FETCH_RAISE.",
+      "url": "https://github.com/django/django/pull/21696"
+    },
+    {
+      "additions": 64,
+      "changed_files": 2,
+      "deletions": 1,
+      "number": 21690,
+      "repo": "django/django",
+      "title": "Fixed #37224 -- Skipped questioner for changes on unmanaged model fields.",
+      "url": "https://github.com/django/django/pull/21690"
+    },
+    {
+      "additions": 18,
+      "changed_files": 1,
+      "deletions": 8,
+      "number": 21675,
+      "repo": "django/django",
+      "title": "Fixed #37196 -- Documented SimpleTestCase.async_client_class and async_client in testing tools.",
+      "url": "https://github.com/django/django/pull/21675"
+    },
+    {
+      "additions": 13,
+      "changed_files": 2,
+      "deletions": 8,
+      "number": 21725,
+      "repo": "django/django",
+      "title": "Refs #36905 -- Fixed outdated docs for JSONResponse safe parameter.",
+      "url": "https://github.com/django/django/pull/21725"
+    },
+    {
+      "additions": 211,
+      "changed_files": 2,
+      "deletions": 15,
+      "number": 20841,
+      "repo": "tailscale/tailscale",
+      "title": "feature/conn25: expire connector state",
+      "url": "https://github.com/tailscale/tailscale/pull/20841"
+    },
+    {
+      "additions": 118,
+      "changed_files": 4,
+      "deletions": 4,
+      "number": 20673,
+      "repo": "tailscale/tailscale",
+      "title": "feature/conn25: clear address assignments, flow tables on profile switch",
+      "url": "https://github.com/tailscale/tailscale/pull/20673"
+    },
+    {
+      "additions": 22,
+      "changed_files": 5,
+      "deletions": 22,
+      "number": 20966,
+      "repo": "tailscale/tailscale",
+      "title": "go.mod: bump x/net for http2-in-std fix for Go 1.27",
+      "url": "https://github.com/tailscale/tailscale/pull/20966"
+    },
+    {
+      "additions": 262,
+      "changed_files": 4,
+      "deletions": 12,
+      "number": 20848,
+      "repo": "tailscale/tailscale",
+      "title": "hostinfo: improve detection of linux desktops",
+      "url": "https://github.com/tailscale/tailscale/pull/20848"
+    },
+    {
+      "additions": 355,
+      "changed_files": 9,
+      "deletions": 80,
+      "number": 20834,
+      "repo": "tailscale/tailscale",
+      "title": "k8s-operator: make PeerRelay endpoints reachable on EKS by default",
+      "url": "https://github.com/tailscale/tailscale/pull/20834"
+    },
+    {
+      "additions": 9,
+      "changed_files": 6,
+      "deletions": 227,
+      "number": 20771,
+      "repo": "tailscale/tailscale",
+      "title": "Revert \"net/dns: scope quad-100 on macOS so DoH profiles aren't shado\u2026",
+      "url": "https://github.com/tailscale/tailscale/pull/20771"
+    },
+    {
+      "additions": 180,
+      "changed_files": 2,
+      "deletions": 36,
+      "number": 20687,
+      "repo": "tailscale/tailscale",
+      "title": "cmd/k8s-operator: add auth key reissuance to PeerRelay",
+      "url": "https://github.com/tailscale/tailscale/pull/20687"
+    },
+    {
+      "additions": 20,
+      "changed_files": 3,
+      "deletions": 21,
+      "number": 41410,
+      "repo": "neovim/neovim",
+      "title": "fix(vim-patch): :redrawtabpanel regexp, delay grep on hunk",
+      "url": "https://github.com/neovim/neovim/pull/41410"
+    },
+    {
+      "additions": 0,
+      "changed_files": 1,
+      "deletions": 36,
+      "number": 41528,
+      "repo": "neovim/neovim",
+      "title": "refactor(scripts): drop download-unicode-files.sh",
+      "url": "https://github.com/neovim/neovim/pull/41528"
+    },
+    {
+      "additions": 43,
+      "changed_files": 3,
+      "deletions": 10,
+      "number": 41328,
+      "repo": "neovim/neovim",
+      "title": "fix(cwd): nvim_win_set_buf changes global CWD",
+      "url": "https://github.com/neovim/neovim/pull/41328"
+    },
+    {
+      "additions": 22,
+      "changed_files": 3,
+      "deletions": 8,
+      "number": 41372,
+      "repo": "neovim/neovim",
+      "title": "build(vim-patch): detect n/a patch from vim9,popupwin,tabpanel",
+      "url": "https://github.com/neovim/neovim/pull/41372"
+    },
+    {
+      "additions": 17,
+      "changed_files": 2,
+      "deletions": 10,
+      "number": 41329,
+      "repo": "neovim/neovim",
+      "title": "fix(cwd): nvim_win_set_buf of :bcd buf, changes caller CWD",
+      "url": "https://github.com/neovim/neovim/pull/41329"
+    },
+    {
+      "additions": 29,
+      "changed_files": 2,
+      "deletions": 6,
+      "number": 41342,
+      "repo": "neovim/neovim",
+      "title": "ci: bundle wasm output with demo into a single zip",
+      "url": "https://github.com/neovim/neovim/pull/41342"
+    },
+    {
+      "additions": 28,
+      "changed_files": 2,
+      "deletions": 45,
+      "number": 131799,
+      "repo": "grafana/grafana",
+      "title": "Provisioning: drop registerOrReuse from informer metrics",
+      "url": "https://github.com/grafana/grafana/pull/131799"
+    },
+    {
+      "additions": 132,
+      "changed_files": 2,
+      "deletions": 16,
+      "number": 131692,
+      "repo": "grafana/grafana",
+      "title": "Alerting: Fix negative triage filters being cancelled out by alias expansion",
+      "url": "https://github.com/grafana/grafana/pull/131692"
+    },
+    {
+      "additions": 21,
+      "changed_files": 2,
+      "deletions": 0,
+      "number": 131827,
+      "repo": "grafana/grafana",
+      "title": "grafana-router: strip internal hash before dialing openapi upstream",
+      "url": "https://github.com/grafana/grafana/pull/131827"
+    },
+    {
+      "additions": 13,
+      "changed_files": 6,
+      "deletions": 17,
+      "number": 131602,
+      "repo": "grafana/grafana",
+      "title": "Enable foldersAppPlatformAPI by default",
+      "url": "https://github.com/grafana/grafana/pull/131602"
+    },
+    {
+      "additions": 122,
+      "changed_files": 4,
+      "deletions": 0,
+      "number": 131617,
+      "repo": "grafana/grafana",
+      "title": "Provisioning: propagate trace context to apiserver from operator clients",
+      "url": "https://github.com/grafana/grafana/pull/131617"
+    },
+    {
+      "additions": 56,
+      "changed_files": 1,
+      "deletions": 64,
+      "number": 62708,
+      "repo": "zed-industries/zed",
+      "title": "editor: Match invisible character ranges directly",
+      "url": "https://github.com/zed-industries/zed/pull/62708"
+    },
+    {
+      "additions": 44,
+      "changed_files": 1,
+      "deletions": 3,
+      "number": 62556,
+      "repo": "zed-industries/zed",
+      "title": "Pass routing headers to ChatGPT subscription API",
+      "url": "https://github.com/zed-industries/zed/pull/62556"
+    },
+    {
+      "additions": 78,
+      "changed_files": 2,
+      "deletions": 10,
+      "number": 62844,
+      "repo": "zed-industries/zed",
+      "title": "workspace: Activate the right tab when restoring a workspace",
+      "url": "https://github.com/zed-industries/zed/pull/62844"
+    },
+    {
+      "additions": 254,
+      "changed_files": 1,
+      "deletions": 13,
+      "number": 63097,
+      "repo": "zed-industries/zed",
+      "title": "terminal_view: Don't steal focus from an open modal when terminals appear",
+      "url": "https://github.com/zed-industries/zed/pull/63097"
+    },
+    {
+      "additions": 482,
+      "changed_files": 11,
+      "deletions": 13,
+      "number": 63306,
+      "repo": "zed-industries/zed",
+      "title": "feat: Add reveal buffer if already open",
+      "url": "https://github.com/zed-industries/zed/pull/63306"
+    },
+    {
+      "additions": 34,
+      "changed_files": 2,
+      "deletions": 4,
+      "number": 13495,
+      "repo": "pydantic/pydantic",
+      "title": "Return `NotImplemented` from URL ordering comparisons with foreign types",
+      "url": "https://github.com/pydantic/pydantic/pull/13495"
+    },
+    {
+      "additions": 153,
+      "changed_files": 4,
+      "deletions": 1,
+      "number": 13535,
+      "repo": "pydantic/pydantic",
+      "title": "Allow reuse of validators when plugins are set",
+      "url": "https://github.com/pydantic/pydantic/pull/13535"
+    },
+    {
+      "additions": 79,
+      "changed_files": 2,
+      "deletions": 79,
+      "number": 13649,
+      "repo": "pydantic/pydantic",
+      "title": "Update Pyodide lockfile",
+      "url": "https://github.com/pydantic/pydantic/pull/13649"
+    },
+    {
+      "additions": 170,
+      "changed_files": 17,
+      "deletions": 109,
+      "number": 13710,
+      "repo": "pydantic/pydantic",
+      "title": "Improve Logfire guidance for validation errors",
+      "url": "https://github.com/pydantic/pydantic/pull/13710"
+    },
+    {
+      "additions": 127,
+      "changed_files": 1,
+      "deletions": 14,
+      "number": 13553,
+      "repo": "pydantic/pydantic",
+      "title": "Add MCP Python SDK and FastMCP third party tests",
+      "url": "https://github.com/pydantic/pydantic/pull/13553"
+    },
+    {
+      "additions": 53,
+      "changed_files": 2,
+      "deletions": 2,
+      "number": 13731,
+      "repo": "pydantic/pydantic",
+      "title": "Count validated model fields once in smart unions",
+      "url": "https://github.com/pydantic/pydantic/pull/13731"
+    },
+    {
+      "additions": 47,
+      "changed_files": 3,
+      "deletions": 13,
+      "number": 13604,
+      "repo": "pydantic/pydantic",
+      "title": "Fix support for callable discriminators with PEP 695 type aliases",
+      "url": "https://github.com/pydantic/pydantic/pull/13604"
+    },
+    {
+      "additions": 82,
+      "changed_files": 9,
+      "deletions": 47,
+      "number": 13357,
+      "repo": "pydantic/pydantic",
+      "title": "Fix test failures with pytest >= 9.1.0",
+      "url": "https://github.com/pydantic/pydantic/pull/13357"
+    }
+  ],
+  "planned_final_case_count": 24,
+  "policy_digest": "b01c223094a12da9bc528887c248c4efb6678c0925e54e960e5211a0f45acc92",
+  "pool_digests": {
+    "apache--maka.json": "d79b881b3180ca58a0494feca460e3924dbce284237a504ddbd95d7ec8babe8d",
+    "astral-sh--uv.json": "b7d42d8003c360c7e99bae70e4cc3403b14b6259b1f1c71ccc68e04f53387269",
+    "django--django.json": "56925f26cc6dcf67405c03bb9c96f50ebdcedbffffd7ed05e0fdc1fc162c281d",
+    "go-gitea--gitea.json": "26dc3aa846870e48b2c6c3d616b5cd2adcd0ecd2acbfa2064a3a67df1979eb11",
+    "grafana--grafana.json": "62398982ac810fdc2bd311e9101601bcd0f4d1ac138528b24b53b266c9fe432f",
+    "neovim--neovim.json": "4c3878e00e3614325f9aa4554bb477d694c75418ccdf70156200dd8a24c57c70",
+    "pydantic--pydantic.json": "4cd6a9070d6c688290c07afbd54ac8917301aea2b7259d243d102d64bceb87c3",
+    "tailscale--tailscale.json": "6460e3be7886ccbf570958219eeab396d99525087b5ec0b382f5855e7be88d1d",
+    "zed-industries--zed.json": "71181c606b7c61273043bdb448e122e7f5a533e3f7c6802f952c1bf5a30f8074"
+  },
+  "schema_version": 1,
+  "seed": "pr-review-diverse-holdout-v1-ed0dcd5"
+}

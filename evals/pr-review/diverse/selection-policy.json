@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "seed": "pr-review-diverse-holdout-v1-ed0dcd5",
+  "created_from": "2026-05-30",
+  "created_to": "2026-08-29",
+  "pool_query_limit": 200,
+  "eligibility": {
+    "minimum_churn": 20,
+    "maximum_churn": 500,
+    "maximum_changed_files": 20,
+    "excluded_title_patterns": [
+      "^(docs?|documentation)(?:\\(|:)",
+      "^(chore|build)\\(deps[^)]*\\):",
+      "^(chore|build):\\s+bump\\b",
+      "^bump\\b",
+      "^release\\b",
+      "^backport\\b",
+      "^\\[[^]]*backport[^]]*\\]",
+      "cherry[- ]pick",
+      "^translation\\b",
+      "^vim-patch:",
+      "^merge\\b"
+    ]
+  },
+  "repositories": [
+    {
+      "repo": "apache/maka",
+      "candidate_count": 8,
+      "final_case_count": 4,
+      "exclude_numbers": [
+        2817, 2850, 2965, 2969, 2991, 3016, 3046, 3048, 3062, 3129, 3176, 3222,
+        3230, 3255, 3263, 3692, 3741, 3744, 3810, 3853, 3857, 3882, 3924, 3947,
+        3952, 3953, 3981, 3990, 4013, 4054, 4068, 4069, 4080, 4088, 4114, 4116,
+        4138, 4155, 4162, 4167, 4169, 4172, 4175, 4178, 4182, 4184
+      ]
+    },
+    {"repo": "astral-sh/uv", "candidate_count": 7, "final_case_count": 3},
+    {"repo": "go-gitea/gitea", "candidate_count": 7, "final_case_count": 3},
+    {"repo": "django/django", "candidate_count": 7, "final_case_count": 3},
+    {"repo": "tailscale/tailscale", "candidate_count": 7, "final_case_count": 3},
+    {"repo": "neovim/neovim", "candidate_count": 6, "final_case_count": 2},
+    {"repo": "grafana/grafana", "candidate_count": 5, "final_case_count": 2},
+    {"repo": "zed-industries/zed", "candidate_count": 5, "final_case_count": 2},
+    {"repo": "pydantic/pydantic", "candidate_count": 8, "final_case_count": 2}
+  ]
+}

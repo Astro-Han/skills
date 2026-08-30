@@ -59,7 +59,7 @@ def utc_now():
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat()
 
 
-def capture_pool(repo: str, created_from: str, created_to: str, output: Path):
+def capture_pool(repo: str, created_from: str, created_to: str, output: Path, limit: int = 500):
     fields = (
         "number,title,state,isDraft,createdAt,closedAt,mergedAt,additions,deletions,"
         "changedFiles,url,author,headRefOid,baseRefOid"
@@ -74,7 +74,7 @@ def capture_pool(repo: str, created_from: str, created_to: str, output: Path):
             "--state",
             "all",
             "--limit",
-            "500",
+            str(limit),
             "--search",
             f"created:{created_from}..{created_to}",
             "--json",
@@ -90,6 +90,7 @@ def capture_pool(repo: str, created_from: str, created_to: str, output: Path):
             "captured_at": utc_now(),
             "created_from": created_from,
             "created_to": created_to,
+            "query_limit": limit,
             "pull_requests": pulls,
         },
     )
@@ -100,8 +101,70 @@ def stable_rank(seed: str, number: int):
 
 
 def is_bot(pr):
+    if (pr.get("author") or {}).get("is_bot"):
+        return True
     login = ((pr.get("author") or {}).get("login") or "").lower()
     return any(name in login for name in ("dependabot", "renovate", "github-actions"))
+
+
+def select_diverse_candidates(pools, policy):
+    if policy["schema_version"] != SCHEMA_VERSION:
+        raise ValueError("unsupported schema version")
+    pools_by_repo = {pool["repo"]: pool for pool in pools}
+    rules = policy["eligibility"]
+    excluded_titles = [re.compile(pattern, re.IGNORECASE) for pattern in rules["excluded_title_patterns"]]
+    selected = []
+    planned_final = 0
+    for repository in policy["repositories"]:
+        repo = repository["repo"]
+        if repo not in pools_by_repo:
+            raise ValueError(f"missing pool for {repo}")
+        pool = pools_by_repo[repo]
+        if pool["schema_version"] != SCHEMA_VERSION:
+            raise ValueError("unsupported schema version")
+        excluded_numbers = set(repository.get("exclude_numbers", []))
+        eligible = []
+        for pull in pool["pull_requests"]:
+            churn = int(pull["additions"]) + int(pull["deletions"])
+            if pull["state"] != "MERGED" or pull.get("isDraft") or is_bot(pull):
+                continue
+            if pull["number"] in excluded_numbers:
+                continue
+            if not rules["minimum_churn"] <= churn <= rules["maximum_churn"]:
+                continue
+            if int(pull["changedFiles"]) > rules["maximum_changed_files"]:
+                continue
+            if any(pattern.search(pull["title"]) for pattern in excluded_titles):
+                continue
+            eligible.append(pull)
+        eligible.sort(
+            key=lambda pull: hashlib.sha256(
+                f"{policy['seed']}:{repo}:{pull['number']}".encode()
+            ).hexdigest()
+        )
+        count = int(repository["candidate_count"])
+        if len(eligible) < count:
+            raise ValueError(f"repository {repo} has {len(eligible)} candidates, needs {count}")
+        for pull in eligible[:count]:
+            selected.append(
+                {
+                    "repo": repo,
+                    "number": pull["number"],
+                    "title": pull["title"],
+                    "url": pull["url"],
+                    "changed_files": pull["changedFiles"],
+                    "additions": pull["additions"],
+                    "deletions": pull["deletions"],
+                }
+            )
+        planned_final += int(repository["final_case_count"])
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "seed": policy["seed"],
+        "candidate_count": len(selected),
+        "planned_final_case_count": planned_final,
+        "cases": selected,
+    }
 
 
 def matches_stratum(pr, name: str):
@@ -181,6 +244,15 @@ def select_cases(pool, policy):
 
 def capture_selected(pool_path: Path, policy_path: Path, output: Path):
     selection = select_cases(read_json(pool_path), read_json(policy_path))
+    write_json(output, selection)
+
+
+def capture_diverse_selection(pool_paths, policy_path: Path, output: Path):
+    selection = select_diverse_candidates(
+        [read_json(path) for path in pool_paths], read_json(policy_path)
+    )
+    selection["pool_digests"] = {path.name: digest(path) for path in pool_paths}
+    selection["policy_digest"] = digest(policy_path)
     write_json(output, selection)
 
 
@@ -510,11 +582,16 @@ def build_parser():
     pool.add_argument("--repo", required=True)
     pool.add_argument("--created-from", required=True)
     pool.add_argument("--created-to", required=True)
+    pool.add_argument("--limit", type=int, default=500)
     pool.add_argument("--output", type=Path, required=True)
     select = sub.add_parser("select")
     select.add_argument("--pool", type=Path, required=True)
     select.add_argument("--policy", type=Path, required=True)
     select.add_argument("--output", type=Path, required=True)
+    diverse = sub.add_parser("select-diverse")
+    diverse.add_argument("--pool", type=Path, action="append", required=True)
+    diverse.add_argument("--policy", type=Path, required=True)
+    diverse.add_argument("--output", type=Path, required=True)
     capture = sub.add_parser("capture")
     capture.add_argument("--repo", required=True)
     capture.add_argument("--number", type=int, required=True)
@@ -536,9 +613,11 @@ def build_parser():
 def main():
     args = build_parser().parse_args()
     if args.command == "capture-pool":
-        capture_pool(args.repo, args.created_from, args.created_to, args.output)
+        capture_pool(args.repo, args.created_from, args.created_to, args.output, args.limit)
     elif args.command == "select":
         capture_selected(args.pool, args.policy, args.output)
+    elif args.command == "select-diverse":
+        capture_diverse_selection(args.pool, args.policy, args.output)
     elif args.command == "capture":
         capture_case(args.repo, args.number, args.case_id, args.output_root)
     elif args.command == "verify":

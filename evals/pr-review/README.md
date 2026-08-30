@@ -51,6 +51,10 @@ The public comparison is not runnable until independent adjudicators finish the 
 Do not reuse the design cases or live-review cases listed in the selection policy as holdouts, and
 do not publish a percentage from the existing phrase-based grader.
 
+The follow-up [`diverse/`](diverse/) evaluation freezes a 60-candidate pool across nine projects
+before independent curation of a 24-PR holdout. It tests cross-repository generalization rather than
+adding more Maka cases, and keeps its policy, evidence limits, and commands in its own README.
+
 ## Reachability decision
 
 Compare the frozen pre-revision skill at `3e9300fb74ebbecdcd07aad92c5e97a98457f55a`
