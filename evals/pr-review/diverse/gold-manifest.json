@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "case_count": 24,
+  "clean_case_count": 21,
+  "required_finding_count": 3,
+  "required_findings_by_severity": {
+    "P0": 0,
+    "P1": 2,
+    "P2": 1,
+    "P3": 0
+  },
+  "consensus_digest": {
+    "algorithm": "SHA-256",
+    "sha256": "9141ac4afac414b5e4d1da4a1a54b1794d9f3b84a7907b403807f028d2dd70bb",
+    "canonicalization": "sorted basenames; filename newline canonical JSON newline"
+  },
+  "validation_report_sha256": "81aee7d5417872f91ba85e531ad8ba96af93b3a7e883c028028bb07df3f0c0aa",
+  "reviewers": [
+    {"name": "gold_reviewer_a", "did_not_design_skill": true},
+    {"name": "gold_reviewer_b", "did_not_design_skill": true}
+  ],
+  "attestations": {
+    "completed_before_ab_execution": true,
+    "no_model_outputs_read": true,
+    "pr_review_skill_not_used_for_gold": true,
+    "validation_passed": true
+  },
+  "skill_package_sha256": {
+    "SKILL.md": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "references/queue-and-publication.md": "c2c4bce994107499895cfea3a176086e3e108b7d6f28510f4060dbf09e566821"
+  }
+}

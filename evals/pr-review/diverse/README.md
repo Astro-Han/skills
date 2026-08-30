@@ -116,3 +116,9 @@ python3 evals/pr-review/real_fixture.py verify-diverse-materialization \
   --cases-root evals/pr-review/diverse/cases \
   --repo-cache-root /path/to/cache-root
 ```
+
+The private gold gate is complete. Two independent reviewers reconciled 24 answer keys before any
+A/B output existed: 21 clean cases and three required findings (two P1, one P2). A second reviewer
+validated every key and the final reconciliation. [`gold-manifest.json`](gold-manifest.json)
+records counts, attestations, Skill hashes, and the canonical private-gold digest without exposing
+the answer keys.
