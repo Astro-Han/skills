@@ -26,3 +26,25 @@ freezes the cases and their diagnostic roles.
 Passing every gate only permits a new evaluation on untouched real PRs. It does not permit changing
 the shipped Skill. A mechanism failure rejects this wording and stops further prompt accumulation;
 only then should a separately justified tool-level evidence ledger be considered.
+
+## Result
+
+The `evidence-reconciliation-luna-high-v1` diagnostic rejected the candidate. All 32 runs completed
+and read their isolated Skill arm. Two blind scorers independently agreed on every required-finding
+match: the baseline matched three of eight positive runs and the candidate matched one. Both matched
+`grafana-pr-127578-r2`; the baseline alone matched `grafana-pr-127578-r1` and
+`pydantic-pr-13503-r1`; the candidate had no unique match.
+
+The candidate also failed the intended mechanism. Under the broader transcript reading, it resolved
+6 of 12 observed contradictions versus 9 of 13 for the baseline; under the stricter gold-only
+reading, it resolved 8 of 9 versus 11 of 11. Both scorers found fewer decision-ready candidate
+reviews. Median commands grew 8.6 percent and final output shrank 7.2 percent, while median token use
+grew 27.1 percent.
+
+The development cases cannot validate general improvement, but they can reject this wording: it did
+not recover a core finding, lost two baseline findings, and did not improve evidence reconciliation.
+The candidate sentence has therefore been removed and no fresh holdout was run. The next experiment,
+if pursued, must test a tool-level mechanism without creating a second review authority.
+
+[`results/evidence-reconciliation-luna-high-v1.json`](results/evidence-reconciliation-luna-high-v1.json)
+contains the scores, cost diagnostics, gates, disagreements, and adoption decision.

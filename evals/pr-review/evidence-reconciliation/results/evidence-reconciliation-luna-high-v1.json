@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "iteration": "evidence-reconciliation-luna-high-v1",
+  "executed_on": "2026-08-30",
+  "verdict": "reject",
+  "model": "gpt-5.6-luna",
+  "reasoning_effort": "high",
+  "candidate_commit": "40fef6b",
+  "sample": {
+    "case_count": 8,
+    "positive_case_count": 4,
+    "clean_or_intentional_tradeoff_control_count": 4,
+    "repetitions_per_arm": 2,
+    "development_only": true,
+    "fresh_holdout": false
+  },
+  "execution": {
+    "planned_runs": 32,
+    "completed_runs": 32,
+    "failed_runs": 0,
+    "isolated_skill_read_commands": 32,
+    "user_level_pr_review_skill_reads": 0,
+    "baseline_skill_sha256": "351e9ba2ff2a3b07fdf08e46823e543ec713a65b900e100a828e3b8bbd2eded2",
+    "candidate_skill_sha256": "885408a38612a4eeb8a38224c7b3718117c1d445928aa8d114bafe6591a52a07"
+  },
+  "blind_scoring": {
+    "independent_scorers": 2,
+    "required_finding_match_disagreements": 0,
+    "arm_labels_opened_after_scoring": true,
+    "secondary_metric_disagreements": [
+      "One scorer counted only frozen-gold contradictions while the other also counted concrete alternate contradictions and rollback tradeoffs.",
+      "The scorers differed on whether Grafana type-only fallback and Zed close-then-quit cleanup were supported additional findings. Neither dispute changes the verdict."
+    ]
+  },
+  "required_finding_runs": {
+    "baseline": {
+      "matched": 3,
+      "possible": 8,
+      "runs": [
+        "grafana-pr-127578-r1",
+        "grafana-pr-127578-r2",
+        "pydantic-pr-13503-r1"
+      ]
+    },
+    "candidate": {
+      "matched": 1,
+      "possible": 8,
+      "runs": [
+        "grafana-pr-127578-r2"
+      ]
+    },
+    "paired": {
+      "both_matched": [
+        "grafana-pr-127578-r2"
+      ],
+      "baseline_only": [
+        "grafana-pr-127578-r1",
+        "pydantic-pr-13503-r1"
+      ],
+      "candidate_only": []
+    }
+  },
+  "observed_to_resolved": {
+    "broader_transcript_reading": {
+      "baseline": {
+        "observed": 13,
+        "resolved": 9,
+        "rate": 0.6923076923
+      },
+      "candidate": {
+        "observed": 12,
+        "resolved": 6,
+        "rate": 0.5
+      }
+    },
+    "strict_gold_only_reading": {
+      "baseline": {
+        "observed": 11,
+        "resolved": 11,
+        "rate": 1.0
+      },
+      "candidate": {
+        "observed": 9,
+        "resolved": 8,
+        "rate": 0.8888888889
+      }
+    }
+  },
+  "calibration": {
+    "adjudicated_unsupported_p1_p2_responses": {
+      "baseline": 3,
+      "candidate": 4
+    },
+    "decision_ready_scorer_ranges": {
+      "baseline": [
+        9,
+        12
+      ],
+      "candidate": [
+        8,
+        10
+      ]
+    },
+    "notes": [
+      "Grafana type-only fallback was retained as a possible supported additional finding rather than counted unsupported.",
+      "Zed close-then-immediate-quit cleanup was retained as a plausible supported additional finding.",
+      "Neovim local-file theories, Zed independent job-control group theories, and the candidate-only Pydantic rollback blocker were counted unsupported."
+    ]
+  },
+  "median_cost": {
+    "baseline": {
+      "commands": 46.5,
+      "tokens": 898407.5,
+      "duration_ms": 305221.5,
+      "final_output_characters": 1351
+    },
+    "candidate": {
+      "commands": 50.5,
+      "tokens": 1141548.5,
+      "duration_ms": 285172,
+      "final_output_characters": 1254
+    },
+    "candidate_growth_percent": {
+      "commands": 8.602151,
+      "tokens": 27.063554,
+      "duration": -6.568836,
+      "final_output_characters": -7.179867
+    }
+  },
+  "frozen_gates": {
+    "candidate_observed_to_resolved_rate_at_least_0_8": false,
+    "observed_to_resolved_rate_gain_at_least_0_25": false,
+    "at_least_two_candidate_only_required_finding_runs": false,
+    "no_baseline_only_required_finding_runs": false,
+    "unsupported_p1_p2_responses_did_not_increase": false,
+    "decision_ready_reviews_did_not_decrease": false,
+    "median_commands_and_output_grew_no_more_than_20_percent": true
+  },
+  "interpretation": [
+    "The wording did not demonstrate the intended evidence-reconciliation mechanism.",
+    "The candidate did not recover any unique required finding and lost two baseline matches.",
+    "Because all cases were used to design the candidate, this diagnostic can reject the wording but cannot validate a general improvement or support a public percentage claim.",
+    "Do not accumulate more prompt text. A later experiment may test a tool-level evidence checkpoint only if it remains part of one reviewer and one final authority."
+  ],
+  "adoption": {
+    "advance_to_fresh_holdout": false,
+    "candidate_wording_retained": false,
+    "shipped_skill_changed": false,
+    "prompt_iteration_stopped": true
+  }
+}
