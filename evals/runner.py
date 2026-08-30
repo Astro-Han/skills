@@ -646,6 +646,8 @@ def main():
                         help="run only this exact case from the selected suite; repeatable")
     parser.add_argument("--arm", action="append", dest="arms",
                         help="run only this exact arm from the selected suite; repeatable")
+    parser.add_argument("--concurrency", type=int, default=CONCURRENCY,
+                        help="maximum number of model runs in flight")
     parser.add_argument("--repo-cache", type=Path,
                         help="full local repository used to materialize real PR fixtures")
     parser.add_argument("--repo-cache-root", type=Path,
@@ -688,10 +690,13 @@ def main():
         print(" ".join(provider.command(provider.model, "<prompt>", [])[:-1]))
         return 0
 
-    print("{} runs on {}, concurrency {}".format(len(runs), provider.name, CONCURRENCY),
+    if args.concurrency < 1:
+        parser.error("--concurrency must be at least 1")
+
+    print("{} runs on {}, concurrency {}".format(len(runs), provider.name, args.concurrency),
           flush=True)
     failures = 0
-    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+    with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
         futures = {pool.submit(run_one, provider, spec, args.iteration,
                                args.repo_cache, args.repo_cache_root): spec
                    for spec in runs}
