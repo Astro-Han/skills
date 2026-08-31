@@ -27,7 +27,7 @@
 | [`craft-skill`](skills/craft-skill/) | 你想创建或改进一个可复用的 Agent skill，也想知道它的指令是否值得占用上下文。 | 一份符合目标平台的 skill：用 Call 找对任务，用 Steer 把行动带到真正完成，再让每个 token、每次评测和每行代码通过 Earn。 |
 | [`parallel-research`](skills/parallel-research/) | 一个重要问题需要广泛、最新且可信的证据。 | 更快得到覆盖充分、证据更扎实的答案：并行调查不同证据方向，再由主 Agent 交叉核验关键结论与冲突。 |
 | [`learn-anything`](skills/learn-anything/) | 你想真正学会或练习一个主题，而不只是听一遍解释。 | 根据你的水平实时调整的辅导，通过主动回忆、应用和复述，建立真正能用的理解。 |
-| [`explain-visually`](skills/explain-visually/) | 一个主题需要让完全不了解它的人先通过图片看懂。 | 用当前可用的视觉工具交付“大图、少字”的解释；只有没有合适工具时才回退到 HTML。 |
+| [`eli5`](skills/eli5/) | 你想用视觉方式给一个完全不了解主题的人讲明白。 | 一张简单、好看、只有一个清楚想法的视觉解释：大图、少字。 |
 | [`tdd`](skills/tdd/) | 你要新增或改变生产行为，需要快速而可信的反馈。 | 以小步、可验证的方式交付：先看到符合预期的 RED，再完成最小 GREEN，然后安全重构。 |
 | [`debug`](skills/debug/) | bug 或性能退化需要调查，不能靠一个听起来合理的猜测。 | 一个可重复的故障信号、一条能排除其他可能的证据链，以及经过原始场景验证的根因。 |
 | [`simplify-audit`](skills/simplify-audit/) | 一个已有代码库里堆着没人证明过还需要的复杂度。 | 一份关于什么真的可以消失的审计：每条删减都有需求链和净减少作为依据，还没证明闭合的线索单独列出，不包装成结论。 |
@@ -89,7 +89,7 @@ npx skills add Astro-Han/skills --skill shape
 
 ## 来源与致谢
 
-- `learn-anything` 和 `wrap-up` 是我从自己的工作流里做出来的原创 skills。`explain-visually` 改写自 Thariq Shihipar 的 [`eli5`](https://github.com/anthropics/claude-plugins-community/tree/main/eli5)：保留“大图、少字”，但优先使用环境原生的视觉工具，HTML 只作为回退。
+- `learn-anything` 和 `wrap-up` 是我从自己的工作流里做出来的原创 skills。这里的 `eli5` 改写自 Thariq Shihipar 的 [`eli5`](https://github.com/anthropics/claude-plugins-community/tree/main/eli5)：保留“大图、少字”，使用当前最合适的视觉工具，没有可用工具时再回退到 HTML。
 - `craft-skill` 借鉴了 [OpenAI 的 `skill-creator`](https://github.com/openai/skills/tree/main/skills/.system/skill-creator)、[Anthropic 的 `skill-creator`](https://github.com/anthropics/claude-plugins-official/tree/main/plugins/skill-creator)、Matt Pocock 的 [`writing-great-skills`](https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-great-skills) 和 Superpowers 的 [`writing-skills`](https://github.com/obra/superpowers-skills/tree/main/skills/meta/writing-skills)。它没有叠加四套流程，而是围绕三个约束重新构建：为正确的任务 Call skill，用 Steer 把 Agent 带到真正完成，并让每个 token Earn 自己的位置。
 - `shape` 借鉴了 Matt Pocock 的 [`grilling`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling)。遇到视觉选择时直接展示方案，这一点来自 Superpowers 的 [`brainstorming`](https://github.com/obra/superpowers/tree/main/skills/brainstorming)。
 - `tdd` 借鉴了 Matt Pocock 的 [`tdd`](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)。
