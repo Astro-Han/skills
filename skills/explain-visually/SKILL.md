@@ -1,6 +1,6 @@
 ---
 name: explain-visually
-description: "Create a picture-first explanation for someone who knows nothing about the topic. Use when the user asks for an ELI5-style or visual explanation, including for a PM or non-expert. Do not use for ordinary explanations, study or coaching, implementation documentation, or presentation decks."
+description: "Create big-picture, few-word visual explainers for ELI5 and picture-first requests; not ordinary answers."
 ---
 
 # Explain Visually
