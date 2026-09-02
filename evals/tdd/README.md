@@ -100,3 +100,28 @@ Declared before viewing any `dedup-2` output:
   round 1; `no-finish-gate` is the new discriminating variant.
 - Caveat: the cluttered case informed revision 2, so `dedup-2` is design-set
   evidence; a claim of general improvement needs a fresh holdout case.
+
+## Results — round 2 (iterations `dedup-2`, `dedup-2b`) — adopted
+
+Versus `baseline_skill`, 3 reps, codex `gpt-5.6-luna` high:
+
+- cluttered: `excess_tests` 9.0 → 2.0, `tests_added` 6.0 → **-1.0** (the seeded junk
+  was actually deleted), expectations 18/30 → 27/30. Acceptance 3/3 and kill rate
+  0.91 in both arms.
+- coupon: 3-rep means differed by one run (2.33 vs 2.67 excess, one test-first slip),
+  below what 3 reps resolve. Predeclared tie-breaker (3 more paired reps, adopt if
+  pooled n=6 means differ by <0.5 and process slips ≤1/6): both arms identical at
+  15/15, 6.0, 2.0 — pooled differences 0.17/0.17, slips 1/6. No coupon regression.
+- remove-crash: identical across arms.
+
+Ablation at 2 reps against revision 2:
+
+- `no-finish-gate`: cluttered 9.0 vs 2.0 — the whole cleanup effect is the gate.
+- `no-refuse-shapes`: cluttered 9.0 vs 2.0 — the gate's deletion criterion for
+  existing junk lives in the shapes list; they work as a pair.
+- `no-single-behavior`: cluttered 6.0, 15/20 — degrades; kept.
+- `no-pure-refactors`: cluttered 4.0, 16/20 — degrades slightly; kept.
+- `no-before-red`, `no-keep-gate`, `no-closing`: no degradation on these cases, but
+  the cases barely exercise them (round 1 and round 2 disagree on `no-closing`), and
+  the refuse-shapes mandate plus Finish step 3 reference the keep-gate's bar.
+  Recorded as insufficient evidence; kept unjudged.
