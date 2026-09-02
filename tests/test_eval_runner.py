@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -107,16 +108,28 @@ class EvalRunnerSuiteTests(unittest.TestCase):
         self.assertEqual({run["workspace"] for run in debug}, {"debug-workspace"})
 
         tdd = runner.suite_runs("pi", reps=1, suite="tdd")
-        self.assertEqual(len(tdd), 4)
+        self.assertEqual(len(tdd), 9)
         self.assertEqual({run["workspace"] for run in tdd}, {"tdd-workspace"})
-
-    def test_claude_tdd_keeps_the_frozen_baseline_arm(self):
-        runs = runner.suite_runs("claude", reps=1, suite="tdd")
-        self.assertEqual(len(runs), 6)
         self.assertEqual(
-            {run["arm"] for run in runs},
-            {"without_skill", "old_skill", "with_skill"},
+            {run["arm"] for run in tdd},
+            {"without_skill", "baseline_skill", "with_skill"},
         )
+        self.assertEqual(
+            {run["eval"] for run in tdd},
+            {"coupon-feature", "remove-crash", "coupon-cluttered"},
+        )
+
+    def test_tdd_ablation_pairs_each_variant_with_the_full_skill(self):
+        subprocess.run(
+            [sys.executable, str(ROOT / "evals" / "tdd" / "make_ablations.py")],
+            check=True, capture_output=True,
+        )
+        runs = runner.suite_runs("codex", reps=1, suite="tdd-ablation")
+        arms = {run["arm"] for run in runs}
+        self.assertIn("with_skill", arms)
+        self.assertEqual(len(arms), 9)
+        self.assertTrue(all(arm == "with_skill" or arm.startswith("no-") for arm in arms))
+        self.assertEqual({run["workspace"] for run in runs}, {"tdd-ablation-workspace"})
 
     def test_only_the_current_review_feedback_comparison_is_supported(self):
         runs = runner.suite_runs(

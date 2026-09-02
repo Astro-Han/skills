@@ -57,6 +57,10 @@ REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "36021bbfa0fed9b63b7a286bf48d83264aad4
 REVIEW_FEEDBACK_CAUSAL_BASELINE_REF = "af79986"
 PR_REVIEW_RECALL_BASELINE_REF = "e28f7da5a9503ec0a93c4db86108d6e8f222fd7d"
 PR_REVIEW_CAPABILITY_BASELINE_REF = "1095a1c3a7ce59c7b5a5b489d934b629a4b5f4a2"
+TDD_PRE_SUITE_BAR_REF = "42200412b849424fd9ae5d878d728d77673163bb"
+TDD_ABLATIONS = ROOT / "baselines" / "tdd-ablations"
+TDD_CASES = (("coupon-feature", "cartlib"), ("remove-crash", "cartlib"),
+             ("coupon-cluttered", "cartlib-cluttered"))
 
 PROMPTS = {
     "shared-sections": (
@@ -85,6 +89,7 @@ PROMPTS = {
         "KeyError. It should be a safe no-op instead. Please fix."
     ),
 }
+PROMPTS["coupon-cluttered"] = PROMPTS["coupon-feature"]
 PROMPTS.update({name: case["prompt"] for name, case in REVIEW_FEEDBACK_CASES.items()})
 PROMPTS.update({name: case["prompt"] for name, case in PR_REVIEW_CASES.items()})
 
@@ -246,6 +251,7 @@ def suite_runs(provider_name, reps=3, suite=None):
         "review-feedback-structural-compression",
         "debug",
         "tdd",
+        "tdd-ablation",
     }
     if suite not in supported_suites:
         raise ValueError("unsupported suite: {!r}".format(suite))
@@ -449,15 +455,25 @@ def suite_runs(provider_name, reps=3, suite=None):
 
             continue
 
-        if provider_name == "claude":
-            arms = (("without_skill", None), ("old_skill", "tdd-old"),
-                    ("with_skill", SHIPPED))
+        if suite == "tdd-ablation":
+            variants = sorted(TDD_ABLATIONS.iterdir()) if TDD_ABLATIONS.is_dir() else []
+            arms = [("with_skill", SHIPPED)] + [
+                (variant.name, "tdd-ablations/" + variant.name)
+                for variant in variants if (variant / "SKILL.md").exists()
+            ]
+            if len(arms) == 1:
+                raise ValueError(
+                    "no ablation variants; run evals/tdd/make_ablations.py first")
+            workspace = "tdd-ablation-workspace"
         else:
-            arms = (("without_skill", None), ("with_skill", SHIPPED))
-        for eval_name in ("coupon-feature", "remove-crash"):
+            arms = [("without_skill", None),
+                    ("baseline_skill", "git:" + TDD_PRE_SUITE_BAR_REF),
+                    ("with_skill", SHIPPED)]
+            workspace = "tdd-workspace"
+        for eval_name, fixture in TDD_CASES:
             for arm, skill_arm in arms:
-                runs.append({"workspace": "tdd-workspace", "eval": eval_name,
-                             "rep": rep, "arm": arm, "fixture": "cartlib",
+                runs.append({"workspace": workspace, "eval": eval_name,
+                             "rep": rep, "arm": arm, "fixture": fixture,
                              "skill_arm": skill_arm, "skill_name": "tdd"})
     return runs
 
@@ -661,7 +677,7 @@ def main():
                                             "review-feedback-causal-design",
                                             "review-feedback-causal-holdout",
                                             "review-feedback-structural-compression",
-                                            "debug", "tdd"),
+                                            "debug", "tdd", "tdd-ablation"),
                         required=True)
     parser.add_argument("--dry-run", action="store_true",
                         help="print the planned runs and the exact CLI command")

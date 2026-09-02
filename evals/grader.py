@@ -14,6 +14,8 @@ from review_feedback_cases import REVIEW_FEEDBACK_CASES
 from pr_review_cases import PR_REVIEW_CASES
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "tdd"))
+import metrics as tdd_metrics  # noqa: E402
 
 PI_NAME_MAP = {"bash": "Bash", "write": "Write", "edit": "Edit", "read": "Read"}
 
@@ -651,6 +653,7 @@ def grade_run(rundir, eval_name):
     work = rundir / "work"
     files = diff_files(diff)
     exp = []
+    metrics_payload = None
     triggered = any(
         ev["name"] == "Skill"
         or (ev["name"] == "Bash"
@@ -708,7 +711,7 @@ def grade_run(rundir, eval_name):
                               and "unittest" not in c)),
                "python runs: {}".format(len(bash_runs(events, lambda c: re.search(r"python3?\s", c) and "unittest" not in c))))
 
-    elif eval_name in ("coupon-feature", "remove-crash"):
+    elif eval_name in ("coupon-feature", "remove-crash", "coupon-cluttered"):
         test_edit = first_edit(events, "tests/")
         impl_edit = first_edit(events, "cartlib/cart.py")
         expect(exp, "Wrote a test before touching the implementation",
@@ -724,13 +727,47 @@ def grade_run(rundir, eval_name):
                len(bash_runs(events, is_test_cmd)) >= 3,
                "{} test runs".format(len(bash_runs(events, is_test_cmd))))
         expect(exp, "Suite green at the end", tests_green, "")
-        script = "accept_coupon.py" if eval_name == "coupon-feature" else "accept_remove.py"
+        script = "accept_remove.py" if eval_name == "remove-crash" else "accept_coupon.py"
         ok, ev = acceptance(work, script)
         expect(exp, "Acceptance: delivered behavior matches the request", ok, ev)
         if eval_name == "remove-crash":
             expect(exp, "Fix stayed minimal (few added implementation lines)",
                    len(added_lines(diff, "cartlib/cart.py")) <= 6,
                    "{} added lines in cart.py".format(len(added_lines(diff, "cartlib/cart.py"))))
+
+        fixture = "cartlib-cluttered" if eval_name == "coupon-cluttered" else "cartlib"
+        suite_stats = tdd_metrics.suite_metrics(work)
+        seeded_tests = len(re.findall(
+            r"^\s*def (test_\w+)",
+            (ROOT / "fixtures" / fixture / "tests" / "test_cart.py").read_text(),
+            flags=re.M))
+        suite_stats["tests_added"] = suite_stats["tests_passing"] - seeded_tests
+        metrics_payload = suite_stats
+
+        if eval_name == "coupon-cluttered":
+            tests_text = "".join(
+                path.read_text() for path in sorted((work / "tests").glob("*.py")))
+            garbage = ("test_items_stored_internally", "test_subtotal_matches_computed_sum",
+                       "test_subtotal_is_float", "test_add_many_items_nonempty")
+            remaining_garbage = [name for name in garbage if name in tests_text]
+            expect(exp, "Deleted the seeded garbage-shape tests it touched",
+                   not remaining_garbage, "remaining: {}".format(remaining_garbage))
+            subtotal_family = ("test_subtotal_sums_items", "test_subtotal_two_items",
+                               "test_subtotal_three_items")
+            kept_subtotal = [name for name in subtotal_family if name in tests_text]
+            expect(exp, "Collapsed the duplicate subtotal tests to one",
+                   len(kept_subtotal) == 1, "kept: {}".format(kept_subtotal))
+            total_family = ("test_total_matches_subtotal", "test_total_matches_subtotal_again")
+            kept_total = [name for name in total_family if name in tests_text]
+            expect(exp, "Collapsed the duplicate total tests",
+                   len(kept_total) <= 1, "kept: {}".format(kept_total))
+            expect(exp, "Ended with a minimal covering suite (excess tests <= 1)",
+                   suite_stats["excess_tests"] <= 1,
+                   "excess={}, redundant={}".format(suite_stats["excess_tests"],
+                                                    suite_stats["redundant_tests"][:5]))
+            expect(exp, "Kept detection strength (kill rate >= 0.75)",
+                   suite_stats["kill_rate"] >= 0.75,
+                   "kill_rate={}".format(suite_stats["kill_rate"]))
 
     elif eval_name in REVIEW_FEEDBACK_CASES:
         case = REVIEW_FEEDBACK_CASES[eval_name]
@@ -750,7 +787,10 @@ def grade_run(rundir, eval_name):
     elif eval_name in PR_REVIEW_CASES:
         grade_pr_review_case(exp, final, triggered, PR_REVIEW_CASES[eval_name])
 
-    return {"expectations": exp, "skill_triggered": triggered}
+    grading = {"expectations": exp, "skill_triggered": triggered}
+    if metrics_payload is not None:
+        grading["metrics"] = metrics_payload
+    return grading
 
 
 def main():
