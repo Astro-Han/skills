@@ -40,3 +40,13 @@ Refuse these shapes as well. Never write them, and delete the ones already cover
 Deleting the ones that fail the gate is part of finishing the change.
 
 Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
+
+## Finish
+
+The suite you leave behind is part of the deliverable. Before reporting done:
+
+1. List the distinct obligations this change added or altered, plus those the touched seams already owned.
+2. Map every test on the touched seams to one obligation, one test per obligation. A test that maps to an already-covered obligation, or to none, is excess even though it passes.
+3. Delete or merge the excess — stepping-stone tests the final behavior subsumed, overlapping variants of one rule, and existing tests on those seams that match the refused shapes — then rerun the suite green.
+
+Report the obligation-to-test mapping in one line per obligation. More tests than obligations means the job is not finished.
