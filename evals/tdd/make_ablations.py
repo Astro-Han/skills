@@ -6,6 +6,7 @@ against the full skill measures what that concept buys. Output goes to
 evals/baselines/tdd-ablations/<variant>/SKILL.md (derived, not committed).
 """
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -35,10 +36,6 @@ KEEP_GATE = """Keep a test only if breaking the behavior it names would make it 
 
 """
 
-SUITE_BAR = """The bar is also suite-level: keep the fewest tests that prove distinct obligations. Overlapping tests each pass the single-test gate while all but one are waste, so if deleting a test leaves every behavior it names still detected by the remaining suite, delete it.
-
-"""
-
 REFUSE_SHAPES = """Refuse these shapes as well. Never write them, and delete the ones already covering the code you touch:
 
 - an expectation recomputed from the production algorithm, or read back from the production constant it exists to pin
@@ -51,11 +48,19 @@ Deleting the ones that fail the gate is part of finishing the change.
 
 """
 
-TEST_REFACTOR = """3. **REFACTOR** — Improve names, structure, and duplication without changing behavior, in the tests as much as in production code. Delete or merge any test now subsumed by a stronger one, including stepping-stone tests written only to force generalization. Keep tests green throughout."""
-
-PRODUCTION_ONLY_REFACTOR = """3. **REFACTOR** — Improve names, structure, and duplication without changing behavior. Keep tests green throughout."""
-
 CLOSING = """Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
+
+"""
+
+FINISH_GATE = """## Finish
+
+The suite you leave behind is part of the deliverable. Before reporting done:
+
+1. List the distinct obligations this change added or altered, plus those the touched seams already owned.
+2. Map every test on the touched seams to one obligation, one test per obligation. A test that maps to an already-covered obligation, or to none, is excess even though it passes.
+3. Delete or merge the excess — stepping-stone tests the final behavior subsumed, overlapping variants of one rule, and existing tests on those seams that match the refused shapes — then rerun the suite green.
+
+Report the obligation-to-test mapping in one line per obligation. More tests than obligations means the job is not finished.
 """
 
 VARIANTS = {
@@ -63,15 +68,16 @@ VARIANTS = {
     "no-single-behavior": [(SINGLE_BEHAVIOR, "")],
     "no-pure-refactors": [(PURE_REFACTORS, "")],
     "no-keep-gate": [(KEEP_GATE, "")],
-    "no-suite-bar": [(SUITE_BAR, "")],
     "no-refuse-shapes": [(REFUSE_SHAPES, "")],
-    "no-test-refactor": [(TEST_REFACTOR, PRODUCTION_ONLY_REFACTOR)],
     "no-closing": [(CLOSING, "")],
+    "no-finish-gate": [(FINISH_GATE, "")],
 }
 
 
 def main():
     source = SKILL.read_text()
+    if OUT.exists():
+        shutil.rmtree(OUT)
     for name, replacements in VARIANTS.items():
         text = source
         for old, new in replacements:

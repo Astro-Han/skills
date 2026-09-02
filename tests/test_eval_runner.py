@@ -127,7 +127,7 @@ class EvalRunnerSuiteTests(unittest.TestCase):
         runs = runner.suite_runs("codex", reps=1, suite="tdd-ablation")
         arms = {run["arm"] for run in runs}
         self.assertIn("with_skill", arms)
-        self.assertEqual(len(arms), 9)
+        self.assertEqual(len(arms), 8)
         self.assertTrue(all(arm == "with_skill" or arm.startswith("no-") for arm in arms))
         self.assertEqual({run["workspace"] for run in runs}, {"tdd-ablation-workspace"})
 

@@ -67,6 +67,36 @@ kill rate >= 0.75).
   renamed; a legitimate merge under a new name can be misread. Judged acceptable
   because the metric expectation (`excess_tests <= 1`) does not depend on names.
 
-## Results
+## Results — round 1 (iteration `dedup-1`)
 
-Recorded after grading; see the corresponding commit messages.
+Revision 1 (suite-level bar sentence + REFACTOR-covers-tests sentence) was **refuted**:
+
+- `excess_tests`, baseline → candidate: cluttered 9.33 → 8.67, coupon 2.0 → 2.33,
+  remove 2.0 → 2.0. No adoption-rule improvement; acceptance and kill rate equal.
+- `without_skill` added the fewest tests (coupon 5.0 vs 6.0+, excess 1.33 vs 2.0+):
+  the skill text itself pushes toward extra tests relative to no skill.
+- Cleanup of the seeded cluttered suite was bimodal, not concept-driven: 0/5 full-skill
+  reps cleaned up, while single reps in `no-keep-gate`, `no-pure-refactors`, and
+  `no-before-red` arms independently deleted all seeds (excess 2–3). The model can do
+  the cleanup; principle-style text does not reliably trigger it.
+- Ablations: `no-suite-bar` and `no-test-refactor` matched the full skill on every
+  metric — both round-1 additions measured inert and were removed. `no-refuse-shapes`
+  and `no-closing` degraded cluttered excess (10.0 vs 9.0) — both earn their place.
+  `no-before-red`, `no-keep-gate`, `no-pure-refactors`, `no-single-behavior`:
+  insufficient evidence at 2 reps (differences inside the bimodal noise); kept.
+
+## Round 2 — predeclared (iteration `dedup-2`)
+
+Revision 2 replaces the two inert sentences with a procedural `## Finish` gate:
+enumerate obligations, map tests one-to-one, delete the excess, report the mapping.
+
+Declared before viewing any `dedup-2` output:
+
+- **Adopt revision 2** only if, versus `baseline_skill` at 3 reps: mean cluttered
+  `excess_tests` drops by more than 3 (reliable cleanup, not one lucky rep), coupon
+  `excess_tests` and `tests_added` do not exceed baseline, and acceptance, process
+  expectations, and kill rate hold.
+- **Ablation** (2 reps, all variants regenerated from revision 2): same rule as
+  round 1; `no-finish-gate` is the new discriminating variant.
+- Caveat: the cluttered case informed revision 2, so `dedup-2` is design-set
+  evidence; a claim of general improvement needs a fresh holdout case.
