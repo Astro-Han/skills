@@ -80,6 +80,14 @@ Tie-breaker, declared before viewing `spine-1b`: run 2 more paired regression re
 pool to 4 reps per arm and adopt if the pooled candidate total is not more than 4
 below the pooled baseline total, keeping the already-met over-expansion gate.
 
+**Outcome — adopted.** `spine-1b` scored candidate 191/278 vs baseline 184/278;
+pooled over 4 reps the regression totals are candidate 372/556 vs baseline 370/556,
+inside the gate with the candidate slightly ahead — the round-1 deficit was phrase
+noise, not behavior. Combined with the over-expansion gate (P1 4/4 vs 1/4), the
+question-spine revision shipped. The symmetric fact-echo drift and the phrase-table
+brittleness on equivalent wording remain open grader limitations, recorded here
+rather than patched retroactively.
+
 ## Real PR holdout
 
 The synthetic `prreview-*` fixtures remain regression tests; they are not evidence for a public
