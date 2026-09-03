@@ -101,6 +101,28 @@ imperative. 1,166 words. Decision: identical gates to round 1 — the standing 1
 non-inferiority gate, the causal holdout within one expectation, and triggering not
 below baseline.
 
+### Round 2 (`compress-2`) — rejected; compression abandoned
+
+Structural, 24 pairs, 60 executions, 0 runner failures: mean paired diff **-0.166**,
+one-sided 90% bootstrap lower bound **-0.217** — worse than round 1 and far outside
+the -0.03 gate. Causal holdout tied 55/60 vs 55/60; triggering tied 30/30 both arms.
+
+The losses were broad rather than one fixable phrase, verified in the workspaces:
+severity over-grading (the "Reclassified as P2" expectation failed across most
+fixtures — the candidate's shorter P1/P2 wording loses the in-memory-stays-P2
+distinction in practice), incomplete owner end states (`casefold` missing,
+`legacy_country` retained), an accepted false suggestion (`UNKNOWN` implemented), and
+one full over-pushback run (`remove-obsolete-toggle`: all three comments Disproved,
+zero edits, where the correct end state deletes the obsolete toggle). The candidate
+was reverted from the working tree without being committed.
+
+Conclusion after two failed rounds with different compression strategies: the
+baseline's redundancy is load-bearing for the weak executor — each behavior the
+grader checks is carried by a specific repeated imperative, and every 35%+ cut so far
+has dropped at least one. Compression of the body is abandoned; the baseline text at
+`8f26a14` stands. Improvements to triggering, if pursued, should change only the
+frontmatter description with the body frozen.
+
 The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
 check. Passing that check does not satisfy or replace this compression gate; see
 [`causal-synthesis.md`](causal-synthesis.md) for its separate decision.
