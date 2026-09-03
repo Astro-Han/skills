@@ -60,6 +60,26 @@ Declared before viewing any output; baseline is the pre-revision skill at
 - The over-expansion case is design-set evidence (it motivated the revision); the
   regression suite guards against paying for it with existing behavior.
 
+### Round 1 (iteration `spine-1`) and the predeclared tie-breaker
+
+Over-expansion (4 paired reps): the candidate named the smaller live-read shape and
+the over-expansion 4/4 and all three obligations 3/4, meeting the gate; it graded the
+excess **P1 in 4/4** runs versus **1/4** for the baseline — the motivating failure
+(seeing the bloat but not blocking on it) is the exact behavior that moved.
+
+Regression (2 paired reps): candidate 225/338 vs baseline 228/338 — 3 below, 1 over
+the predeclared allowance. Two caveats, recorded before any grader change: four
+fact-reporting assertion families failed symmetrically in both arms (80 of the
+missing assertions; today's model no longer echoes snapshot numbers, a drift
+unrelated to the revision), and the inspected behavioral differences were
+phrase-table misses on equivalent content ("test only covers a link whose target is
+inside the root" vs the table's "inside the configured discovery root"). The term
+tables were deliberately not widened before the tie-breaker.
+
+Tie-breaker, declared before viewing `spine-1b`: run 2 more paired regression reps;
+pool to 4 reps per arm and adopt if the pooled candidate total is not more than 4
+below the pooled baseline total, keeping the already-met over-expansion gate.
+
 ## Real PR holdout
 
 The synthetic `prreview-*` fixtures remain regression tests; they are not evidence for a public
