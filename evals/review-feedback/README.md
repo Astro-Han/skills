@@ -59,6 +59,25 @@ chase a perfect count.
 Earlier staged comparisons are retained in Git history rather than as parallel runner paths. This
 12-case comparison is the sole current review-feedback gate.
 
+## Compression round (iteration `compress-1`) — predeclared
+
+The candidate rewrites `SKILL.md` at 1,194 words (baseline 1,882): the ledger keeps
+four fields (verdict, severity, root cause and owner, outcome), the scope-relation
+taxonomy folds into the multi-round section, duplicated admonitions collapse to one
+each, the description is rewritten for triggering on plain "fix the review comments"
+phrasings, and the multi-round bloat pattern (each round patching the prior round's
+patches) is named directly with an explicit entropy requirement on repairs.
+
+Decision, declared before any run: the standing 12-case gate above applies verbatim
+(word cap met; adopt only on the -0.03 paired-bootstrap non-inferiority bound).
+Additionally run `review-feedback-causal-holdout` (3 cases, 2 paired reps against the
+`af79986` causal baseline): the candidate must not lose that comparison by more than
+one expectation in total, since the rewrite compresses the causal-synthesis text the
+holdout was built to protect. Trigger quality is observed via the grader's
+`skill_triggered` field across all runs and must not drop below the baseline arm's
+rate; a dedicated multi-skill trigger evaluation is out of scope here and recorded as
+a limit.
+
 The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
 check. Passing that check does not satisfy or replace this compression gate; see
 [`causal-synthesis.md`](causal-synthesis.md) for its separate decision.
