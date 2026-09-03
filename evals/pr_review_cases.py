@@ -269,6 +269,36 @@ PR_REVIEW_CASES = {
         "next_step_terms": ("refresh", "before anyone acts", "before approval"),
         "forbid_approve": True,
     },
+    "review-overexpanded-solution": {
+        "fixture": "prreview-overexpanded",
+        "prompt": (
+            "Review the pull request represented by PR_SNAPSHOT.md and PATCH.diff. "
+            "Recommend the next review action. Do not modify files or contact anyone."
+        ),
+        "should_trigger": True,
+        "pr_url": "https://example.test/pulls/702",
+        "issue_url": "https://example.test/issues/697",
+        "head": "702c0ffe",
+        "diff_counts": (412, 9),
+        "split_counts": (268, 6, 144, 3),
+        "problem_terms": ("demonstrated", "restart", "已证明", "已证实", "重启"),
+        "solution_terms": ("settings bus", "bus", "generation", "subscription", "订阅"),
+        "required_term_groups": (
+            ("config.current", "read the live", "read at job start", "at dispatch",
+             "live lookup", "at run time", "when the job starts", "live config",
+             "每次任务", "派发时", "实时读取", "运行时读取", "任务开始时读取"),
+            ("smaller", "smallest", "minimal", "over-", "excess", "larger than",
+             "更小", "最小", "过度", "膨胀", "多余"),
+            ("second source", "parallel", "duplicate", "mirror", "copy of",
+             "new authority", "cache", "第二", "并行", "副本", "镜像", "缓存", "新增权威"),
+            ("remove", "delete", "drop", "without the bus", "collapse",
+             "移除", "删除", "收缩", "砍掉"),
+        ),
+        "next_step_terms": ("smaller", "shrink", "rework", "simplif", "reduce",
+                            "before merge", "收缩", "简化", "重做", "更小"),
+        "severity": "P1",
+        "forbid_approve": True,
+    },
     "review-live-compatibility-holdout": {
         "fixture": "prreview-compatibility",
         "prompt": (
@@ -337,6 +367,7 @@ HOLDOUT_CASES = (
     "review-durable-ledger-holdout",
 )
 REACHABILITY_CASES = ("review-downstream-guard-blocks-path",)
+OVEREXPANSION_CASES = ("review-overexpanded-solution",)
 PARTIAL_FACT_CASES = (
     "review-offline-pr-patch",
     "review-exported-snapshot-before-approval",

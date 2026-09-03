@@ -39,6 +39,27 @@ inspectable by the author, grading is phrase-based free-text evaluation, fixture
 live GitHub API, and only one model/reasoning configuration was tested. Keep those limits explicit
 when changing the skill or extrapolating to another model.
 
+## Question-spine and ablation revision — predeclared
+
+The revision rewrites `SKILL.md` around a plain question chain (what problem / is it
+real / right solution / smallest complete solution), removes opaque labels (the
+production-contract phrasing, "Astryx primitives"), and adds an explicit ablation
+obligation: sketch the smallest shape meeting the issue's stated acceptance, ablate
+each added mechanism against it, and treat a many-times-larger solution that adds
+standing authorities, paths, or state as a P1. Motivating failure: a real review
+missed a ~50x over-expanded PR whose issue goals a +65/−16 branch meets.
+
+Declared before viewing any output; baseline is the pre-revision skill at
+`479cdb71b68b837ef8ba7c239d576f0d3cc6b9b3`, codex `gpt-5.6-luna` reasoning high:
+
+- **Adopt** only if, on `pr-review-regression` (the 10 design + 2 holdout cases,
+  2 paired reps), the candidate's total passed assertions are not more than 2 below
+  the baseline's, with no new approval-of-material-gap failures; and on
+  `pr-review-overexpansion` (4 paired reps) the candidate names the smaller live-read
+  shape, the over-expansion, and the parallel-authority cost in at least 3/4 runs.
+- The over-expansion case is design-set evidence (it motivated the revision); the
+  regression suite guards against paying for it with existing behavior.
+
 ## Real PR holdout
 
 The synthetic `prreview-*` fixtures remain regression tests; they are not evidence for a public

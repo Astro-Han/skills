@@ -1,0 +1,66 @@
+diff --git a/scheduler/settings_bus.py b/scheduler/settings_bus.py
+new file mode 100644
+--- /dev/null
++++ b/scheduler/settings_bus.py
+@@ -0,0 +1,64 @@
++class SettingsBus:
++    """Publish/subscribe channel for config changes."""
++
++    def __init__(self):
++        self._subscribers = {}
++
++    def subscribe(self, worker_id, callback):
++        self._subscribers[worker_id] = callback
++
++    def unsubscribe(self, worker_id):
++        self._subscribers.pop(worker_id, None)
++
++    def publish(self, generation, settings):
++        for callback in list(self._subscribers.values()):
++            callback(generation, settings)
+diff --git a/scheduler/generation.py b/scheduler/generation.py
+new file mode 100644
+--- /dev/null
++++ b/scheduler/generation.py
+@@ -0,0 +1,31 @@
++class Generation:
++    """Monotonic revision counter for config writes."""
++
++    def __init__(self):
++        self._value = 0
++
++    def advance(self):
++        self._value += 1
++        return self._value
+diff --git a/scheduler/config.py b/scheduler/config.py
+--- a/scheduler/config.py
++++ b/scheduler/config.py
+@@ -41,6 +41,9 @@ class Config:
+     def update(self, mapping):
+         self._validate(mapping)
+         self._current = dict(mapping)
++        generation = self._generation.advance()
++        self._bus.publish(generation, dict(self._current))
++        self._registry.note_write(generation)
+diff --git a/scheduler/worker.py b/scheduler/worker.py
+--- a/scheduler/worker.py
++++ b/scheduler/worker.py
+@@ -12,7 +12,11 @@ class Worker:
+     def __init__(self, config, bus, registry):
+         self._settings = config.snapshot()
+-        self._config = config
++        self._generation = 0
++        bus.subscribe(self.worker_id, self._on_settings)
++        registry.track(self.worker_id)
++
++    def _on_settings(self, generation, settings):
++        if generation > self._generation:
++            self._generation = generation
++            self._settings = settings
+diff --git a/scheduler/sweep.py b/scheduler/sweep.py
+new file mode 100644
+--- /dev/null
++++ b/scheduler/sweep.py
+@@ -0,0 +1,38 @@
++class ReconciliationSweep:
++    """Timer-driven re-publish of the latest generation, in case a publish was missed."""

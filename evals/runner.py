@@ -25,6 +25,7 @@ from pr_review_cases import (
     DESIGN_CASES as PR_REVIEW_DESIGN_CASES,
     HOLDOUT_CASES as PR_REVIEW_HOLDOUT_CASES,
     NO_STATUS_CASES as PR_REVIEW_NO_STATUS_CASES,
+    OVEREXPANSION_CASES as PR_REVIEW_OVEREXPANSION_CASES,
     PARTIAL_FACT_CASES as PR_REVIEW_PARTIAL_FACT_CASES,
     PR_REVIEW_CASES,
     REACHABILITY_CASES as PR_REVIEW_REACHABILITY_CASES,
@@ -57,6 +58,7 @@ REVIEW_FEEDBACK_STRUCTURAL_BASELINE_REF = "36021bbfa0fed9b63b7a286bf48d83264aad4
 REVIEW_FEEDBACK_CAUSAL_BASELINE_REF = "af79986"
 PR_REVIEW_RECALL_BASELINE_REF = "e28f7da5a9503ec0a93c4db86108d6e8f222fd7d"
 PR_REVIEW_CAPABILITY_BASELINE_REF = "1095a1c3a7ce59c7b5a5b489d934b629a4b5f4a2"
+PR_REVIEW_PRE_QUESTION_SPINE_REF = "479cdb71b68b837ef8ba7c239d576f0d3cc6b9b3"
 TDD_PRE_SUITE_BAR_REF = "42200412b849424fd9ae5d878d728d77673163bb"
 TDD_ABLATIONS = ROOT / "baselines" / "tdd-ablations"
 TDD_CASES = (("coupon-feature", "cartlib"), ("remove-crash", "cartlib"),
@@ -239,6 +241,8 @@ def suite_runs(provider_name, reps=3, suite=None):
         "pr-review-reachability": PR_REVIEW_REACHABILITY_CASES,
         "pr-review-partial-facts": PR_REVIEW_PARTIAL_FACT_CASES,
         "pr-review-no-statuses": PR_REVIEW_NO_STATUS_CASES,
+        "pr-review-overexpansion": PR_REVIEW_OVEREXPANSION_CASES,
+        "pr-review-regression": PR_REVIEW_DESIGN_CASES + PR_REVIEW_HOLDOUT_CASES,
     }
     supported_suites = set(pr_review_suites) | {
         "pr-review-real",
@@ -401,6 +405,10 @@ def suite_runs(provider_name, reps=3, suite=None):
                 elif suite == "pr-review-no-statuses":
                     arms = (("three_states", "git:" + PR_REVIEW_THREE_STATES_REF),
                             ("with_skill", SHIPPED))
+                elif suite in ("pr-review-overexpansion", "pr-review-regression"):
+                    arms = (("baseline_skill",
+                             "git:" + PR_REVIEW_PRE_QUESTION_SPINE_REF),
+                            ("candidate_skill", SHIPPED))
                 else:
                     arms = (("without_skill", None), ("with_skill", SHIPPED))
                 for arm, skill_arm in arms:
@@ -670,7 +678,9 @@ def main():
                         help="directory of OWNER--REPO caches for the diverse real-PR suite")
     parser.add_argument("--suite", choices=("pr-review", "pr-review-holdout",
                                             "pr-review-reachability", "pr-review-partial-facts",
-                                            "pr-review-no-statuses", "pr-review-real",
+                                            "pr-review-no-statuses",
+                                            "pr-review-overexpansion", "pr-review-regression",
+                                            "pr-review-real",
                                             "pr-review-diverse", "pr-review-recall",
                                             "pr-review-evidence-reconciliation",
                                             "pr-review-capability",

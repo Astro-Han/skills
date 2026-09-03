@@ -130,8 +130,8 @@ class PrReviewEvalTests(unittest.TestCase):
             self.assertNotIn(invented_label, skill)
         self.assertNotIn("approve/comment/wait", skill)
         self.assertNotIn("**wait**", skill)
-        self.assertIn("name gaps, which do not block analysis", skill)
-        self.assertIn("keep findings separate from merge and publication conditions", skill)
+        self.assertIn("gaps do not block analysis", skill)
+        self.assertIn("under next step", skill)
         self.assertIn("never call it approvable", skill)
         self.assertIn("**next step**", skill)
 
