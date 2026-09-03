@@ -78,6 +78,29 @@ holdout was built to protect. Trigger quality is observed via the grader's
 rate; a dedicated multi-skill trigger evaluation is out of scope here and recorded as
 a limit.
 
+### Round 1 (`compress-1`) — rejected
+
+Structural, 24 pairs: mean paired diff **-0.144**, one-sided 90% bootstrap lower
+bound **-0.190** — far outside the -0.03 gate. Triggering held at 24/24 in both arms.
+The losses were behavioral, verified in the workspaces, and concentrated where the
+compression turned imperative rules into narrative: `rebase-cumulative-diff`
+(0.85 → 0.35; the candidate kept the drift files and superseded edits instead of
+reverting them — the scope-relation taxonomy and the "revert unrelated drift and its
+tests" imperative had been folded away) and `remove-mirrored-state` (1.0 → 0.61; a
+local patch kept the mirrored cache — the "Fix locally is not an available outcome"
+rule had been softened). Lesson, consistent with the tdd rounds: principle prose gets
+skipped by the weak model; itemized imperatives and required fields are the executors.
+
+### Round 2 (`compress-2`) — predeclared
+
+The rewrite keeps the compressed architecture but makes the load-bearing rules
+structural instead of narrative: **scope** becomes a required ledger field (required /
+regression / unrelated drift / pre-existing) with a per-value action table ("revert it
+and its tests now" for drift), and the mirrored-rule prohibition returns as a bolded
+imperative. 1,166 words. Decision: identical gates to round 1 — the standing 12-case
+non-inferiority gate, the causal holdout within one expectation, and triggering not
+below baseline.
+
 The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
 check. Passing that check does not satisfy or replace this compression gate; see
 [`causal-synthesis.md`](causal-synthesis.md) for its separate decision.
