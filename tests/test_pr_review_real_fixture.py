@@ -2,6 +2,7 @@ import importlib.util
 import json
 import contextlib
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -139,7 +140,7 @@ class RealFixtureTests(unittest.TestCase):
 
             subprocess.run(
                 [
-                    "python",
+                    sys.executable,
                     str(ROOT / "evals/pr-review/real_fixture.py"),
                     "select-diverse",
                     *sum((["--pool", str(path)] for path in pools), []),
