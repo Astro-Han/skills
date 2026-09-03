@@ -1,6 +1,6 @@
 ---
 name: review-feedback
-description: "Use this skill whenever existing code-review feedback may lead to a code decision or edit, including PR comments and findings from external models, review tools, or delegated reviewers—even when the user simply says to fix, address, apply, or resolve them. Do not use to perform a new review, diagnose an unrelated bug, implement a new requirement, or merely summarize feedback without deciding what to do."
+description: "Adjudicate and act on existing code-review feedback: PR comments, inline threads, or findings from reviewers, review tools, external models, or delegated agents. Use whenever the user asks to fix, address, apply, resolve, respond to, or push back on review comments or findings — even a casual 'fix the review comments' — and before any code edit that review feedback may cause. Do not use to perform a fresh review, diagnose an unrelated bug, implement a new requirement, or merely summarize feedback."
 ---
 
 # Review Feedback
