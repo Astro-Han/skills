@@ -123,6 +123,12 @@ has dropped at least one. Compression of the body is abandoned; the baseline tex
 `8f26a14` stands. Improvements to triggering, if pursued, should change only the
 frontmatter description with the body frozen.
 
+Shipped from this round: only the compress-2 frontmatter description (covering
+casual "fix the review comments" phrasings and push-back requests) was ported onto
+the frozen baseline body at `07b885d`. Both arms triggered 30/30 in these runs, so
+the change targets real-world trigger phrasing, not an evaluated regression; it is
+recorded as a metadata-only change outside the behavioral gates.
+
 The causal-synthesis experiment may reuse this suite as a behavior-only non-inferiority
 check. Passing that check does not satisfy or replace this compression gate; see
 [`causal-synthesis.md`](causal-synthesis.md) for its separate decision.
