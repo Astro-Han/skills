@@ -14,7 +14,14 @@ I started with [Superpowers](https://github.com/obra/superpowers). It showed me 
 
 Then I found Matt Pocock's [`grill-me`](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me). It was strikingly short, yet it changed the conversation in exactly the right place. That was the lesson: a skill is not valuable because it says more. It is valuable when a small instruction reliably changes an important behavior.
 
-Astro Skills grew from that standard. I keep only the constraints that earn their place in the model's context—one recurring failure, one behavioral correction, as few tokens as the job allows.
+Astro Skills grew from that standard. Every skill is held to it:
+
+- Start with a failure agents actually repeat.
+- Find the smallest instruction that changes that behavior.
+- Keep evidence and observable outcomes; remove ceremony.
+- Test demanding skills with smaller models when practical. If a skill only works because the base model is strong, the skill has not proved much.
+
+Every line competes for limited context. If removing it does not make the agent worse at the job, it does not belong in the skill.
 
 ## The skills
 
@@ -75,15 +82,6 @@ npx skills add Astro-Han/skills --skill shape
 ```
 
 See the [Skills CLI documentation](https://skills.sh/docs) for supported agents and other options.
-
-## The rule
-
-- Start with a failure agents actually repeat.
-- Find the smallest instruction that changes that behavior.
-- Keep evidence and observable outcomes; remove ceremony.
-- Test demanding skills with smaller models when practical. If the skill only works because the base model is strong, the skill has not proved much.
-
-Every line competes for limited context. If removing it does not make the agent worse at the job, it does not belong in the skill.
 
 ## Origins and acknowledgements
 
