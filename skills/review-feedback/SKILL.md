@@ -112,7 +112,7 @@ When the issue is valid but the proposed patch is not, accept the issue and reje
 
 ## Implement and close the loop
 
-Implement only when the user asked to address, apply, or fix the feedback, and only the ledger's accepted actions. Work in causal dependency order and one observable behavior at a time. Use `tdd` when the change has a stable test seam; otherwise use the nearest trustworthy verification.
+Implement only when the user asked to address, apply, or fix the feedback, and only the ledger's accepted actions. Work in causal dependency order and one observable behavior at a time. Follow `tdd`'s applicability criteria; otherwise use the nearest trustworthy verification.
 
 The latest ledger is the sole authority for the final diff. If evidence changes a verdict, owner, or outcome after editing began, remove every edit and test derived from the superseded decision before continuing; verification must fail if an abandoned local patch remains.
 

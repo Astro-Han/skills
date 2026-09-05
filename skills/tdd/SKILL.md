@@ -1,52 +1,35 @@
 ---
 name: tdd
-description: "Test-driven development for production behavior. Use whenever implementing a feature, fixing a bug, or otherwise changing observable production behavior, and before refactoring to establish or verify a green safety net. Do not use for docs-only changes, test-only maintenance, generated artifacts, or exploratory prototypes unless the user asks for TDD."
+description: "Use test-driven development when requested, or when a clear behavior change has a trustworthy automated seam and test-first feedback is worth its cost. Do not trigger merely for code edits, pure refactors, visual tweaks, configuration, or exploratory work."
 ---
 
 # TDD
 
-## Before RED
+## Choose the signal
 
-Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed: a function, API, CLI, UI interaction, or service interface.
+Inspect the existing tests and public contract; use the cheapest trustworthy boundary that exercises the real behavior.
+For a defect already captured by an existing test, add no tests or parameter rows; fix production code and only delete invalid or redundant tests. Otherwise extend an existing case before adding one for a worthwhile gap.
+Count parameter rows, fixtures, environment startup, and CI work as test cost, not just test functions.
+If no trustworthy automated signal exists, use the nearest reliable check and state the gap; do not manufacture a test seam.
 
-## The loop
+## RED → GREEN → REFACTOR
 
-1. **RED** — Write one test for the next observable behavior. Run it and confirm it fails for the predicted reason.
-2. **GREEN** — Write only enough production code to pass that test. Run it, then run the nearest related tests.
-3. **REFACTOR** — Improve names, structure, and duplication without changing behavior. Keep tests green throughout.
+1. **RED:** Express one valuable behavior and observe failure for the predicted reason before changing production code; an existing failing test already supplies RED.
+2. **GREEN:** Make the smallest production change that passes, then run affected checks.
+3. **REFACTOR:** Simplify implementation and tests while preserving behavior, then choose the next needed behavior.
 
-Then choose the next behavior and repeat. Do not write a batch of tests followed by a batch of implementation. One test introduces one behavior; if its name needs `and`, split it unless those outcomes form one inseparable contract.
+Do not write a batch of tests followed by a batch of implementation.
 
-## Pure refactors
+If a behavior already passes, verify it without undoing working code to manufacture RED.
 
-Start from a green safety net. If existing tests do not protect the behavior being preserved, add a characterization test and watch it pass before refactoring. Do not invent a failing behavior test for a behavior-preserving change.
+If explicitly using this skill for a pure refactor, start from passing checks; add a characterization test only for a worthwhile unprotected behavior, never an invented RED.
 
-An extracted helper does not earn a test of its own; the behavior test that already covers it is the safety net. A process rule demanding a test per function does not change this. Say that the helper is covered through the existing seam, and never widen the public API to satisfy such a rule.
+## Keep the signal honest
 
-## Test quality
-
-Tests specify observable behavior through public interfaces and survive internal refactors.
-
-Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. Delete a test that survives broken behavior, and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
-
-Refuse these shapes as well. Never write them, and delete the ones already covering the code you touch:
-
-- an expectation recomputed from the production algorithm, or read back from the production constant it exists to pin
-- a mocked internal collaborator, or an assertion on call count or order where the call is not itself the contract
-- an assertion on literal text, log output, or a snapshot that no caller, user, or published format depends on
-- a test reaching into private methods or internal state to observe what the public seam already exposes
-- an assertion so weak it holds for broken output, such as a type, a length, or a non-empty check
-
-Deleting the ones that fail the gate is part of finishing the change.
-
-Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
+Expected results come from the contract, not a copy of the implementation; assertions must reject broken behavior and survive harmless internal changes.
+Reject implementation-detail checks, internal mocks, unconsumed snapshots, and weak type/nonempty assertions that do not prove the contract; a new helper does not earn its own test.
 
 ## Finish
 
-The suite you leave behind is part of the deliverable. Before reporting done:
-
-1. List the distinct obligations this change added or altered, plus those the touched seams already owned.
-2. Map every test on the touched seams to one obligation, one test per obligation. A test that maps to an already-covered obligation, or to none, is excess even though it passes.
-3. Delete or merge the excess — stepping-stone tests the final behavior subsumed, overlapping variants of one rule, and existing tests on those seams that match the refused shapes — then rerun the suite green.
-
-Report the obligation-to-test mapping in one line per obligation. More tests than obligations means the job is not finished.
+Map tests to valuable obligations and leave one representative per obligation; delete duplicate cases, parameter rows, and subsumed stepping-stone tests, then rerun affected checks.
+Report retained obligations and any protection deliberately dropped.

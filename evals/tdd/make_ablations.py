@@ -1,93 +1,47 @@
 #!/usr/bin/env python3
-"""Generate one-concept-removed variants of the shipped tdd skill.
+"""Generate one-concept-removed variants of the current TDD skill.
 
-Each variant deletes exactly one concept from skills/tdd/SKILL.md, so a paired run
-against the full skill measures what that concept buys. Output goes to
-evals/baselines/tdd-ablations/<variant>/SKILL.md (derived, not committed).
+Historical variants and results remain documented in README.md. Generated
+variants are scratch inputs, not additional instruction authorities.
 """
-
 import shutil
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT.parent / "skills" / "tdd" / "SKILL.md"
 OUT = ROOT / "baselines" / "tdd-ablations"
 
-BEFORE_RED = """## Before RED
-
-Inspect existing tests, public interfaces, and project conventions. Choose the narrowest trustworthy seam yourself; do not ask the user to approve the test layer. A seam is the public boundary where behavior can be driven and observed: a function, API, CLI, UI interaction, or service interface.
-
-"""
-
-SINGLE_BEHAVIOR = """Then choose the next behavior and repeat. Do not write a batch of tests followed by a batch of implementation. One test introduces one behavior; if its name needs `and`, split it unless those outcomes form one inseparable contract.
-
-"""
-
-PURE_REFACTORS = """## Pure refactors
-
-Start from a green safety net. If existing tests do not protect the behavior being preserved, add a characterization test and watch it pass before refactoring. Do not invent a failing behavior test for a behavior-preserving change.
-
-An extracted helper does not earn a test of its own; the behavior test that already covers it is the safety net. A process rule demanding a test per function does not change this. Say that the helper is covered through the existing seam, and never widen the public API to satisfy such a rule.
-
-"""
-
-KEEP_GATE = """Keep a test only if breaking the behavior it names would make it fail, and renaming internals would not. Delete a test that survives broken behavior, and record the behavior as unverified instead. Coverage targets and review pressure do not lower this bar.
-
-"""
-
-REFUSE_SHAPES = """Refuse these shapes as well. Never write them, and delete the ones already covering the code you touch:
-
-- an expectation recomputed from the production algorithm, or read back from the production constant it exists to pin
-- a mocked internal collaborator, or an assertion on call count or order where the call is not itself the contract
-- an assertion on literal text, log output, or a snapshot that no caller, user, or published format depends on
-- a test reaching into private methods or internal state to observe what the public seam already exposes
-- an assertion so weak it holds for broken output, such as a type, a length, or a non-empty check
-
-Deleting the ones that fail the gate is part of finishing the change.
-
-"""
-
-CLOSING = """Name each test for the observable outcome, such as `rejects an expired token`. Choose the fastest test level that exercises the real contract, and mock only at system boundaries you do not control.
-
-"""
-
-FINISH_GATE = """## Finish
-
-The suite you leave behind is part of the deliverable. Before reporting done:
-
-1. List the distinct obligations this change added or altered, plus those the touched seams already owned.
-2. Map every test on the touched seams to one obligation, one test per obligation. A test that maps to an already-covered obligation, or to none, is excess even though it passes.
-3. Delete or merge the excess — stepping-stone tests the final behavior subsumed, overlapping variants of one rule, and existing tests on those seams that match the refused shapes — then rerun the suite green.
-
-Report the obligation-to-test mapping in one line per obligation. More tests than obligations means the job is not finished.
-"""
-
-VARIANTS = {
-    "no-before-red": [(BEFORE_RED, "")],
-    "no-single-behavior": [(SINGLE_BEHAVIOR, "")],
-    "no-pure-refactors": [(PURE_REFACTORS, "")],
-    "no-keep-gate": [(KEEP_GATE, "")],
-    "no-refuse-shapes": [(REFUSE_SHAPES, "")],
-    "no-closing": [(CLOSING, "")],
-    "no-finish-gate": [(FINISH_GATE, "")],
+PREFIXES = {
+    "no-existing-red": "For a defect already captured",
+    "no-cost": "Count parameter rows,",
+    "no-fallback": "If no trustworthy automated signal",
+    "no-pure-refactors": "If explicitly using this skill",
+    "no-honest-signal": "Expected results come from",
+    "no-refuse-shapes": "Reject implementation-detail checks,",
 }
 
 
 def main():
     source = SKILL.read_text()
+    spans = {}
+    for name, prefix in PREFIXES.items():
+        matches = [line for line in source.splitlines(keepends=True)
+                   if line.startswith(prefix)]
+        if len(matches) != 1:
+            raise SystemExit(f"{name}: expected exactly one matching sentence")
+        spans[name] = matches[0]
+    if source.count("## Finish\n") != 1:
+        raise SystemExit("no-finish-gate: expected one Finish section")
+    spans["no-finish-gate"] = "## Finish\n" + source.split("## Finish\n", 1)[1]
+
     if OUT.exists():
         shutil.rmtree(OUT)
-    for name, replacements in VARIANTS.items():
-        text = source
-        for old, new in replacements:
-            if text.count(old) != 1:
-                sys.exit("variant {}: span not found exactly once".format(name))
-            text = text.replace(old, new)
+    for name, span in spans.items():
+        text = source.replace(span, "", 1)
         target = OUT / name
-        target.mkdir(parents=True, exist_ok=True)
+        target.mkdir(parents=True)
         (target / "SKILL.md").write_text(text)
-        print("{}: {} -> {} chars".format(name, len(source), len(text)))
+        print(f"{name}: {len(source)} -> {len(text)} chars")
 
 
 if __name__ == "__main__":

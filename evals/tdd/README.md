@@ -1,5 +1,8 @@
 # TDD evals
 
+Current scoped revision: [2026-09-05 evaluation](scoped-20260905.md).
+The experiments below document earlier revisions and their original criteria.
+
 ## Problem
 
 The observed failure mode of the shipped skill is over-testing: redundant and
