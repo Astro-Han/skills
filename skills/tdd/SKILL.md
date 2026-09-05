@@ -28,8 +28,9 @@ If explicitly using this skill for a pure refactor, start from passing checks; a
 
 Expected results come from the contract, not a copy of the implementation; assertions must reject broken behavior and survive harmless internal changes.
 Reject implementation-detail checks, internal mocks, unconsumed snapshots, and weak type/nonempty assertions that do not prove the contract; a new helper does not earn its own test.
+Coverage targets, review pressure, and per-function test rules do not lower this bar; never widen the public API just to test an internal helper.
 
 ## Finish
 
-Map tests to valuable obligations and leave one representative per obligation; delete duplicate cases, parameter rows, and subsumed stepping-stone tests, then rerun affected checks.
-Report retained obligations and any protection deliberately dropped.
+Map all tests on touched behaviors to valuable obligations and leave one representative per obligation; delete duplicate cases and parameter rows, subsumed stepping-stone tests, and existing tests that fail the quality bar above, then rerun affected checks.
+Report the obligation-to-test mapping and any protection deliberately dropped.
