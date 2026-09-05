@@ -38,10 +38,10 @@ Include only concrete unfinished actions, blockers, or decisions. Omit this sect
 
 ### Session Name
 
-Suggest exactly one short, natural, searchable title for the dominant workstream. Strictly adhere to active user instructions and project naming rules (e.g., `GEMINI.md` / `AGENTS.md`). When governed by global naming rules, format using the local date:
-- `MM/DD PR #N <中文主题>` (if focused on a single PR)
-- `MM/DD Issue #N <中文主题>` (if focused on an Issue)
-- `MM/DD Discussion #N <中文主题>` (if focused on a Discussion)
-- `MM/DD <中文主题>` (default for general workstreams)
+Suggest exactly one short, natural, searchable title for the dominant workstream. Strictly adhere to active user instructions and project naming rules (e.g., `GEMINI.md` / `AGENTS.md`). When governed by global naming rules, format using the local date (matching the active session language, Chinese or English):
+- `MM/DD PR #N <topic>` (if focused on a single PR)
+- `MM/DD Issue #N <topic>` (if focused on an Issue)
+- `MM/DD Discussion #N <topic>` (if focused on a Discussion)
+- `MM/DD <topic>` (default for general workstreams)
 
 Keep the whole wrap-up proportional to the session. Use `handoff` instead when the user needs a portable continuation document.
